@@ -41,7 +41,7 @@
 #include "OCG.h"
 #include "RRC/NR/nr_rrc_extern.h"
 #include "common/utils/nr/nr_common.h"
-
+#include "shm_interface/wd_shm_nr_utils.h"
 
 #include "pdcp.h"
 
@@ -610,6 +610,13 @@ void schedule_nr_sib1(module_id_t module_idP, frame_t frameP, sub_frame_t slotP)
 
       // Data to be transmitted
       memcpy(tx_req->TLVs[0].value.direct, sib1_payload, TBS);
+
+      // Send data to fuzzer (SIB)
+      // send_pdu_data_nr(W_GNB_MAC_UE_DL_SIB,
+      //                   NR_DIRECTION_DOWNLINK,
+      //                   NR_SI_RNTI, 0xffff, 
+      //                   frameP, slotP, 0,
+      //                   sib1_payload, sib1_sdu_length);
 
       tx_req->PDU_length = TBS;
       tx_req->PDU_index  = pdu_index;

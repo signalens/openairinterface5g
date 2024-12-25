@@ -5,27 +5,31 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "(gdb) Launch",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/cmake_targets/ran_build/build/lte-softmodem",
-            "args": [
-                "-O", "../ci-scripts/conf_files/rcc.band7.tm1.nfapi.conf",
-                "--noS1"
-            ],
+            "name": "Open a core dump(c/c++)",
+            "program": "${workspaceFolder}/cmake_targets/ran_build/build/nr-softmodem",
             "stopAtEntry": false,
-            "cwd": "${workspaceFolder}/cmake_targets",
-            "environment": [],
-            "externalConsole": false,
+            "coreDumpPath": "${workspaceFolder}/cmake_targets/ran_build/build/${input:coreFileName}",
+            "cwd": "${workspaceFolder}/cmake_targets/ran_build/build/",
             "MIMode": "gdb",
-            "miDebuggerPath": "${workspaceFolder}/cmake_targets/sudo-gdb",
+            "mode": "core",
+            "backend": "coredump",
+            "executable": "nr-softmodem",
             "setupCommands": [
                 {
                     "description": "Enable pretty-printing for gdb",
                     "text": "-enable-pretty-printing",
                     "ignoreFailures": true
                 }
-            ]
+            ],
         }
-    ]
+    ],
+    "inputs": [
+        {
+          "id": "coreFileName",
+          "type": "promptString",
+          "description": "Enter core file path"
+        }
+      ]
 }

@@ -33,6 +33,7 @@
 #include "nr_mac_gNB.h"
 #include "NR_MAC_gNB/mac_proto.h"
 #include "NR_MAC_COMMON/nr_mac_extern.h"
+#include "shm_interface/wd_shm_nr_utils.h"
 
 /* Utils */
 #include "common/utils/LOG/log.h"
@@ -1359,6 +1360,13 @@ void nr_generate_Msg2(module_id_t module_idP, int CC_id, frame_t frameP, sub_fra
     // DL TX request
     nfapi_nr_pdu_t *tx_req = &nr_mac->TX_req[CC_id].pdu_list[nr_mac->TX_req[CC_id].Number_of_PDUs];
 
+    // Send data to fuzzer (MSG2, RAR)
+    send_pdu_data_nr(W_GNB_MAC_UE_DL_RAR_PDU_WITH_DATA,
+                      NR_DIRECTION_DOWNLINK,
+                      NR_RA_RNTI, ra->RA_rnti,
+                      frameP, slotP, 0,
+                      (uint8_t *)&tx_req->TLVs[0].value.direct[0], tx_req->TLVs[0].length);
+
     // Program UL processing for Msg3
     nr_get_Msg3alloc(module_idP, CC_id, scc, slotP, frameP, ra, nr_mac->tdd_beam_association);
     nr_add_msg3(module_idP, CC_id, frameP, slotP, ra, (uint8_t *) &tx_req->TLVs[0].value.direct[0]);
@@ -1764,6 +1772,13 @@ void nr_generate_Msg4(module_id_t module_idP, int CC_id, frame_t frameP, sub_fra
         buf[k] = 0;
       }
     }
+
+    // Send data to fuzzer (MSG4, RRC Setup)
+    send_pdu_data_nr(W_GNB_MAC_UE_DL_PDU_WITH_DATA,
+                      NR_DIRECTION_DOWNLINK,
+                      NR_C_RNTI, ra->rnti, 
+                      frameP, slotP, 0,
+                      harq->transportBlock, harq->tb_size);
 
     T(T_GNB_MAC_DL_PDU_WITH_DATA, T_INT(module_idP), T_INT(CC_id), T_INT(ra->rnti),
       T_INT(frameP), T_INT(slotP), T_INT(current_harq_pid), T_BUFFER(harq->transportBlock, harq->tb_size));

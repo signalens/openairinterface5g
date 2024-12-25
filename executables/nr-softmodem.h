@@ -62,4 +62,17 @@ void init_gNB_afterRU(void);
 
 void init_pdcp(void);
 
+/* FUZZ-NR: duplication */
+#define DUP_BUF_SIZE 2048
+
+typedef struct fuzz_nr_duplication_s {
+    bool    flag_mac;
+    int     rlc_len;
+    int     mac_len;
+    uint8_t mac_buf[DUP_BUF_SIZE];
+} fuzz_nr_duplication_t;
+
+extern fuzz_nr_duplication_t fuzz_nr_dup;
+/* -------------------- */
+
 #endif

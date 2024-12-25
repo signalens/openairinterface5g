@@ -496,11 +496,14 @@ function main() {
     echo_info "Installing packages"
     check_install_oai_software
     if [ "$HW" == "OAI_USRP" ] ; then
-      echo_info "installing packages for USRP support"
-      check_install_usrp_uhd_driver
-      if [ ! -v BUILD_UHD_FROM_SOURCE ] && [ ! "$DISABLE_HARDWARE_DEPENDENCY" == "True" ]; then
-        install_usrp_uhd_driver $UHD_IMAGES_DIR
+      if [[ "$(pkg-config --modversion uhd)" != *"4.4"* ]] ; then
+        echo_info "installing packages for USRP support"
+        install_usrp_uhd_driver_from_source
       fi
+      # check_install_usrp_uhd_driver
+      # if [ ! -v BUILD_UHD_FROM_SOURCE ] && [ ! "$DISABLE_HARDWARE_DEPENDENCY" == "True" ]; then
+      #   install_usrp_uhd_driver $UHD_IMAGES_DIR
+      # fi
     fi 
     if [ "$HW" == "OAI_BLADERF" ] ; then
       echo_info "installing packages for BLADERF support"

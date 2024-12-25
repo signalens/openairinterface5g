@@ -155,6 +155,8 @@ void initNamedTpool(char *params,tpool_t *pool, bool performanceMeas, char *name
 
     curptr=strtok_r(NULL,",",&saveptr);
   }
+  
+  printf("Number of Threads=%d\n", pool->nbThreads);
   free(parms_cpy);
   if (pool->activated && pool->nbThreads==0) {
     printf("No servers created in the thread pool, exit\n");

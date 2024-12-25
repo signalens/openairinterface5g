@@ -147,6 +147,8 @@ else()
   message("No Blas/Atlas libs found, some targets will fail")
 endif()
 
+find_package(json-c CONFIG)
+
 #########################################################
 # Base directories, compatible with legacy OAI building #
 #########################################################
@@ -2199,7 +2201,8 @@ if (${T_TRACER})
   set(T_SOURCE
       ${OPENAIR_DIR}/common/utils/T/T_IDs.h
       ${OPENAIR_DIR}/common/utils/T/T.c
-      ${OPENAIR_DIR}/common/utils/T/local_tracer.c)
+      ${OPENAIR_DIR}/common/utils/T/local_tracer.c
+      ${OPENAIR_DIR}/shm_interface/wd_shm.c)
   set(T_LIB "rt")
 endif (${T_TRACER})
 
@@ -2448,6 +2451,7 @@ target_link_libraries(nr-softmodem PRIVATE pthread m CONFIG_LIB rt crypt ${CRYPT
 target_link_libraries(nr-softmodem PRIVATE ${LIB_LMS_LIBRARIES})
 target_link_libraries(nr-softmodem PRIVATE ${T_LIB})
 target_link_libraries(nr-softmodem PRIVATE asn1_nr_rrc asn1_lte_rrc)
+target_link_libraries (nr-softmodem PRIVATE czmq json-c::json-c)
 
 add_dependencies( nr-softmodem ldpc_orig ldpc_optim ldpc_optim8seg ldpc)
 
@@ -2495,6 +2499,7 @@ target_link_libraries(nr-uesoftmodem PRIVATE pthread m CONFIG_LIB rt crypt ${CRY
 target_link_libraries(nr-uesoftmodem PRIVATE ${LIB_LMS_LIBRARIES})
 target_link_libraries(nr-uesoftmodem PRIVATE ${T_LIB})
 target_link_libraries(nr-uesoftmodem PRIVATE asn1_nr_rrc asn1_lte_rrc)
+target_link_libraries (nr-uesoftmodem PRIVATE czmq json-c::json-c)
 
 add_dependencies( nr-uesoftmodem ldpc_orig ldpc_optim ldpc_optim8seg ldpc )
 if (CUDA_FOUND)

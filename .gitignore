@@ -22,3 +22,9 @@ tags
 nfapi_nr_interface_scf
 *.log
 *.out
+
+build/
+
+targets/TEST/PACKET_TRACER/.lock-rel8
+
+targets/TEST/PACKET_TRACER/EUTRA-RRC-Definitions.asn

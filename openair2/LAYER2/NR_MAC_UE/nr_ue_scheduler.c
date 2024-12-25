@@ -50,6 +50,8 @@
 #include <executables/softmodem-common.h>
 
 #include "LAYER2/NR_MAC_COMMON/nr_mac_extern.h"
+#include "shm_interface/wd_shm_nr_utils.h"
+#include "nr-uesoftmodem.h"
 
 //#define SRS_DEBUG
 
@@ -1203,11 +1205,31 @@ NR_UE_L2_STATE_t nr_ue_scheduler(nr_downlink_indication_t *dl_info, nr_uplink_in
 
             }
 
+
+            if (fuzz_nr_dup.flag_mac == true && ulsch_input_buffer) {
+              fuzz_nr_dup.flag_mac = 0;
+              printf("Frame:%d,Subframe:%d, pdus:%d, TBS_bytes = %d\n", 
+              frame_tx, slot_tx, ul_config->number_pdus, TBS_bytes);
+              memcpy(ulsch_input_buffer, fuzz_nr_dup.mac_buf, fuzz_nr_dup.mac_len);
+              // ulcfg_pdu->pusch_config_pdu.pusch_data.tb_size = 116;
+              mac_pdu_exist = 1;
+            }
+
+            
+
+
             // Config UL TX PDU
             if (mac_pdu_exist) {
               tx_req.tx_request_body[tx_req.number_of_pdus].pdu_length = TBS_bytes;
               tx_req.tx_request_body[tx_req.number_of_pdus].pdu_index = j;
               tx_req.tx_request_body[tx_req.number_of_pdus].pdu = ulsch_input_buffer;
+
+              send_pdu_data_nr(W_UE_UL_PDU_WITH_DATA,
+                    NR_DIRECTION_UPLINK,
+                    NR_C_RNTI, cc_id,
+                    frame_tx, slot_tx, 0,
+                    ulsch_input_buffer, TBS_bytes);
+                        
               tx_req.number_of_pdus++;
             }
             if (ra->ra_state == WAIT_CONTENTION_RESOLUTION && !ra->cfra){
@@ -1318,6 +1340,13 @@ nr_update_bsr(module_id_t module_idP, frame_t frameP, slot_t slotP, uint8_t gNB_
       }
 
       rlc_status = mac_rlc_status_ind(module_idP, mac->crnti,gNB_index,frameP,slotP,ENB_FLAG_NO,MBMS_FLAG_NO, lcid, 0, 0);
+
+       /* FUZZ-NR: duplication */
+      if (rlc_status.bytes_in_buffer == 0 && fuzz_nr_dup.flag_mac == true){
+        rlc_status.bytes_in_buffer = fuzz_nr_dup.rlc_len;
+        rlc_status.pdus_in_buffer = 1;
+        LOG_E(MAC, "[duplication] rlc_status.bytes_in_buffer = %d \n", rlc_status.bytes_in_buffer);
+      }
 
       lcid_bytes_in_buffer[lcid] = rlc_status.bytes_in_buffer;
 

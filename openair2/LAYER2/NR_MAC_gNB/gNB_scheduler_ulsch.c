@@ -38,6 +38,7 @@
 #include "LAYER2/nr_rlc/nr_rlc_oai_api.h"
 
 //#define SRS_IND_DEBUG
+#include "shm_interface/wd_shm_nr_utils.h"
 
 const int get_ul_tda(gNB_MAC_INST *nrmac, const NR_ServingCellConfigCommon_t *scc, int frame, int slot) {
 
@@ -571,12 +572,22 @@ void nr_rx_sdu(const module_id_t gnb_mod_idP,
   NR_UE_info_t* UE = find_nr_UE(&gNB_mac->UE_info, current_rnti);
   if (UE) {
     NR_UE_sched_ctrl_t *UE_scheduling_control = &UE->UE_sched_ctrl;
+  // Send data to fuzzer (ULSCH)
+  if (sduP && sdu_lenP) {
+    send_pdu_data_nr(W_GNB_MAC_UE_UL_PDU_WITH_DATA,
+                      NR_DIRECTION_UPLINK,
+                      NR_C_RNTI, rntiP,
+                      frameP, slotP, 0,
+                      sduP, sdu_lenP);
+  }
+
     const int8_t harq_pid = UE_scheduling_control->feedback_ul_harq.head;
 
-    if (sduP)
+    if (sduP && sdu_lenP) {
       T(T_GNB_MAC_UL_PDU_WITH_DATA, T_INT(gnb_mod_idP), T_INT(CC_idP),
         T_INT(rntiP), T_INT(frameP), T_INT(slotP), T_INT(harq_pid),
         T_BUFFER(sduP, sdu_lenP));
+    }
 
     UE->mac_stats.ul.total_bytes += sdu_lenP;
     LOG_D(NR_MAC, "[gNB %d][PUSCH %d] CC_id %d %d.%d Received ULSCH sdu from PHY (rnti %04x) ul_cqi %d TA %d sduP %p, rssi %d\n",
@@ -663,6 +674,15 @@ void nr_rx_sdu(const module_id_t gnb_mod_idP,
 
     if(no_sig) {
       LOG_W(NR_MAC, "No signal\n");
+    }
+
+    // Send data to fuzzer (ULSCH)
+    if (sdu_lenP) {
+      send_pdu_data_nr(W_GNB_MAC_UE_UL_PDU_WITH_DATA,
+                      NR_DIRECTION_UPLINK,
+                      NR_C_RNTI, rntiP,
+                      frameP, slotP, 0,
+                      sduP, sdu_lenP);
     }
 
     T(T_GNB_MAC_UL_PDU_WITH_DATA, T_INT(gnb_mod_idP), T_INT(CC_idP),

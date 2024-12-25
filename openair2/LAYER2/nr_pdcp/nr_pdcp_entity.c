@@ -32,6 +32,8 @@
 
 #include "LOG/log.h"
 
+#include "shm_interface/wd_shm_nr_utils.h"
+
 static void nr_pdcp_entity_recv_pdu(nr_pdcp_entity_t *entity,
                                     char *_buffer, int size)
 {
@@ -122,6 +124,22 @@ static void nr_pdcp_entity_recv_pdu(nr_pdcp_entity_t *entity,
 
 
     }
+  }
+
+  if (entity->is_gnb)
+  {
+    // RX NR gNB Interception
+    send_pdu_data_pdcp_nr(
+      NR_DIRECTION_UPLINK,  
+      (entity->type == NR_PDCP_SRB ? SIGNALING_PLANE_NR : USER_PLANE_NR),
+      entity->rb_id == 0 ? BEARER_CCCH : BEARER_DCCH,
+      entity->pdusession_id,
+      entity->sn_size,
+      false, 0,
+      buffer, header_size + size + integrity_size);
+  }
+  else{
+    // TODO: UE interception here
   }
 
   if (rcvd_count < entity->rx_deliv
@@ -219,6 +237,22 @@ static void nr_pdcp_entity_recv_sdu(nr_pdcp_entity_t *entity,
 
   memcpy(buf + header_size, buffer, size);
 
+  if (entity->is_gnb) {
+    // TX NR gNB Interception
+    memset(buf + header_size + size, 0, integrity_size); // Clear MAC-I
+    send_pdu_data_pdcp_nr(
+      NR_DIRECTION_DOWNLINK,  
+      (entity->type == NR_PDCP_SRB ? SIGNALING_PLANE_NR : USER_PLANE_NR),
+      entity->rb_id == 0 ? BEARER_CCCH : BEARER_DCCH,
+      entity->pdusession_id,
+      entity->sn_size,
+      false, 0,
+      (uint8_t *)buf, header_size + size + integrity_size);
+  }
+  else {
+    // TODO: NR UE Interception here
+  }
+
   if (entity->has_integrity){
     uint8_t integrity[4] = {0};
     entity->integrity(entity->integrity_context,
@@ -239,6 +273,23 @@ static void nr_pdcp_entity_recv_sdu(nr_pdcp_entity_t *entity,
                    entity->rb_id, count, entity->is_gnb ? 1 : 0);
   } else {
     entity->security_mode_completed = true;
+  }
+
+  if (entity->has_integrity || entity->has_ciphering) {
+    if (entity->is_gnb) {
+        // TX NR gNB Interception
+        send_pdu_data_pdcp_nr(
+          NR_DIRECTION_UPLINK,  
+          (entity->type == NR_PDCP_SRB ? SIGNALING_PLANE_NR : USER_PLANE_NR),
+          entity->rb_id == 0 ? BEARER_CCCH : BEARER_DCCH,
+          entity->pdusession_id,
+          entity->sn_size,
+          true, 0,
+          buf, header_size + size + integrity_size);
+      }
+      else{
+        // TODO: NR UE Interception here
+      }
   }
 
   entity->tx_next++;

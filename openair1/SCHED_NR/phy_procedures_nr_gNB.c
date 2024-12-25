@@ -45,6 +45,8 @@
 
 #include "intertask_interface.h"
 
+#include "shm_interface/wd_shm_nr_utils.h"
+
 //#define DEBUG_RXDATA
 //#define SRS_IND_DEBUG
 
@@ -89,13 +91,20 @@ void nr_common_signal_procedures (PHY_VARS_gNB *gNB,int frame,int slot,nfapi_nr_
   else
     nr_generate_pbch_dmrs(gNB->nr_gold_pbch_dmrs[0][ssb_index&7],&txdataF[0][txdataF_offset], AMP, ssb_start_symbol, cfg, fp);
 
-  if (T_ACTIVE(T_GNB_PHY_MIB)) {
+  // if (T_ACTIVE(T_GNB_PHY_MIB)) {
     unsigned char bch[3];
     bch[0] = ssb_pdu.ssb_pdu_rel15.bchPayload & 0xff;
     bch[1] = (ssb_pdu.ssb_pdu_rel15.bchPayload >> 8) & 0xff;
     bch[2] = (ssb_pdu.ssb_pdu_rel15.bchPayload >> 16) & 0xff;
+    // Send data to fuzzer (MIB)
+    // send_pdu_data_nr(W_GNB_PHY_MIB,
+    //                   NR_DIRECTION_DOWNLINK,
+    //                   NR_NO_RNTI, 0, 
+    //                   frame, slot, 0,
+    //                   bch, 3);
+
     T(T_GNB_PHY_MIB, T_INT(0) /* module ID */, T_INT(frame), T_INT(slot), T_BUFFER(bch, 3));
-  }
+  // }
 
   // Beam_id is currently used only for FR2
   if (fp->freq_range==nr_FR2){

@@ -200,6 +200,9 @@ void nr_decode_pucch0(PHY_VARS_gNB *gNB,
         break;
      } else if (first_uci_stats == NULL && gNB->uci_stats[i].rnti == 0) first_uci_stats = &gNB->uci_stats[i];
 
+  if ((first_uci_stats == NULL) || (pucch_pdu == NULL))
+    return;
+
   if (uci_stats == NULL) { uci_stats=first_uci_stats; uci_stats->rnti = pucch_pdu->rnti;}
 
   AssertFatal(uci_stats!=NULL,"No stat index found\n");

@@ -46,6 +46,8 @@
 
 #include "intertask_interface.h"
 
+#include "shm_interface/wd_shm_nr_utils.h"
+
 extern uint8_t nfapi_mode;
 
 uint8_t get_nr_prach_duration(uint8_t prach_format){
@@ -167,6 +169,13 @@ void L1_nr_prach_procedures(PHY_VARS_gNB *gNB,int frame,int slot) {
 	      prachStartSymbol,
 	      prach_pdu->num_ra);
 	
+   // Send data to fuzzer (RACH)
+   // send_pdu_data_nr(W_GNB_PHY_INITIATE_RA_PROCEDURE, 
+   //                   NR_DIRECTION_UPLINK, 
+   //                   NR_NO_RNTI, 0, 
+   //                   frame, slot, 0,
+   //                   NULL, 0);
+
 	T(T_ENB_PHY_INITIATE_RA_PROCEDURE, T_INT(gNB->Mod_id), T_INT(frame), T_INT(slot),
 	  T_INT(max_preamble[0]), T_INT(max_preamble_energy[0]), T_INT(max_preamble_delay[0]));
 	
