@@ -55,13 +55,14 @@
 #define WORD 32
 //#define SIZE_OF_POINTER sizeof (void *)
 
-const int get_dl_tda(const gNB_MAC_INST *nrmac, const NR_ServingCellConfigCommon_t *scc, int slot) {
+int get_dl_tda(const gNB_MAC_INST *nrmac, const NR_ServingCellConfigCommon_t *scc, int slot) {
 
+  /* we assume that this function is mutex-protected from outside */
   const NR_TDD_UL_DL_Pattern_t *tdd = scc->tdd_UL_DL_ConfigurationCommon ? &scc->tdd_UL_DL_ConfigurationCommon->pattern1 : NULL;
   AssertFatal(tdd || nrmac->common_channels->frame_type == FDD, "Dynamic TDD not handled yet\n");
 
   // Use special TDA in case of CSI-RS
-  if(nrmac->UE_info.sched_csirs)
+  if(nrmac->UE_info.sched_csirs > 0)
     return 1;
 
   if (tdd && tdd->nrofDownlinkSymbols > 1) { // if there is a mixed slot where we can transmit DL
@@ -78,8 +79,12 @@ int nr_write_ce_dlsch_pdu(module_id_t module_idP,
                           const NR_UE_sched_ctrl_t *ue_sched_ctl,
                           unsigned char *mac_pdu,
                           unsigned char drx_cmd,
-                          unsigned char *ue_cont_res_id) {
+                          unsigned char *ue_cont_res_id)
+{
   gNB_MAC_INST *gNB = RC.nrmac[module_idP];
+  /* already mutex protected: called below and in _RA.c */
+  NR_SCHED_ENSURE_LOCKED(&gNB->sched_lock);
+
   NR_MAC_SUBHEADER_FIXED *mac_pdu_ptr = (NR_MAC_SUBHEADER_FIXED *) mac_pdu;
   uint8_t last_size = 0;
   int offset = 0, mac_ce_size, i, timing_advance_cmd, tag_id = 0;
@@ -110,10 +115,8 @@ int nr_write_ce_dlsch_pdu(module_id_t module_idP,
     AssertFatal(timing_advance_cmd < 64, "timing_advance_cmd %d > 63\n", timing_advance_cmd);
     ((NR_MAC_CE_TA *) ce_ptr)->TA_COMMAND = timing_advance_cmd;    //(timing_advance_cmd+31)&0x3f;
 
-    if (gNB->tag->tag_Id != 0) {
-      tag_id = gNB->tag->tag_Id;
-      ((NR_MAC_CE_TA *) ce_ptr)->TAGID = tag_id;
-    }
+    tag_id = gNB->tag->tag_Id;
+    ((NR_MAC_CE_TA *) ce_ptr)->TAGID = tag_id;
 
     LOG_D(NR_MAC, "NR MAC CE timing advance command = %d (%d) TAG ID = %d\n", timing_advance_cmd, ((NR_MAC_CE_TA *) ce_ptr)->TA_COMMAND, tag_id);
     mac_ce_size = sizeof(NR_MAC_CE_TA);
@@ -315,10 +318,8 @@ int nr_write_ce_dlsch_pdu(module_id_t module_idP,
   return offset;
 }
 
-void nr_store_dlsch_buffer(module_id_t module_id,
-                           frame_t frame,
-                           sub_frame_t slot) {
-
+static void nr_store_dlsch_buffer(module_id_t module_id, frame_t frame, sub_frame_t slot)
+{
   UE_iterator(RC.nrmac[module_id]->UE_info.list, UE) {
     NR_UE_sched_ctrl_t *sched_ctrl = &UE->UE_sched_ctrl;
     sched_ctrl->num_total_bytes = 0;
@@ -388,8 +389,9 @@ void nr_store_dlsch_buffer(module_id_t module_id,
   }
 }
 
-void abort_nr_dl_harq(NR_UE_info_t* UE, int8_t harq_pid) {
-
+void abort_nr_dl_harq(NR_UE_info_t* UE, int8_t harq_pid)
+{
+  /* already mutex protected through handle_dl_harq() */
   NR_UE_sched_ctrl_t *sched_ctrl = &UE->UE_sched_ctrl;
   NR_UE_harq_t *harq = &sched_ctrl->harq_processes[harq_pid];
 
@@ -400,13 +402,40 @@ void abort_nr_dl_harq(NR_UE_info_t* UE, int8_t harq_pid) {
 
 }
 
-bool allocate_dl_retransmission(module_id_t module_id,
-                                frame_t frame,
-                                sub_frame_t slot,
-                                uint16_t *rballoc_mask,
-                                int *n_rb_sched,
-                                NR_UE_info_t *UE,
-                                int current_harq_pid)
+static void get_start_stop_allocation(gNB_MAC_INST *mac,
+                                      NR_UE_info_t *UE,
+                                      int *rbStart,
+                                      int *rbStop)
+{
+  NR_UE_DL_BWP_t *dl_bwp = &UE->current_DL_BWP;
+  NR_UE_sched_ctrl_t *sched_ctrl = &UE->UE_sched_ctrl;
+  // UE is scheduled in a set of contiguously allocated resource blocks within the active bandwidth part of size N_BWP PRBs
+  // except for the case when DCI format 1_0 is decoded in any common search space
+  // in which case the size of CORESET 0 shall be used if CORESET 0 is configured for the cell
+  // and the size of initial DL bandwidth part shall be used if CORESET 0 is not configured for the cell.
+  // TS 38.214 Section 5.1.2.2.2
+  *rbStop = dl_bwp->BWPSize;
+  *rbStart = 0; // start wrt BWPstart
+  if (sched_ctrl->search_space->searchSpaceType->present == NR_SearchSpace__searchSpaceType_PR_common &&
+      dl_bwp->dci_format == NR_DL_DCI_FORMAT_1_0) {
+    if (mac->cset0_bwp_size != 0) {
+      *rbStart = mac->cset0_bwp_start;
+      *rbStop = *rbStart + mac->cset0_bwp_size;
+    }
+    else {
+      *rbStart = dl_bwp->initial_BWPStart;
+      *rbStop = *rbStart + dl_bwp->initial_BWPSize;
+    }
+  }
+}
+
+static bool allocate_dl_retransmission(module_id_t module_id,
+                                       frame_t frame,
+                                       sub_frame_t slot,
+                                       uint16_t *rballoc_mask,
+                                       int *n_rb_sched,
+                                       NR_UE_info_t *UE,
+                                       int current_harq_pid)
 {
 
   int CC_id = 0;
@@ -425,9 +454,11 @@ bool allocate_dl_retransmission(module_id_t module_id,
   int pm_index = (curInfo->nrOfLayers < retInfo->nrOfLayers) ? curInfo->pm_index : retInfo->pm_index;
 
   const int coresetid = sched_ctrl->coreset->controlResourceSetId;
-  const uint16_t bwpSize = coresetid == 0 ? nr_mac->cset0_bwp_size : dl_bwp->BWPSize;
 
-  int rbStart = 0; // start wrt BWPstart
+  int rbStop = 0;
+  int rbStart = 0;
+  get_start_stop_allocation(nr_mac, UE, &rbStart, &rbStop);
+
   int rbSize = 0;
   const int tda = get_dl_tda(nr_mac, scc, slot);
   AssertFatal(tda>=0,"Unable to find PDSCH time domain allocation in list\n");
@@ -450,10 +481,10 @@ bool allocate_dl_retransmission(module_id_t module_id,
       rbSize = 0;
 
       const uint16_t slbitmap = SL_to_bitmap(retInfo->tda_info.startSymbolIndex, retInfo->tda_info.nrOfSymbols);
-      while (rbStart < bwpSize && (rballoc_mask[rbStart] & slbitmap) != slbitmap)
+      while (rbStart < rbStop && (rballoc_mask[rbStart] & slbitmap) != slbitmap)
         rbStart++;
 
-      if (rbStart >= bwpSize) {
+      if (rbStart >= rbStop) {
         LOG_D(NR_MAC, "[UE %04x][%4d.%2d] could not allocate DL retransmission: no resources\n",
               UE->rnti,
               frame,
@@ -461,7 +492,7 @@ bool allocate_dl_retransmission(module_id_t module_id,
         return false;
       }
 
-      while (rbStart + rbSize < bwpSize &&
+      while (rbStart + rbSize < rbStop &&
              (rballoc_mask[rbStart + rbSize] & slbitmap) == slbitmap &&
              rbSize < retInfo->rbSize)
         rbSize++;
@@ -475,16 +506,17 @@ bool allocate_dl_retransmission(module_id_t module_id,
                                                    layers);
 
     const uint16_t slbitmap = SL_to_bitmap(temp_tda.startSymbolIndex, temp_tda.nrOfSymbols);
-    while (rbStart < bwpSize && (rballoc_mask[rbStart] & slbitmap) != slbitmap)
+    while (rbStart < rbStop && (rballoc_mask[rbStart] & slbitmap) != slbitmap)
       rbStart++;
 
-    while (rbStart + rbSize < bwpSize && (rballoc_mask[rbStart + rbSize] & slbitmap) == slbitmap)
+    while (rbStart + rbSize < rbStop && (rballoc_mask[rbStart + rbSize] & slbitmap) == slbitmap)
       rbSize++;
 
     uint32_t new_tbs;
     uint16_t new_rbSize;
     bool success = nr_find_nb_rb(retInfo->Qm,
                                  retInfo->R,
+                                 1, // no transform precoding for DL
                                  layers,
                                  temp_tda.nrOfSymbols,
                                  temp_dmrs.N_PRB_DMRS * temp_dmrs.N_DMRS_SLOT,
@@ -573,15 +605,14 @@ static int comparator(const void *p, const void *q) {
   return ((UEsched_t*)p)->coef < ((UEsched_t*)q)->coef;
 }
 
-void pf_dl(module_id_t module_id,
-           frame_t frame,
-           sub_frame_t slot,
-           NR_UE_info_t **UE_list,
-           int max_num_ue,
-           int n_rb_sched,
-           uint16_t *rballoc_mask)
+static void pf_dl(module_id_t module_id,
+                  frame_t frame,
+                  sub_frame_t slot,
+                  NR_UE_info_t **UE_list,
+                  int max_num_ue,
+                  int n_rb_sched,
+                  uint16_t *rballoc_mask)
 {
-
   gNB_MAC_INST *mac = RC.nrmac[module_id];
   NR_ServingCellConfigCommon_t *scc=mac->common_channels[0].ServingCellConfigCommon;
   // UEs that could be scheduled
@@ -598,7 +629,7 @@ void pf_dl(module_id_t module_id,
     NR_UE_sched_ctrl_t *sched_ctrl = &UE->UE_sched_ctrl;
     NR_UE_DL_BWP_t *current_BWP = &UE->current_DL_BWP;
 
-    if (sched_ctrl->ul_failure==1)
+    if (sched_ctrl->ul_failure)
       continue;
 
     const NR_mac_dir_stats_t *stats = &UE->mac_stats.dl;
@@ -606,7 +637,7 @@ void pf_dl(module_id_t module_id,
     /* get the PID of a HARQ process awaiting retrnasmission, or -1 otherwise */
     sched_pdsch->dl_harq_pid = sched_ctrl->retrans_dl_harq.head;
     /* Calculate Throughput */
-    const float a = 0.0005f; // corresponds to 200ms window
+    const float a = 0.01f;
     const uint32_t b = UE->mac_stats.dl.current_bytes;
     UE->dl_thr_ue = (1 - a) * UE->dl_thr_ue + a * b;
 
@@ -653,9 +684,8 @@ void pf_dl(module_id_t module_id,
       else
         sched_pdsch->mcs = get_mcs_from_bler(bo, stats, &sched_ctrl->dl_bler_stats, max_mcs, frame);
       sched_pdsch->nrOfLayers = get_dl_nrOfLayers(sched_ctrl, current_BWP->dci_format);
-      sched_pdsch->pm_index = get_pm_index(UE,
-                                           sched_pdsch->nrOfLayers,
-                                           mac->xp_pdsch_antenna_ports);
+      sched_pdsch->pm_index =
+          mac->identity_pm ? 0 : get_pm_index(UE, sched_pdsch->nrOfLayers, mac->radio_config.pdsch_AntennaPorts.XP);
       const uint8_t Qm = nr_get_Qm_dl(sched_pdsch->mcs, current_BWP->mcsTableIdx);
       const uint16_t R = nr_get_code_rate_dl(sched_pdsch->mcs, current_BWP->mcsTableIdx);
       uint32_t tbs = nr_compute_tbs(Qm,
@@ -695,12 +725,6 @@ void pf_dl(module_id_t module_id,
 
     NR_UE_DL_BWP_t *dl_bwp = &iterator->UE->current_DL_BWP;
     NR_UE_UL_BWP_t *ul_bwp = &iterator->UE->current_UL_BWP;
-
-    const int coresetid = sched_ctrl->coreset->controlResourceSetId;
-    const uint16_t bwpSize = coresetid == 0 ?
-      mac->cset0_bwp_size :
-      dl_bwp->BWPSize;
-    int rbStart = 0; // start wrt BWPstart
 
     if (sched_ctrl->available_dl_harq.head < 0) {
       LOG_D(NR_MAC, "[UE %04x][%4d.%2d] UE has no free DL HARQ process, skipping\n",
@@ -754,6 +778,7 @@ void pf_dl(module_id_t module_id,
     sched_pdsch->time_domain_allocation = get_dl_tda(mac, scc, slot);
     AssertFatal(sched_pdsch->time_domain_allocation>=0,"Unable to find PDSCH time domain allocation in list\n");
 
+    const int coresetid = sched_ctrl->coreset->controlResourceSetId;
     sched_pdsch->tda_info = get_dl_tda_info(dl_bwp, sched_ctrl->search_space->searchSpaceType->present, sched_pdsch->time_domain_allocation,
                                             scc->dmrs_TypeA_Position, 1, NR_RNTI_C, coresetid, false);
 
@@ -761,13 +786,16 @@ void pf_dl(module_id_t module_id,
 
     const uint16_t slbitmap = SL_to_bitmap(tda_info->startSymbolIndex, tda_info->nrOfSymbols);
 
+    int rbStop = 0;
+    int rbStart = 0;
+    get_start_stop_allocation(mac, iterator->UE, &rbStart, &rbStop);
     // Freq-demain allocation
-    while (rbStart < bwpSize && (rballoc_mask[rbStart] & slbitmap) != slbitmap)
+    while (rbStart < rbStop && (rballoc_mask[rbStart] & slbitmap) != slbitmap)
       rbStart++;
 
     uint16_t max_rbSize = 1;
 
-    while (rbStart + max_rbSize < bwpSize && (rballoc_mask[rbStart + max_rbSize] & slbitmap) == slbitmap)
+    while (rbStart + max_rbSize < rbStop && (rballoc_mask[rbStart + max_rbSize] & slbitmap) == slbitmap)
       max_rbSize++;
 
     sched_pdsch->dmrs_parms = get_dl_dmrs_params(scc,
@@ -787,6 +815,7 @@ void pf_dl(module_id_t module_id,
     //const int oh = 3 * sched_ctrl->dl_pdus_total + 2 * (frame == (sched_ctrl->ta_frame + 10) % 1024);
     nr_find_nb_rb(sched_pdsch->Qm,
                   sched_pdsch->R,
+                  1, // no transform precoding for DL
                   sched_pdsch->nrOfLayers,
                   tda_info->nrOfSymbols,
                   sched_pdsch->dmrs_parms.N_PRB_DMRS * sched_pdsch->dmrs_parms.N_DMRS_SLOT,
@@ -816,7 +845,7 @@ void pf_dl(module_id_t module_id,
   }
 }
 
-void nr_fr1_dlsch_preprocessor(module_id_t module_id, frame_t frame, sub_frame_t slot)
+static void nr_fr1_dlsch_preprocessor(module_id_t module_id, frame_t frame, sub_frame_t slot)
 {
   NR_UEs_t *UE_info = &RC.nrmac[module_id]->UE_info;
 
@@ -838,8 +867,8 @@ void nr_fr1_dlsch_preprocessor(module_id_t module_id, frame_t frame, sub_frame_t
   const int startSymbolAndLength = tdaList->list.array[tda]->startSymbolAndLength;
   SLIV2SL(startSymbolAndLength, &startSymbolIndex, &nrOfSymbols);
 
-  const uint16_t bwpSize = coresetid == 0 ? RC.nrmac[module_id]->cset0_bwp_size : current_BWP->BWPSize;
-  const uint16_t BWPStart = coresetid == 0 ? RC.nrmac[module_id]->cset0_bwp_start : current_BWP->BWPStart;
+  const uint16_t bwpSize = current_BWP->BWPSize;
+  const uint16_t BWPStart = current_BWP->BWPStart;
 
   const uint16_t slbitmap = SL_to_bitmap(startSymbolIndex, nrOfSymbols);
   uint16_t *vrb_map = RC.nrmac[module_id]->common_channels[CC_id].vrb_map;
@@ -874,7 +903,8 @@ void nr_fr1_dlsch_preprocessor(module_id_t module_id, frame_t frame, sub_frame_t
         rballoc_mask);
 }
 
-nr_pp_impl_dl nr_init_fr1_dlsch_preprocessor(module_id_t module_id, int CC_id) {
+nr_pp_impl_dl nr_init_fr1_dlsch_preprocessor(int CC_id) {
+  /* during initialization: no mutex needed */
   /* in the PF algorithm, we have to use the TBsize to compute the coefficient.
    * This would include the number of DMRS symbols, which in turn depends on
    * the time domain allocation. In case we are in a mixed slot, we do not want
@@ -903,9 +933,14 @@ nr_pp_impl_dl nr_init_fr1_dlsch_preprocessor(module_id_t module_id, int CC_id) {
 
 void nr_schedule_ue_spec(module_id_t module_id,
                          frame_t frame,
-                         sub_frame_t slot) {
-
+                         sub_frame_t slot,
+                         nfapi_nr_dl_tti_request_t *DL_req,
+                         nfapi_nr_tx_data_request_t *TX_req)
+{
   gNB_MAC_INST *gNB_mac = RC.nrmac[module_id];
+  /* already mutex protected: held in gNB_dlsch_ulsch_scheduler() */
+  AssertFatal(pthread_mutex_trylock(&gNB_mac->sched_lock) == EBUSY,
+              "this function should be called with the scheduler mutex locked\n");
 
   if (!is_xlsch_in_slot(gNB_mac->dlsch_slot_bitmap[slot / 64], slot))
     return;
@@ -915,13 +950,14 @@ void nr_schedule_ue_spec(module_id_t module_id,
   const int CC_id = 0;
   NR_ServingCellConfigCommon_t *scc = gNB_mac->common_channels[CC_id].ServingCellConfigCommon;
   NR_UEs_t *UE_info = &gNB_mac->UE_info;
-  nfapi_nr_dl_tti_request_body_t *dl_req = &gNB_mac->DL_req[CC_id].dl_tti_request_body;
+  nfapi_nr_dl_tti_request_body_t *dl_req = &DL_req->dl_tti_request_body;
 
   UE_iterator(UE_info->list, UE) {
     NR_UE_sched_ctrl_t *sched_ctrl = &UE->UE_sched_ctrl;
     NR_UE_DL_BWP_t *current_BWP = &UE->current_DL_BWP;
 
-    if (sched_ctrl->ul_failure==1 && get_softmodem_params()->phy_test==0) continue;
+    if (sched_ctrl->ul_failure && !get_softmodem_params()->phy_test)
+      continue;
 
     NR_sched_pdsch_t *sched_pdsch = &sched_ctrl->sched_pdsch;
     UE->mac_stats.dl.current_bytes = 0;
@@ -1035,13 +1071,8 @@ void nr_schedule_ue_spec(module_id_t module_id,
     const int pduindex = gNB_mac->pdu_index[CC_id]++;
     pdsch_pdu->pduIndex = pduindex;
 
-    if (coresetid == 0) {
-      pdsch_pdu->BWPSize  = gNB_mac->cset0_bwp_size;
-      pdsch_pdu->BWPStart = gNB_mac->cset0_bwp_start;
-    } else {
-      pdsch_pdu->BWPSize  = current_BWP->BWPSize;
-      pdsch_pdu->BWPStart = current_BWP->BWPStart;
-    }
+    pdsch_pdu->BWPSize  = current_BWP->BWPSize;
+    pdsch_pdu->BWPStart = current_BWP->BWPStart;
 
     pdsch_pdu->SubcarrierSpacing = current_BWP->scs;
     pdsch_pdu->CyclicPrefix = current_BWP->cyclicprefix ? *current_BWP->cyclicprefix : 0;
@@ -1145,9 +1176,17 @@ void nr_schedule_ue_spec(module_id_t module_id,
     AssertFatal(pdsch_Config == NULL || pdsch_Config->resourceAllocation == NR_PDSCH_Config__resourceAllocation_resourceAllocationType1,
                 "Only frequency resource allocation type 1 is currently supported\n");
 
+
+    // For a PDSCH scheduled with a DCI format 1_0 in any type of PDCCH common search space, regardless of which
+    // bandwidth part is the active bandwidth part, RB numbering starts from the lowest RB of the CORESET in which the
+    // DCI was received; otherwise RB numbering starts from the lowest RB in the determined downlink bandwidth part.
+    // TS 38.214 Section 5.1.2.2.2
+    int rbStop = 0;
+    int rbStart = 0;
+    get_start_stop_allocation(gNB_mac, UE, &rbStart, &rbStop);
     dci_payload.frequency_domain_assignment.val = PRBalloc_to_locationandbandwidth0(pdsch_pdu->rbSize,
-                                                                                    pdsch_pdu->rbStart,
-                                                                                    pdsch_pdu->BWPSize);
+                                                                                    pdsch_pdu->rbStart - rbStart,
+                                                                                    rbStop - rbStart);
     dci_payload.format_indicator = 1;
     dci_payload.time_domain_assignment.val = sched_pdsch->time_domain_allocation;
     dci_payload.mcs = sched_pdsch->mcs;
@@ -1219,7 +1258,7 @@ void nr_schedule_ue_spec(module_id_t module_id,
         T_INT(frame), T_INT(slot), T_INT(current_harq_pid), T_INT(harq->round), T_BUFFER(harq->transportBlock, TBS));
       UE->mac_stats.dl.total_rbs_retx += sched_pdsch->rbSize;
     } else { /* initial transmission */
-      LOG_D(NR_MAC, "[%s] Initial HARQ transmission in %d.%d\n", __FUNCTION__, frame, slot);
+      LOG_D(NR_MAC, "Initial HARQ transmission in %d.%d\n", frame, slot);
       uint8_t *buf = (uint8_t *) harq->transportBlock;
       /* first, write all CEs that might be there */
       int written = nr_write_ce_dlsch_pdu(module_id,
@@ -1308,7 +1347,6 @@ void nr_schedule_ue_spec(module_id_t module_id,
           header->LCID = DL_SCH_LCID_PADDING;
           buf += sizeof(NR_MAC_SUBHEADER_LONG);
           header->L = htons(bufEnd-buf);
-          dlsch_total_bytes += bufEnd-buf;
 
           for (; ((intptr_t)buf) % 4; buf++)
             *buf = lrand48() & 0xff;
@@ -1339,6 +1377,7 @@ void nr_schedule_ue_spec(module_id_t module_id,
       UE->mac_stats.dl.total_rbs += sched_pdsch->rbSize;
       UE->mac_stats.dl.num_mac_sdu += sdus;
       UE->mac_stats.dl.current_rbs = sched_pdsch->rbSize;
+      UE->mac_stats.dl.total_sdu_bytes += dlsch_total_bytes;
 
       /* save retransmission information */
       harq->sched_pdsch = *sched_pdsch;
@@ -1383,16 +1422,16 @@ void nr_schedule_ue_spec(module_id_t module_id,
         T_INT(frame), T_INT(slot), T_INT(current_harq_pid), T_BUFFER(harq->transportBlock, TBS));
     }
 
-    const int ntx_req = gNB_mac->TX_req[CC_id].Number_of_PDUs;
-    nfapi_nr_pdu_t *tx_req = &gNB_mac->TX_req[CC_id].pdu_list[ntx_req];
-    tx_req->PDU_length = TBS;
+    const int ntx_req = TX_req->Number_of_PDUs;
+    nfapi_nr_pdu_t *tx_req = &TX_req->pdu_list[ntx_req];
     tx_req->PDU_index  = pduindex;
     tx_req->num_TLV = 1;
-    tx_req->TLVs[0].length = TBS + 2;
+    tx_req->TLVs[0].length = TBS;
+    tx_req->PDU_length = compute_PDU_length(tx_req->num_TLV, tx_req->TLVs[0].length);
     memcpy(tx_req->TLVs[0].value.direct, harq->transportBlock, TBS);
-    gNB_mac->TX_req[CC_id].Number_of_PDUs++;
-    gNB_mac->TX_req[CC_id].SFN = frame;
-    gNB_mac->TX_req[CC_id].Slot = slot;
+    TX_req->Number_of_PDUs++;
+    TX_req->SFN = frame;
+    TX_req->Slot = slot;
     /* mark UE as scheduled */
     sched_pdsch->rbSize = 0;
   }

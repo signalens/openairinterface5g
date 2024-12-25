@@ -22,7 +22,7 @@
 -->
 <testCaseList>
   <htmlTabRef>TEST-SA-FR1-B200</htmlTabRef>
-  <htmlTabName>40 MHz TDD SA</htmlTabName>
+  <htmlTabName>20 MHz TDD SA</htmlTabName>
   <htmlTabIcon>tasks</htmlTabIcon>
   <repeatCount>1</repeatCount>
   <TestCaseRequestedList>
@@ -36,6 +36,16 @@
     070000
     070001
     070002
+    060001
+    000002
+    060002
+    050000
+    010010
+    010001
+    050001
+    010010
+    010001
+    050000
     010010
     010002
     030201
@@ -53,13 +63,13 @@
   <testCase id="100000">
     <class>Custom_Command</class>
     <desc>Disable Sleep States</desc>
-    <node>nepes</node>
+    <node>ofqot</node>
     <command>sudo cpupower idle-set -D 0</command>
   </testCase>
   <testCase id="200000">
     <class>Custom_Command</class>
     <desc>Enable Sleep States</desc>
-    <node>nepes</node>
+    <node>ofqot</node>
     <command>sudo cpupower idle-set -E</command>
   </testCase>
 
@@ -101,7 +111,7 @@
   <testCase id="000002">
     <class>IdleSleep</class>
     <desc>Sleep</desc>
-    <idle_sleep_time_in_sec>20</idle_sleep_time_in_sec>
+    <idle_sleep_time_in_sec>10</idle_sleep_time_in_sec>
   </testCase>
 
 
@@ -109,7 +119,7 @@
     <class>Ping</class>
     <desc>Ping: 20pings in 20sec</desc>
     <id>idefix</id>
-    <ping_args>-c 20</ping_args>
+    <ping_args>-c 20 %cn_ip%</ping_args>
     <ping_packetloss_threshold>1</ping_packetloss_threshold>
     <ping_rttavg_threshold>15</ping_rttavg_threshold>
   </testCase>
@@ -118,7 +128,7 @@
     <class>Ping</class>
     <desc>Ping: 100pings in 20sec</desc>
     <id>idefix</id>
-    <ping_args>-c 100 -i 0.2</ping_args>
+    <ping_args>-c 100 -i 0.2 %cn_ip%</ping_args>
     <ping_packetloss_threshold>1</ping_packetloss_threshold>
     <ping_rttavg_threshold>15</ping_rttavg_threshold>
   </testCase>
@@ -136,8 +146,8 @@
 
   <testCase id="070001">
     <class>Iperf</class>
-    <desc>iperf (UL/8Mbps/UDP)(30 sec)(single-ue profile)</desc>
-    <iperf_args>-u -b 8M -t 30 -i 1 -fm</iperf_args>
+    <desc>iperf (UL/3.5Mbps/UDP)(30 sec)(single-ue profile)</desc>
+    <iperf_args>-u -b 3.5M -t 30 -i 1 -fm</iperf_args>
     <direction>UL</direction>
     <id>idefix</id>
     <iperf_packetloss_threshold>1</iperf_packetloss_threshold>
@@ -154,14 +164,29 @@
     <iperf_profile>single-ue</iperf_profile>
   </testCase>
 
+  <testCase id="060001">
+    <class>Custom_Command</class>
+    <desc>Trigger Reestablishment</desc>
+    <node>ofqot</node>
+    <command>echo ci force_reestab | nc -N 192.168.68.194 9090 | grep -E 'Reset RLC counters of UE RNTI [0-9a-f]{4} to trigger reestablishment'</command>
+    <command_fail>yes</command_fail>
+  </testCase>
+  <testCase id="060002">
+    <class>Custom_Command</class>
+    <desc>Verify Reestablishment</desc>
+    <node>ofqot</node>
+    <command>echo ci get_reestab_count | nc -N 192.168.68.194 9090 | grep -E 'UE RNTI [0-9a-f]{4} reestab 1'</command>
+    <command_fail>yes</command_fail>
+  </testCase>
+
   <testCase id="030201">
     <class>Undeploy_Object</class>
     <desc>Undeploy gNB</desc>
     <yaml_path>ci-scripts/yaml_files/sa_b200_gnb</yaml_path>
     <eNB_instance>0</eNB_instance>
     <eNB_serverId>0</eNB_serverId>
-    <d_retx_th>1,100,100,100</d_retx_th>
-    <u_retx_th>1,100,100,100</u_retx_th>
+    <d_retx_th>10,100,100,100</d_retx_th>
+    <u_retx_th>10,100,100,100</u_retx_th>
   </testCase>
 
 </testCaseList>

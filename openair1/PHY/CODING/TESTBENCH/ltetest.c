@@ -32,7 +32,6 @@
 #include "SCHED/defs.h"
 #include "SCHED/vars.h"
 #include "LAYER2/MAC/vars.h"
-#include "OCG_vars.h"
 
 #include "UTIL/LOG/log.h"
 
@@ -117,7 +116,7 @@ void lte_param_init(unsigned char N_tx, unsigned char N_rx,unsigned char transmi
 }
 
 /*
-void print_shorts(char *s,__m128i *x) {
+void print_shorts(char *s,simde__m128i *x) {
 
   short *tempb = (short *)x;
 

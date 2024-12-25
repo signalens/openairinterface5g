@@ -24,6 +24,9 @@
 #ifndef E1AP_MESSAGES_TYPES_H
 #define E1AP_MESSAGES_TYPES_H
 
+#include <netinet/in.h>
+#include <netinet/sctp.h>
+#include "common/ngran_types.h"
 #include "f1ap_messages_types.h"
 #include "ngap_messages_types.h"
 
@@ -54,7 +57,7 @@ typedef struct PLMN_ID_s {
 typedef struct e1ap_setup_req_s {
   uint64_t              gNB_cu_up_id;
   char *                gNB_cu_up_name;
-  int                   assoc_id;
+  sctp_assoc_t assoc_id;
   uint64_t              transac_id;
   int                   supported_plmns; 
   PLMN_ID_t             plmns[E1AP_MAX_NUM_PLMNS];
@@ -155,7 +158,6 @@ typedef struct pdu_session_to_setup_s {
 typedef struct e1ap_bearer_setup_req_s {
   uint32_t gNB_cu_cp_ue_id;
   uint32_t gNB_cu_up_ue_id;
-  rnti_t   rnti;
   uint64_t cipheringAlgorithm;
   uint64_t integrityProtectionAlgorithm;
   char     encryptionKey[128];
@@ -215,8 +217,8 @@ typedef struct pdu_session_setup_s {
 } pdu_session_setup_t;
 
 typedef struct e1ap_bearer_setup_resp_s {
-  uint64_t gNB_cu_cp_ue_id;
-  uint64_t gNB_cu_up_ue_id;
+  uint32_t gNB_cu_cp_ue_id;
+  uint32_t gNB_cu_up_ue_id;
   int numDRBs;
   drb_setup_t DRBList[E1AP_MAX_NUM_DRBS];
   int numPDUSessions;

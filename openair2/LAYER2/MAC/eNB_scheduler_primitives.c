@@ -39,8 +39,6 @@
 #include "nfapi/oai_integration/vendor_ext.h"
 #include "common/utils/LOG/vcd_signal_dumper.h"
 #include "UTIL/OPT/opt.h"
-#include "OCG.h"
-#include "OCG_extern.h"
 
 #include "RRC/LTE/rrc_extern.h"
 #include "RRC/L2_INTERFACE/openair_rrc_L2_interface.h"
@@ -1451,15 +1449,7 @@ fill_nfapi_ulsch_harq_information(module_id_t                            module_
 }
 
 //------------------------------------------------------------------------------
-uint8_t
-Np[6][4] = {
-  {0, 1, 3, 5},
-  {0, 3, 8, 13},
-  {0, 5, 13, 22},
-  {0, 11, 27, 44},
-  {0, 16, 41, 66},
-  {0, 22, 55, 88}
-};
+const uint8_t Np[6][4] = {{0, 1, 3, 5}, {0, 3, 8, 13}, {0, 5, 13, 22}, {0, 11, 27, 44}, {0, 16, 41, 66}, {0, 22, 55, 88}};
 //------------------------------------------------------------------------------
 
 // This is part of the PUCCH allocation procedure (see Section 10.1 36.213)
@@ -1849,13 +1839,11 @@ get_numnarrowbandbits(long dl_Bandwidth)
 
 //This implements the frame/subframe condition for first subframe of MPDCCH transmission (Section 9.1.5 36.213, Rel 13/14)
 //------------------------------------------------------------------------------
-int
-startSF_fdd_RA_times2[8] = { 2, 3, 4, 5, 8, 10, 16, 20 };
+static const int startSF_fdd_RA_times2[8] = {2, 3, 4, 5, 8, 10, 16, 20};
 //------------------------------------------------------------------------------
 
 //------------------------------------------------------------------------------
-int
-startSF_tdd_RA[7] = { 1, 2, 4, 5, 8, 10, 20 };
+static const int startSF_tdd_RA[7] = {1, 2, 4, 5, 8, 10, 20};
 //------------------------------------------------------------------------------
 
 //------------------------------------------------------------------------------
@@ -2685,7 +2673,7 @@ allocate_prbs_sub(int nb_rb,
           break;
 
         case 25:
-          if ((check == N_RBG - 1)) {
+          if (check == N_RBG - 1) {
             nb_rb--;
           } else {
             nb_rb -= 2;
@@ -2694,7 +2682,7 @@ allocate_prbs_sub(int nb_rb,
           break;
 
         case 50:
-          if ((check == N_RBG - 1)) {
+          if (check == N_RBG - 1) {
             nb_rb -= 2;
           } else {
             nb_rb -= 3;

@@ -31,15 +31,23 @@
  */
 #ifndef __PHY_SCOPE_INTERFACE_H__
 #define __PHY_SCOPE_INTERFACE_H__
+
+#ifdef __cplusplus
+#include <atomic>
+#ifndef _Atomic
+#define _Atomic(X) std::atomic< X >
+#endif
+#endif
+
 #include <openair1/PHY/defs_gNB.h>
 #include <openair1/PHY/defs_nr_UE.h>
 
 typedef struct {
-  uint32_t nb_total;
-  uint32_t nb_nack;
-  uint32_t blockSize;   // block size, to be used for throughput calculation
-  uint16_t nofRBs;
-  uint8_t  dl_mcs;
+  _Atomic(uint32_t) nb_total;
+  _Atomic(uint32_t) nb_nack;
+  _Atomic(uint32_t) blockSize;   // block size, to be used for throughput calculation
+  _Atomic(uint16_t) nofRBs;
+  _Atomic(uint8_t ) dl_mcs;
 } extended_kpi_ue;
 
 typedef struct {
@@ -49,7 +57,7 @@ typedef struct {
   PHY_VARS_gNB *gNB;
 } scopeParms_t;
 
-enum UEdataType {
+enum scopeDataType {
   pbchDlChEstimateTime,
   pbchLlr,
   pbchRxdataF_comp,
@@ -58,18 +66,16 @@ enum UEdataType {
   pdschLlr,
   pdschRxdataF_comp,
   commonRxdataF,
-  UEdataTypeNumberOfItems
+  gNBRxdataF,
+  MAX_SCOPE_TYPES
 };
 
-typedef struct scopeData_s {
-  int *argc;
-  char **argv;
-  RU_t *ru;
-  PHY_VARS_gNB *gNB;
-  void *liveData;
-  void (*slotFunc)(int32_t *data, int slot,  void *scopeData);
-  void (*copyData)(PHY_VARS_NR_UE *,enum UEdataType, void *data, int elementSz, int colSz, int lineSz);
-} scopeData_t;
+enum PlotTypeGnbIf {
+  puschLLRe,
+  puschIQe,
+};
+
+#define COPIES_MEM 4
 
 typedef struct {
   int dataSize;
@@ -78,11 +84,33 @@ typedef struct {
   int lineSz;
 } scopeGraphData_t;
 
+typedef struct scopeData_s {
+  int *argc;
+  char **argv;
+  RU_t *ru;
+  PHY_VARS_gNB *gNB;
+  scopeGraphData_t *liveData[MAX_SCOPE_TYPES];
+  void (*copyData)(void *, enum scopeDataType, void *data, int elementSz, int colSz, int lineSz, int offset);
+  pthread_mutex_t copyDataMutex;
+  scopeGraphData_t *copyDataBufs[MAX_SCOPE_TYPES][COPIES_MEM];
+  int copyDataBufsIdx[MAX_SCOPE_TYPES];
+  void (*scopeUpdater)(enum PlotTypeGnbIf plotType, int numElements);
+} scopeData_t;
+
 int load_softscope(char *exectype, void *initarg);
 int end_forms(void) ;
-void UEcopyData(PHY_VARS_NR_UE *ue, enum UEdataType type, void *dataIn, int elementSz, int colSz, int lineSz);
+int copyDataMutexInit(scopeData_t *);
+void copyData(void *, enum scopeDataType type, void *dataIn, int elementSz, int colSz, int lineSz, int offset);
 
-#define UEscopeCopy(ue, type, ...) if(ue->scopeData) ((scopeData_t*)ue->scopeData)->copyData(ue, type, ##__VA_ARGS__);
+#define UEscopeCopy(ue, type, ...) \
+  if (ue->scopeData)               \
+    ((scopeData_t *)ue->scopeData)->copyData((scopeData_t *)ue->scopeData, type, ##__VA_ARGS__);
+#define gNBscopeCopy(gnb, type, ...) \
+  if (gnb->scopeData)                \
+    ((scopeData_t *)gnb->scopeData)->copyData((scopeData_t *)gNB->scopeData, type, ##__VA_ARGS__);
+#define GnbScopeUpdate(gnb, type, numElt) \
+  if (gnb->scopeData)                     \
+    ((scopeData_t *)gnb->scopeData)->scopeUpdater(type, numElt);
 
 extended_kpi_ue* getKPIUE();
 

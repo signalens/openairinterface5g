@@ -22,101 +22,140 @@
 #include "rrc_gNB_radio_bearers.h"
 #include "oai_asn1.h"
 
-NR_DRB_ToAddMod_t *generateDRB(gNB_RRC_UE_t *ue, uint8_t drb_id, pdu_session_param_t *pduSession, bool enable_sdap, int do_drb_integrity, int do_drb_ciphering)
+rrc_pdu_session_param_t *find_pduSession(gNB_RRC_UE_t *ue, int id, bool create)
 {
-  NR_DRB_ToAddMod_t *DRB_config  = NULL;
-  NR_SDAP_Config_t  *SDAP_config = NULL;
-
-  DRB_config = CALLOC(1, sizeof(*DRB_config));
-  DRB_config->drb_Identity = drb_id;
-  DRB_config->cnAssociation = CALLOC(1, sizeof(*DRB_config->cnAssociation));
-  DRB_config->cnAssociation->present = NR_DRB_ToAddMod__cnAssociation_PR_sdap_Config;
-  
-  /* SDAP Configuration */
-  SDAP_config = CALLOC(1, sizeof(NR_SDAP_Config_t));
-  SDAP_config->mappedQoS_FlowsToAdd = calloc(1, sizeof(struct NR_SDAP_Config__mappedQoS_FlowsToAdd));
-
-  SDAP_config->pdu_Session = pduSession->param.pdusession_id;
-  
-  if (enable_sdap) {
-    SDAP_config->sdap_HeaderDL = NR_SDAP_Config__sdap_HeaderDL_present;
-    SDAP_config->sdap_HeaderUL = NR_SDAP_Config__sdap_HeaderUL_present;
-  } else {
-    SDAP_config->sdap_HeaderDL = NR_SDAP_Config__sdap_HeaderDL_absent;
-    SDAP_config->sdap_HeaderUL = NR_SDAP_Config__sdap_HeaderUL_absent;
-  }
-  
-  SDAP_config->defaultDRB = true;
-  
-  for (int qos_flow_index = 0; qos_flow_index < pduSession->param.nb_qos; qos_flow_index++) 
-  {
-    NR_QFI_t *qfi = calloc(1, sizeof(NR_QFI_t));
-    *qfi = pduSession->param.qos[qos_flow_index].qfi;
-    asn1cSeqAdd(&SDAP_config->mappedQoS_FlowsToAdd->list, qfi);
-
-    if(pduSession->param.qos[qos_flow_index].fiveQI > 5)
-      pduSession->param.used_drbs[drb_id - 1] = DRB_ACTIVE_NONGBR;
+  int j;
+  for (j = 0; j < ue->nb_of_pdusessions; j++)
+    if (id == ue->pduSession[j].param.pdusession_id)
+      break;
+  if (j == ue->nb_of_pdusessions) {
+    if (create)
+      ue->nb_of_pdusessions++;
     else
-      pduSession->param.used_drbs[drb_id - 1] = DRB_ACTIVE;
+      return NULL;
   }
-  
-  SDAP_config->mappedQoS_FlowsToRelease = NULL;
-  DRB_config->cnAssociation->choice.sdap_Config = SDAP_config;
-  
+  return ue->pduSession + j;
+}
+
+void generateDRB(gNB_RRC_UE_t *ue,
+                 uint8_t drb_id,
+                 rrc_pdu_session_param_t *pduSession,
+                 bool enable_sdap,
+                 int do_drb_integrity,
+                 int do_drb_ciphering)
+{
+  int i;
+  int qos_flow_index;
+  drb_t *est_drb = &ue->established_drbs[drb_id - 1];
+  if (est_drb->status == DRB_INACTIVE) {
+    /* DRB Management */
+    est_drb->drb_id = drb_id;
+    est_drb->reestablishPDCP = -1;
+    est_drb->recoverPDCP = -1;
+    for (i = 0; i < MAX_DRBS_PER_UE; i++) {
+      if ((est_drb->cnAssociation.sdap_config.pdusession_id == 0
+           || est_drb->cnAssociation.sdap_config.pdusession_id == pduSession->param.pdusession_id)
+          && est_drb->defaultDRBid == 0) {
+        est_drb->cnAssociation.sdap_config.defaultDRB = true;
+        est_drb->defaultDRBid = drb_id;
+      }
+    }
+    /* SDAP Configuration */
+    est_drb->cnAssociation.present = NR_DRB_ToAddMod__cnAssociation_PR_sdap_Config;
+    est_drb->cnAssociation.sdap_config.pdusession_id = pduSession->param.pdusession_id;
+    if (enable_sdap) {
+      est_drb->cnAssociation.sdap_config.sdap_HeaderDL = NR_SDAP_Config__sdap_HeaderDL_present;
+      est_drb->cnAssociation.sdap_config.sdap_HeaderUL = NR_SDAP_Config__sdap_HeaderUL_present;
+    } else {
+      est_drb->cnAssociation.sdap_config.sdap_HeaderDL = NR_SDAP_Config__sdap_HeaderDL_absent;
+      est_drb->cnAssociation.sdap_config.sdap_HeaderUL = NR_SDAP_Config__sdap_HeaderUL_absent;
+    }
+    for (qos_flow_index = 0; qos_flow_index < pduSession->param.nb_qos; qos_flow_index++) {
+      est_drb->cnAssociation.sdap_config.mappedQoS_FlowsToAdd[qos_flow_index] = pduSession->param.qos[qos_flow_index].qfi;
+      if (pduSession->param.qos[qos_flow_index].fiveQI > 5)
+        est_drb->status = DRB_ACTIVE_NONGBR;
+      else
+        est_drb->status = DRB_ACTIVE;
+    }
+    /* PDCP Configuration */
+    est_drb->pdcp_config.discardTimer = NR_PDCP_Config__drb__discardTimer_infinity;
+    est_drb->pdcp_config.pdcp_SN_SizeDL = NR_PDCP_Config__drb__pdcp_SN_SizeDL_len18bits;
+    est_drb->pdcp_config.pdcp_SN_SizeUL = NR_PDCP_Config__drb__pdcp_SN_SizeUL_len18bits;
+    est_drb->pdcp_config.t_Reordering = NR_PDCP_Config__t_Reordering_ms100;
+    est_drb->pdcp_config.headerCompression.present = NR_PDCP_Config__drb__headerCompression_PR_notUsed;
+    est_drb->pdcp_config.headerCompression.NotUsed = 0;
+    if (do_drb_integrity)
+      est_drb->pdcp_config.integrityProtection = NR_PDCP_Config__drb__integrityProtection_enabled;
+    else
+      est_drb->pdcp_config.integrityProtection = 1;
+    if (do_drb_ciphering)
+      est_drb->pdcp_config.ext1.cipheringDisabled = 1;
+    else
+      est_drb->pdcp_config.ext1.cipheringDisabled = NR_PDCP_Config__ext1__cipheringDisabled_true;
+  }
+}
+
+NR_DRB_ToAddMod_t *generateDRB_ASN1(const drb_t *drb_asn1)
+{
+  NR_DRB_ToAddMod_t *DRB_config = CALLOC(1, sizeof(*DRB_config));
+  NR_SDAP_Config_t *SDAP_config = CALLOC(1, sizeof(NR_SDAP_Config_t));
+
+  asn1cCalloc(DRB_config->cnAssociation, association);
+  asn1cCalloc(SDAP_config->mappedQoS_FlowsToAdd, sdapFlows);
+  asn1cCalloc(DRB_config->pdcp_Config, pdcpConfig);
+  asn1cCalloc(pdcpConfig->drb, drb);
+
+  DRB_config->drb_Identity = drb_asn1->drb_id;
+  association->present = drb_asn1->cnAssociation.present;
+
+  /* SDAP Configuration */
+  SDAP_config->pdu_Session = drb_asn1->cnAssociation.sdap_config.pdusession_id;
+  SDAP_config->sdap_HeaderDL = drb_asn1->cnAssociation.sdap_config.sdap_HeaderDL;
+  SDAP_config->sdap_HeaderUL = drb_asn1->cnAssociation.sdap_config.sdap_HeaderUL;
+  SDAP_config->defaultDRB = drb_asn1->cnAssociation.sdap_config.defaultDRB;
+
+  for (int qos_flow_index = 0; qos_flow_index < QOSFLOW_MAX_VALUE; qos_flow_index++) {
+    if (drb_asn1->cnAssociation.sdap_config.mappedQoS_FlowsToAdd[qos_flow_index] != 0) {
+      asn1cSequenceAdd(sdapFlows->list, NR_QFI_t, qfi);
+      *qfi = drb_asn1->cnAssociation.sdap_config.mappedQoS_FlowsToAdd[qos_flow_index];
+    }
+  }
+
+  association->choice.sdap_Config = SDAP_config;
+
   /* PDCP Configuration */
-  DRB_config->reestablishPDCP  = NULL;
-  DRB_config->recoverPDCP      = NULL;
-  DRB_config->pdcp_Config      = calloc(1, sizeof(*DRB_config->pdcp_Config));
-  DRB_config->pdcp_Config->drb = calloc(1,sizeof(*DRB_config->pdcp_Config->drb));
+  asn1cCallocOne(drb->discardTimer, drb_asn1->pdcp_config.discardTimer);
+  asn1cCallocOne(drb->pdcp_SN_SizeUL, drb_asn1->pdcp_config.pdcp_SN_SizeUL);
+  asn1cCallocOne(drb->pdcp_SN_SizeDL, drb_asn1->pdcp_config.pdcp_SN_SizeDL);
+  asn1cCallocOne(pdcpConfig->t_Reordering, drb_asn1->pdcp_config.t_Reordering);
 
-  DRB_config->pdcp_Config->drb->discardTimer    = calloc(1, sizeof(*DRB_config->pdcp_Config->drb->discardTimer));
-  *DRB_config->pdcp_Config->drb->discardTimer   = NR_PDCP_Config__drb__discardTimer_infinity;
-  DRB_config->pdcp_Config->drb->pdcp_SN_SizeUL  = calloc(1, sizeof(*DRB_config->pdcp_Config->drb->pdcp_SN_SizeUL));
-  *DRB_config->pdcp_Config->drb->pdcp_SN_SizeUL = NR_PDCP_Config__drb__pdcp_SN_SizeUL_len18bits;
-  DRB_config->pdcp_Config->drb->pdcp_SN_SizeDL  = calloc(1, sizeof(*DRB_config->pdcp_Config->drb->pdcp_SN_SizeDL));
-  *DRB_config->pdcp_Config->drb->pdcp_SN_SizeDL = NR_PDCP_Config__drb__pdcp_SN_SizeDL_len18bits;
+  drb->headerCompression.present = drb_asn1->pdcp_config.headerCompression.present;
+  drb->headerCompression.choice.notUsed = drb_asn1->pdcp_config.headerCompression.NotUsed;
 
-  DRB_config->pdcp_Config->drb->headerCompression.present = NR_PDCP_Config__drb__headerCompression_PR_notUsed;
-  DRB_config->pdcp_Config->drb->headerCompression.choice.notUsed = 0;
-  
-  DRB_config->pdcp_Config->drb->integrityProtection  = NULL;
-  DRB_config->pdcp_Config->drb->statusReportRequired = NULL;
-  DRB_config->pdcp_Config->drb->outOfOrderDelivery   = NULL;
-  DRB_config->pdcp_Config->moreThanOneRLC            = NULL;
-  
-  DRB_config->pdcp_Config->t_Reordering  = calloc(1, sizeof(*DRB_config->pdcp_Config->t_Reordering));
-  *DRB_config->pdcp_Config->t_Reordering = NR_PDCP_Config__t_Reordering_ms0;
-  DRB_config->pdcp_Config->ext1          = NULL;
-  
-  if (do_drb_integrity) {
-    DRB_config->pdcp_Config->drb->integrityProtection = calloc(1, sizeof(*DRB_config->pdcp_Config->drb->integrityProtection));
-    *DRB_config->pdcp_Config->drb->integrityProtection = NR_PDCP_Config__drb__integrityProtection_enabled;
+  if (!drb_asn1->pdcp_config.integrityProtection) {
+    asn1cCallocOne(drb->integrityProtection, drb_asn1->pdcp_config.integrityProtection);
   }
-  
-  if (!do_drb_ciphering) {
-    DRB_config->pdcp_Config->ext1 = calloc(1, sizeof(*DRB_config->pdcp_Config->ext1));
-    DRB_config->pdcp_Config->ext1->cipheringDisabled = calloc(1, sizeof(*DRB_config->pdcp_Config->ext1->cipheringDisabled));
-    *DRB_config->pdcp_Config->ext1->cipheringDisabled = NR_PDCP_Config__ext1__cipheringDisabled_true;
+  if (!drb_asn1->pdcp_config.ext1.cipheringDisabled) {
+    asn1cCalloc(pdcpConfig->ext1, ext1);
+    asn1cCallocOne(ext1->cipheringDisabled, drb_asn1->pdcp_config.ext1.cipheringDisabled);
   }
-
-  ue->DRB_active[drb_id-1] = DRB_ACTIVE;
 
   return DRB_config;
 }
 
-uint8_t next_available_drb(gNB_RRC_UE_t *ue, pdu_session_param_t *pdusession, bool is_gbr)
+uint8_t next_available_drb(gNB_RRC_UE_t *ue, rrc_pdu_session_param_t *pdusession, bool is_gbr)
 {
   uint8_t drb_id;
 
-  if(!is_gbr) { /* Find if Non-GBR DRB exists in the same PDU Session */
-    for (drb_id = 0; drb_id < NGAP_MAX_DRBS_PER_UE; drb_id++)
+  if (0 /*!is_gbr*/) { /* Find if Non-GBR DRB exists in the same PDU Session */
+    for (drb_id = 0; drb_id < MAX_DRBS_PER_UE; drb_id++)
       if (pdusession->param.used_drbs[drb_id] == DRB_ACTIVE_NONGBR)
-        return drb_id+1;
+        return drb_id + 1;
   }
   /* GBR Flow  or a Non-GBR DRB does not exist in the same PDU Session, find an available DRB */
-  for (drb_id = 0; drb_id < NGAP_MAX_DRBS_PER_UE; drb_id++)
-    if(ue->DRB_active[drb_id] == DRB_INACTIVE)
-      return drb_id+1;
+  for (drb_id = 0; drb_id < MAX_DRBS_PER_UE; drb_id++)
+    if (ue->DRB_active[drb_id] == DRB_INACTIVE)
+      return drb_id + 1;
   /* From this point, we need to handle the case that all DRBs are already used by the UE. */
   LOG_E(RRC, "Error - All the DRBs are used - Handle this\n");
   return DRB_INACTIVE;

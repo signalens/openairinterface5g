@@ -197,6 +197,7 @@ def ArgsParse(argvs,CiTestObj,RAN,HTML,EPC,ldpc,CONTAINERS,HELP,SCA,PHYSIM,CLUST
                 SCA.eNBSourceCodePath=matchReg.group(1)
                 PHYSIM.eNBSourceCodePath=matchReg.group(1)
                 CLUSTER.eNBSourceCodePath=matchReg.group(1)
+                EPC.eNBSourceCodePath=matchReg.group(1)
             elif re.match('^\-\-eNB1SourceCodePath=(.+)$', myArgv, re.IGNORECASE):
                 matchReg = re.match('^\-\-eNB1SourceCodePath=(.+)$', myArgv, re.IGNORECASE)
                 RAN.eNB1SourceCodePath=matchReg.group(1)
@@ -219,21 +220,13 @@ def ArgsParse(argvs,CiTestObj,RAN,HTML,EPC,ldpc,CONTAINERS,HELP,SCA,PHYSIM,CLUST
             EPC.SourceCodePath=matchReg.group(1)
         elif re.match('^\-\-EPCType=(.+)$', myArgv, re.IGNORECASE):
             matchReg = re.match('^\-\-EPCType=(.+)$', myArgv, re.IGNORECASE)
-            if re.match('OAI', matchReg.group(1), re.IGNORECASE) or re.match('ltebox', matchReg.group(1), re.IGNORECASE) or re.match('OAI-Rel14-CUPS', matchReg.group(1), re.IGNORECASE) or re.match('OAI-Rel14-Docker', matchReg.group(1), re.IGNORECASE):
+            if re.match('OAI', matchReg.group(1), re.IGNORECASE) or re.match('ltebox', matchReg.group(1), re.IGNORECASE) or re.match('OAI-Rel14-Docker', matchReg.group(1), re.IGNORECASE) or re.match('OC-OAI-CN5G', matchReg.group(1), re.IGNORECASE):
                 EPC.Type=matchReg.group(1)
             else:
-                sys.exit('Invalid EPC Type: ' + matchReg.group(1) + ' -- (should be OAI or ltebox or OAI-Rel14-CUPS or OAI-Rel14-Docker)')
+                sys.exit('Invalid EPC Type: ' + matchReg.group(1) + ' -- (should be OAI or ltebox or OAI-Rel14-Docker or OC-OAI-CN5G)')
         elif re.match('^\-\-EPCContainerPrefix=(.+)$', myArgv, re.IGNORECASE):
             matchReg = re.match('^\-\-EPCContainerPrefix=(.+)$', myArgv, re.IGNORECASE)
             EPC.ContainerPrefix=matchReg.group(1)
-        elif re.match('^\-\-ADBIPAddress=(.+)$', myArgv, re.IGNORECASE):
-            print("ignoring --ADBIPAddress parameter")
-        elif re.match('^\-\-ADBUserName=(.+)$', myArgv, re.IGNORECASE):
-            print("ignoring --ADBUserName parameter")
-        elif re.match('^\-\-ADBType=(.+)$', myArgv, re.IGNORECASE):
-            print("ignoring --ADBType parameter")
-        elif re.match('^\-\-ADBPassword=(.+)$', myArgv, re.IGNORECASE):
-            print("ignoring --ADBPassword parameter")
         elif re.match('^\-\-XMLTestFile=(.+)$', myArgv, re.IGNORECASE):
             matchReg = re.match('^\-\-XMLTestFile=(.+)$', myArgv, re.IGNORECASE)
             CiTestObj.testXMLfiles.append(matchReg.group(1))
@@ -260,14 +253,17 @@ def ArgsParse(argvs,CiTestObj,RAN,HTML,EPC,ldpc,CONTAINERS,HELP,SCA,PHYSIM,CLUST
             matchReg = re.match('^\-\-OCUserName=(.+)$', myArgv, re.IGNORECASE)
             PHYSIM.OCUserName = matchReg.group(1)
             CLUSTER.OCUserName = matchReg.group(1)
+            EPC.OCUserName = matchReg.group(1)
         elif re.match('^\-\-OCPassword=(.+)$', myArgv, re.IGNORECASE):
             matchReg = re.match('^\-\-OCPassword=(.+)$', myArgv, re.IGNORECASE)
             PHYSIM.OCPassword = matchReg.group(1)
             CLUSTER.OCPassword = matchReg.group(1)
+            EPC.OCPassword = matchReg.group(1)
         elif re.match('^\-\-OCProjectName=(.+)$', myArgv, re.IGNORECASE):
             matchReg = re.match('^\-\-OCProjectName=(.+)$', myArgv, re.IGNORECASE)
             PHYSIM.OCProjectName = matchReg.group(1)
             CLUSTER.OCProjectName = matchReg.group(1)
+            EPC.OCProjectName = matchReg.group(1)
         elif re.match('^\-\-OCUrl=(.+)$', myArgv, re.IGNORECASE):
             matchReg = re.match('^\-\-OCUrl=(.+)$', myArgv, re.IGNORECASE)
             CLUSTER.OCUrl = matchReg.group(1)

@@ -43,15 +43,14 @@
 // TS 38.211 Table 6.4.1.2.2.1-1: The parameter kRE_ref.
 // The first 4 colomns are DM-RS Configuration type 1 and the last 4 colomns are DM-RS Configuration type 2.
 
-int16_t table_6_4_1_2_2_1_1_pusch_ptrs_kRE_ref [6][8] = {
-  { 0,            2,           6,          8,          0,          1,         6,         7},
-  { 2,            4,           8,         10,          1,          6,         7,         0},
-  { 1,            3,           7,          9,          2,          3,         8,         9},
-  { 3,            5,           9,         11,          3,          8,         9,         2},
-  {-1,           -1,          -1,         -1,          4,          5,        10,        11},
-  {-1,           -1,          -1,         -1,          5,         10,        11,         4},
+static const int16_t table_6_4_1_2_2_1_1_pusch_ptrs_kRE_ref[6][8] = {
+    {0, 2, 6, 8, 0, 1, 6, 7},
+    {2, 4, 8, 10, 1, 6, 7, 0},
+    {1, 3, 7, 9, 2, 3, 8, 9},
+    {3, 5, 9, 11, 3, 8, 9, 2},
+    {-1, -1, -1, -1, 4, 5, 10, 11},
+    {-1, -1, -1, -1, 5, 10, 11, 4},
 };
-
 
 /*******************************************************************
 *
@@ -373,7 +372,7 @@ int8_t nr_ptrs_process_slot(uint16_t dmrsSymbPos,
       }
       /* check for left side first */
       /*  right side a DMRS symbol then we need to left extrapolate */
-      if(is_dmrs_symbol(rightRef,dmrsSymbPos)) {
+      if (rightRef != -1 && is_dmrs_symbol(rightRef, dmrsSymbPos)) {
         /* calculate slope from next valid estimates*/
         tmp =  get_next_estimate_in_slot(ptrsSymbPos,dmrsSymbPos,rightRef+1,symbInSlot);
         /* Special case when DMRS is not followed by PTRS symbol then reuse old slope */
@@ -382,22 +381,19 @@ int8_t nr_ptrs_process_slot(uint16_t dmrsSymbPos,
         }
         ptrs_estimate_from_slope(estPerSymb,slope_p,leftRef, rightRef);
         symb = rightRef -1;
-      }
-      else if(is_ptrs_symbol(rightRef,ptrsSymbPos)) {
+      } else if (rightRef != -1 && is_ptrs_symbol(rightRef, ptrsSymbPos)) {
         /* calculate slope from next valid estimates */
         get_slope_from_estimates(leftRef,rightRef,estPerSymb, slope_p);
         ptrs_estimate_from_slope(estPerSymb,slope_p,leftRef, rightRef);
         symb = rightRef -1;
-      }
-      else if((rightRef ==-1) && (symb <symbInSlot)) {
+      } else if ((rightRef == -1) && (symb < symbInSlot)) {
         // in right extrapolation use the last slope
 #ifdef DEBUG_PTRS
         printf("[PHY][PTRS]: Last Slop Reused :(%4f %4f)\n", slope_p[0],slope_p[1]);
 #endif
         ptrs_estimate_from_slope(estPerSymb,slope_p,symb-1,symbInSlot);
         symb = symbInSlot;
-      }
-      else {
+      } else {
         printf("Wrong PTRS Setup, PTRS compensation will be skipped !");
         return -1;
       }

@@ -205,12 +205,15 @@ uint32_t  nr_dlsch_decoding(PHY_VARS_NR_UE *phy_vars_ue,
                          uint32_t frame,
                          uint16_t nb_symb_sch,
                          uint8_t nr_slot_rx,
-                         uint8_t harq_pid);
+                         uint8_t harq_pid,
+                         int b_size,
+                         uint8_t b[b_size]);
 
 int nr_ulsch_encoding(PHY_VARS_NR_UE *ue,
                      NR_UE_ULSCH_t *ulsch,
                      NR_DL_FRAME_PARMS* frame_parms,
                      uint8_t harq_pid,
+                     uint32_t tb_size,
                      unsigned int G);
 
 /*! \brief Perform PUSCH scrambling. TS 38.211 V15.4.0 subclause 6.3.1.1
@@ -236,20 +239,23 @@ void nr_pusch_codeword_scrambling(uint8_t *in,
 */
 
 void nr_ue_ulsch_procedures(PHY_VARS_NR_UE *UE,
-                               unsigned char harq_pid,
-                               uint32_t frame,
-                               uint8_t slot,
-                               int gNB_id,
-                               nr_phy_data_tx_t *phy_data);
-
+                            const unsigned char harq_pid,
+                            const uint32_t frame,
+                            const uint8_t slot,
+                            const int gNB_id,
+                            nr_phy_data_tx_t *phy_data,
+                            c16_t **txdataF);
 
 /** \brief This function does IFFT for PUSCH
 */
 
 uint8_t nr_ue_pusch_common_procedures(PHY_VARS_NR_UE *UE,
-                                      uint8_t slot,
-                                      NR_DL_FRAME_PARMS *frame_parms,
-                                      uint8_t Nl);
+                                      const uint8_t slot,
+                                      const NR_DL_FRAME_PARMS *frame_parms,
+                                      const uint8_t n_antenna_ports,
+                                      c16_t **txdataF);
+
+int8_t clean_UE_ulsch(PHY_VARS_NR_UE *UE, uint8_t gNB_id);
 
 void nr_dlsch_unscrambling(int16_t* llr,
 			   uint32_t size,
@@ -283,18 +289,15 @@ int nr_rx_pbch(PHY_VARS_NR_UE *ue,
                UE_nr_rxtx_proc_t *proc,
                const int estimateSz,
                struct complex16 dl_ch_estimates[][estimateSz],
-               NR_UE_PBCH *nr_ue_pbch_vars,
                NR_DL_FRAME_PARMS *frame_parms,
                uint8_t i_ssb,
                MIMO_mode_t mimo_mode,
-               nr_phy_data_t *phy_data,
                fapiPbch_t* result,
                c16_t rxdataF[][ue->frame_parms.samples_per_slot_wCP]);
 
 int nr_pbch_detection(UE_nr_rxtx_proc_t *proc,
                       PHY_VARS_NR_UE *ue,
                       int pbch_initial_symbol,
-                      nr_phy_data_t *phy_data,
                       c16_t rxdataF[][ue->frame_parms.samples_per_slot_wCP]);
 
 
@@ -313,7 +316,7 @@ int dump_ue_stats(PHY_VARS_NR_UE *phy_vars_ue, UE_nr_rxtx_proc_t *proc, char* bu
   @param mode current running mode
 */
 int nr_initial_sync(UE_nr_rxtx_proc_t *proc,
-                    PHY_VARS_NR_UE *phy_vars_ue, 
+                    PHY_VARS_NR_UE *phy_vars_ue,
                     int n_frames,
                     int sa);
 
@@ -326,6 +329,14 @@ int nr_initial_sync(UE_nr_rxtx_proc_t *proc,
 void nr_get_carrier_frequencies(PHY_VARS_NR_UE *ue,
                                 uint64_t *dl_Carrier,
                                 uint64_t *ul_Carrier);
+
+/*!
+  \brief This function gets the carrier frequencies either from FP or command-line-set global variables, depending on the availability of the latter
+  @param ue         Pointer to PHY UE
+  @param sl_Carrier Pointer to SL carrier to be set
+*/
+void nr_get_carrier_frequencies_sl(PHY_VARS_NR_UE *ue,
+                                   uint64_t *sl_Carrier);
 
 /*!
   \brief This function sets the OAI RF card rx/tx params
@@ -343,6 +354,10 @@ void nr_rf_card_config_freq(openair0_config_t *openair0_cfg,
                             uint64_t ul_Carrier,
                             uint64_t dl_Carrier,
                             int freq_offset);
+
+void nr_sl_rf_card_config_freq(PHY_VARS_NR_UE *ue,
+                               openair0_config_t *openair0_cfg,
+                               int freq_offset);
 
 void nr_pdcch_unscrambling(int16_t *z,
                            uint16_t scrambling_RNTI,
@@ -388,7 +403,7 @@ int nr_rx_pdsch(PHY_VARS_NR_UE *ue,
                 int32_t *log2_maxhrx_size_symbol,
                 int rx_size_symbol,
                 int nbRx,
-                int32_t rxdataF_comp[][nbRx][rx_size_symbol],
+                int32_t rxdataF_comp[][nbRx][rx_size_symbol * NR_SYMBOLS_PER_SLOT],
                 c16_t ptrs_phase_per_slot[][NR_SYMBOLS_PER_SLOT],
                 int32_t ptrs_re_per_slot[][NR_SYMBOLS_PER_SLOT]);
 

@@ -33,7 +33,7 @@
 #include "PHY/defs_nr_common.h"
 #include "PHY/defs_nr_UE.h"
 #include "PHY/defs_gNB.h"
-#include "PHY/INIT/phy_init.h"
+#include "PHY/INIT/nr_phy_init.h"
 #include "PHY/NR_REFSIG/refsig_defs_ue.h"
 #include "PHY/MODULATION/modulation_eNB.h"
 #include "PHY/MODULATION/modulation_UE.h"
@@ -45,10 +45,10 @@
 #include "openair1/SIMULATION/TOOLS/sim.h"
 #include "openair1/SIMULATION/RF/rf.h"
 #include "openair1/SIMULATION/NR_PHY/nr_unitary_defs.h"
-#include "openair1/SIMULATION/NR_PHY/nr_dummy_functions.c"
 #include "common/utils/threadPool/thread-pool.h"
 #include "openair2/LAYER2/NR_MAC_COMMON/nr_mac_common.h"
 #include "executables/nr-uesoftmodem.h"
+#include "nfapi/oai_integration/vendor_ext.h"
 
 //#define DEBUG_NR_ULSCHSIM
 
@@ -59,7 +59,14 @@ RAN_CONTEXT_t RC;
 int32_t uplink_frequency_offset[MAX_NUM_CCs][4];
 uint64_t downlink_frequency[MAX_NUM_CCs][4];
 
+uint64_t get_softmodem_optmask(void) {return 0;}
+static softmodem_params_t softmodem_params;
+softmodem_params_t *get_softmodem_params(void) {
+  return &softmodem_params;
+}
 void init_downlink_harq_status(NR_DL_UE_HARQ_t *dl_harq) {}
+NR_IF_Module_t *NR_IF_Module_init(int Mod_id) { return (NULL); }
+nfapi_mode_t nfapi_getmode(void) { return NFAPI_MODE_UNKNOWN; }
 
 uint8_t const nr_rv_round_map[4] = {0, 2, 3, 1};
 const short conjugate[8]__attribute__((aligned(16))) = {-1,1,-1,1,-1,1,-1,1};
@@ -73,42 +80,35 @@ PHY_VARS_NR_UE *PHY_vars_UE_g[1][1] = { { NULL } };
 uint16_t n_rnti = 0x1234;
 openair0_config_t openair0_cfg[MAX_CARDS];
 
-int nr_postDecode_sim(PHY_VARS_gNB *gNB, notifiedFIFO_elt_t *req) {
+void inc_ref_sched_response(int _)
+{
+  LOG_E(PHY, "fatal\n");
+  exit(1);
+}
+void deref_sched_response(int _)
+{
+  LOG_E(PHY, "fatal\n");
+  exit(1);
+}
+
+int nr_postDecode_sim(PHY_VARS_gNB *gNB, notifiedFIFO_elt_t *req, int *nb_ok)
+{
   ldpcDecode_t *rdata = (ldpcDecode_t*) NotifiedFifoData(req);
   NR_UL_gNB_HARQ_t *ulsch_harq = rdata->ulsch_harq;
-  NR_gNB_ULSCH_t *ulsch = rdata->ulsch;
   int r = rdata->segment_r;
 
   bool decodeSuccess = (rdata->decodeIterations <= rdata->decoderParms.numMaxIter);
   ulsch_harq->processedSegments++;
-  gNB->nbDecode--;
 
   if (decodeSuccess) {
     memcpy(ulsch_harq->b+rdata->offset,
            ulsch_harq->c[r],
            rdata->Kr_bytes - (ulsch_harq->F>>3) -((ulsch_harq->C>1)?3:0));
-  } else {
-    if ( rdata->nbSegments != ulsch_harq->processedSegments ) {
-      int nb=abortTpoolJob(&gNB->threadPool, req->key);
-      nb+=abortNotifiedFIFOJob(&gNB->respDecode, req->key);
-      gNB->nbDecode-=nb;
-      AssertFatal(ulsch_harq->processedSegments+nb == rdata->nbSegments,"processed: %d, aborted: %d, total %d\n",
-      ulsch_harq->processedSegments, nb, rdata->nbSegments);
-      ulsch_harq->processedSegments=rdata->nbSegments;
-      return 1;
-    }
   }
 
-  // if all segments are done 
-  if (rdata->nbSegments == ulsch_harq->processedSegments) {
-    if (decodeSuccess) {
-      return 0;
-    } else {
-      return 1;
-      }
-
-    }
-    ulsch->last_iteration_cnt = rdata->decodeIterations;
+  // if all segments are done
+  if (rdata->nbSegments == ulsch_harq->processedSegments)
+    return *nb_ok == rdata->nbSegments;
   return 0;
 }
 
@@ -151,6 +151,7 @@ int main(int argc, char **argv)
   uint8_t Imcs = 9;
   uint8_t Nl = 1;
   uint8_t max_ldpc_iterations = 5;
+  uint8_t mcs_table = 0;
 
   double DS_TDL = .03;
 
@@ -164,7 +165,7 @@ int main(int argc, char **argv)
   randominit(0);
 
   //while ((c = getopt(argc, argv, "df:hpg:i:j:n:l:m:r:s:S:y:z:M:N:F:R:P:")) != -1) {
-  while ((c = getopt(argc, argv, "hg:n:s:S:py:z:M:N:R:F:m:l:r:W:")) != -1) {
+  while ((c = getopt(argc, argv, "hg:n:s:S:py:z:M:N:R:F:m:l:q:r:W:")) != -1) {
     switch (c) {
       /*case 'f':
          write_output_file = 1;
@@ -328,6 +329,10 @@ int main(int argc, char **argv)
         nb_symb_sch = atoi(optarg);
         break;
 
+      case 'q':
+        mcs_table = atoi(optarg);
+        break;
+
       case 'r':
         nb_rb = atoi(optarg);
         break;
@@ -372,7 +377,6 @@ int main(int argc, char **argv)
 
   logInit();
   set_glog(loglvl);
-  T_stdout = 1;
 
   if (snr1set == 0)
     snr1 = snr0 + 10;
@@ -423,7 +427,7 @@ int main(int argc, char **argv)
   phy_init_nr_gNB(gNB);
 
   //configure UE
-  UE = malloc(sizeof(PHY_VARS_NR_UE));
+  UE = calloc(1, sizeof(*UE));
   memcpy(&UE->frame_parms, frame_parms, sizeof(NR_DL_FRAME_PARMS));
 
   UE->frame_parms.nb_antennas_tx = n_tx;
@@ -448,8 +452,8 @@ int main(int argc, char **argv)
   uint8_t rvidx = 0;
   uint8_t UE_id = 0;
 
-  NR_gNB_ULSCH_t *ulsch_gNB = gNB->ulsch[UE_id];
-  NR_UL_gNB_HARQ_t *harq_process_gNB = ulsch_gNB->harq_processes[harq_pid];
+  NR_gNB_ULSCH_t *ulsch_gNB = &gNB->ulsch[UE_id];
+  NR_UL_gNB_HARQ_t *harq_process_gNB = ulsch_gNB->harq_process;
   nfapi_nr_pusch_pdu_t *rel15_ul = &harq_process_gNB->ulsch_pdu;
 
   nr_phy_data_tx_t phy_data = {0};
@@ -458,8 +462,8 @@ int main(int argc, char **argv)
   if ((Nl==4)||(Nl==3))
     nb_re_dmrs = nb_re_dmrs*2;
 
-  mod_order = nr_get_Qm_ul(Imcs, 0);
-  code_rate = nr_get_code_rate_ul(Imcs, 0);
+  mod_order = nr_get_Qm_ul(Imcs, mcs_table);
+  code_rate = nr_get_code_rate_ul(Imcs, mcs_table);
   available_bits = nr_get_G(nb_rb, nb_symb_sch, nb_re_dmrs, length_dmrs, mod_order, Nl);
   TBS = nr_compute_tbs(mod_order,code_rate, nb_rb, nb_symb_sch, nb_re_dmrs*length_dmrs, 0, 0, Nl);
 
@@ -481,10 +485,6 @@ int main(int argc, char **argv)
   short channel_output_fixed[16 * 68 * 384];
   short channel_output_uncoded[16 * 68 * 384];
   unsigned int errors_bit_uncoded = 0;
-  unsigned int errors_bit = 0;
-
-  unsigned char test_input_bit[16 * 68 * 384];
-  unsigned char estimated_output_bit[16 * 68 * 384];
 
   /////////////////////////[adk] preparing UL harq_process parameters/////////////////////////
   ///////////
@@ -495,6 +495,7 @@ int main(int argc, char **argv)
   N_RE_prime = NR_NB_SC_PER_RB*nb_symb_sch - nb_re_dmrs - N_PRB_oh;
 
   ulsch_ue->pusch_pdu.rnti = n_rnti;
+  ulsch_ue->pusch_pdu.mcs_table = mcs_table;
   ulsch_ue->pusch_pdu.mcs_index = Imcs;
   ulsch_ue->pusch_pdu.nrOfLayers = Nl;
   ulsch_ue->pusch_pdu.rb_size = nb_rb;
@@ -521,7 +522,7 @@ int main(int argc, char **argv)
   unsigned int G = nr_get_G(nb_rb, nb_symb_sch, nb_re_dmrs, length_dmrs, mod_order, Nl);
 
   if (input_fd == NULL) {
-    nr_ulsch_encoding(UE, ulsch_ue, frame_parms, harq_pid, G);
+    nr_ulsch_encoding(UE, ulsch_ue, frame_parms, harq_pid, TBS>>3, G);
   }
   
   printf("\n");
@@ -592,35 +593,18 @@ int main(int argc, char **argv)
                            rel15_ul->qam_mod_order,
                            rel15_ul->nrOfLayers);
 
-      nr_ulsch_decoding(gNB, UE_id, channel_output_fixed, frame_parms, rel15_ul,
-                              frame, subframe, harq_pid, G);
-      while (gNB->nbDecode > 0) {
-        notifiedFIFO_elt_t *req=pullTpool(&gNB->respDecode, &gNB->threadPool);
-        ret = nr_postDecode_sim(gNB, req);
-        delNotifiedFIFO_elt(req);
-      }
+     int nbDecode = nr_ulsch_decoding(gNB, UE_id, channel_output_fixed, frame_parms, rel15_ul, frame, subframe, harq_pid, G);
+     int nb_ok = 0;
+     if (nbDecode > 0)
+       while (nbDecode > 0) {
+         notifiedFIFO_elt_t *req = pullTpool(&gNB->respDecode, &gNB->threadPool);
+         ret = nr_postDecode_sim(gNB, req, &nb_ok);
+         delNotifiedFIFO_elt(req);
+         nbDecode--;
+       }
 
       if (ret)
         n_errors++;
-
-      //count errors
-      errors_bit = 0;
-
-      for (i = 0; i < TBS; i++) {
-        estimated_output_bit[i] = (ulsch_gNB->harq_processes[harq_pid]->b[i/8] & (1 << (i & 7))) >> (i & 7);
-        test_input_bit[i] = (test_input[i / 8] & (1 << (i & 7))) >> (i & 7); // Further correct for multiple segments
-
-        if (estimated_output_bit[i] != test_input_bit[i]) {
-          errors_bit++;
-        }
-      }
-/*
-      if (errors_bit > 0) {
-        n_false_positive++;
-        if (n_trials == 1)
-          printf("errors_bit %u (trial %d)\n", errors_bit, trial);
-      }
-      printf("\n");*/
     }
     
     printf("*****************************************\n");

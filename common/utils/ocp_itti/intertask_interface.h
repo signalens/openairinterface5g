@@ -64,6 +64,9 @@ typedef struct itti_lte_time_s {
 
 
 typedef struct IttiMsgEmpty_s {
+  // This dummy element is to avoid CLANG warning: empty struct has size 0 in C, size 1 in C++
+  // To be removed if the structure is filled
+  uint32_t dummy;
 } IttiMsgEmpty;
 
 typedef struct IttiMsgText_s {
@@ -550,10 +553,13 @@ MessageDef *itti_alloc_new_message_sized(
   MessagesIds       message_id,
   MessageHeaderSize size);
 
-/** \brief handle signals and wait for all threads to join when the process complete.
-   This function should be called from the main thread after having created all ITTI tasks.
+/** \brief Wait for SIGINT/SIGTERM signals to unblock ITTI.
+   This function should be called from the main thread after having created all ITTI tasks. If handler is NULL, a default handler is installed.
+    \param handler a custom signal handler. To unblock, it should call itti_wait_tasks_unblock()
  **/
-void itti_wait_tasks_end(void);
+void itti_wait_tasks_end(void (*handler)(int));
+/** \brif unblocks ITTI waiting in itti_wait_tasks_end(). **/
+void itti_wait_tasks_unblock(void);
 void itti_set_task_real_time(task_id_t task_id);
 
 /** \brief Send a termination message to all tasks.

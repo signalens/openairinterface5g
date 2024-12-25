@@ -106,8 +106,16 @@ static inline unsigned long long rdtsc_oai(void) {
   __asm__ volatile ("rdtsc" : "=a" (a), "=d" (d));
   return (d<<32) | a;
 }
+#elif defined(__aarch64__)
+static inline uint64_t rdtsc_oai(void) __attribute__((always_inline));
+static inline uint64_t rdtsc_oai(void)
+{
+	  uint64_t r = 0;
+	    asm volatile("mrs %0, cntvct_el0" : "=r"(r));
+	      return r;
+}
 
-#elif defined(__arm__) || defined(__aarch64__)
+#elif defined(__arm__) 
 static inline uint32_t rdtsc_oai(void) __attribute__((always_inline));
 static inline uint32_t rdtsc_oai(void) {
   uint32_t r = 0;
@@ -153,15 +161,17 @@ static inline void start_meas(time_stats_t *ts) {
 static inline void stop_meas(time_stats_t *ts) {
   if (opp_enabled) {
     long long out = rdtsc_oai();
-    ts->diff += (out-ts->in);
-    /// process duration is the difference between two clock points
-    ts->p_time = (out-ts->in);
-    ts->diff_square += ((double)out-ts->in)*((double)out-ts->in);
+    if (ts->in) {
+      ts->diff += (out - ts->in);
+      /// process duration is the difference between two clock points
+      ts->p_time = (out - ts->in);
+      ts->diff_square += ((double)out - ts->in) * ((double)out - ts->in);
 
-    if ((out-ts->in) > ts->max)
-      ts->max = out-ts->in;
+      if ((out - ts->in) > ts->max)
+        ts->max = out - ts->in;
 
-    ts->meas_flag=0;
+      ts->meas_flag = 0;
+    }
   }
 }
 
@@ -195,9 +205,11 @@ static inline void merge_meas(time_stats_t *dst_ts, const time_stats_t *src_ts)
 
 #define CPUMEASUR_SECTION "cpumeasur"
 
+// clang-format off
 #define CPUMEASUR_PARAMS_DESC { \
-    {"max_cpumeasur",     "Max number of cpu measur entries",      0,       uptr:&max_cpumeasur,           defintval:100,         TYPE_UINT,   0},\
-  }
+  {"max_cpumeasur",     "Max number of cpu measur entries",      0,       .uptr=&max_cpumeasur,           .defintval=100,         TYPE_UINT,   0}, \
+}
+// clang-format on
 
 void init_meas(void);
 time_stats_t *register_meas(char *name);

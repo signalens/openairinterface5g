@@ -105,7 +105,6 @@ typedef enum {
   MAX_RF_DEV_TYPE
 } dev_type_t;
 /* list of names of devices, needs to match dev_type_t */
-extern const char* devtype_names[MAX_RF_DEV_TYPE];
 
 /*!\brief transport protocol types
  */
@@ -174,6 +173,10 @@ typedef struct {
   notifiedFIFO_t *resp;
 } udp_ctx_t;
 
+typedef enum {
+  RU_GPIO_CONTROL_GENERIC,
+  RU_GPIO_CONTROL_INTERDIGITAL,
+} gpio_control_t;
 
 /*! \brief RF frontend parameters set by application */
 typedef struct {
@@ -276,6 +279,8 @@ typedef struct {
   int rxfh_cores[4];
   //! Core IDs for TX FH
   int txfh_cores[4];
+  //! select the GPIO control method
+  gpio_control_t gpio_controller;
 } openair0_config_t;
 
 /*! \brief RF mapping */
@@ -567,17 +572,11 @@ struct openair0_device_t {
 typedef int(*oai_device_initfunc_t)(openair0_device *device, openair0_config_t *openair0_cfg);
 /* type of transport init function, implemented in shared lib */
 typedef int(*oai_transport_initfunc_t)(openair0_device *device, openair0_config_t *openair0_cfg, eth_params_t *eth_params);
-#define UE_MAGICDL 0xA5A5A5A5A5A5A5A5  // UE DL FDD record
-#define UE_MAGICUL 0x5A5A5A5A5A5A5A5A  // UE UL FDD record
-
-#define ENB_MAGICDL 0xB5B5B5B5B5B5B5B5  // eNB DL FDD record
-#define ENB_MAGICUL 0x5B5B5B5B5B5B5B5B  // eNB UL FDD record
 
 #define OPTION_LZ4  0x00000001          // LZ4 compression (option_value is set to compressed size)
 
 
 typedef struct {
-  uint64_t magic;          // Magic value (see defines above)
   uint32_t size;           // Number of samples per antenna to follow this header
   uint32_t nbAnt;          // Total number of antennas following this header
   // Samples per antenna follow this header,
@@ -605,7 +604,7 @@ extern "C"
 /*   optname                     helpstr                paramflags                      XXXptr                  defXXXval                            type           numelt   */
 /*---------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
 #define DEVICE_PARAMS_DESC {\
-    { CONFIG_DEVICEOPT_NAME,      CONFIG_HLP_DEVICE,          0,                strptr:&devname,                 defstrval:NULL,         TYPE_STRING,     0}\
+    { CONFIG_DEVICEOPT_NAME,      CONFIG_HLP_DEVICE,          0,               .strptr=&devname,                .defstrval=NULL,         TYPE_STRING,     0}\
 }
 
 

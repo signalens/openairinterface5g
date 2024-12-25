@@ -29,11 +29,10 @@ int main(int argc, char *argv[])
   uint32_t decoderState=0, blockErrorState=0; //0 = Success, -1 = Decoding failed, 1 = Block Error.
   uint16_t testLength = NR_POLAR_PBCH_PAYLOAD_BITS, coderLength = NR_POLAR_PBCH_E;
   uint16_t blockErrorCumulative=0, bitErrorCumulative=0;
-  double timeEncoderCumulative = 0, timeDecoderCumulative = 0;
   uint8_t aggregation_level = 8, decoderListSize = 8, logFlag = 0;
   uint16_t rnti=0;
 
-  while ((arguments = getopt (argc, argv, "s:d:f:m:i:l:a:p:hqgFL:k:")) != -1)
+  while ((arguments = getopt (argc, argv, "s:d:f:m:i:l:a:p:hqgFL:k:")) != -1) {
     switch (arguments) {
     case 's':
     	SNRstart = atof(optarg);
@@ -105,14 +104,14 @@ int main(int argc, char *argv[])
       exit(-1);
       break;
     }
-
+  }
   //Initiate timing. (Results depend on CPU Frequency. Therefore, might change due to performance variances during simulation.)
-    time_stats_t timeEncoder,timeDecoder;
-    opp_enabled=1;
-    reset_meas(&timeEncoder);
-    reset_meas(&timeDecoder);
-    randominit(0);
-    crcTableInit();
+  time_stats_t timeEncoder,timeDecoder;
+  opp_enabled=1;
+  reset_meas(&timeEncoder);
+  reset_meas(&timeDecoder);
+  randominit(0);
+  crcTableInit();
 
   if (polarMessageType == 0) { //PBCH
     aggregation_level = NR_POLAR_PBCH_AGGREGATION_LEVEL;
@@ -128,35 +127,33 @@ int main(int argc, char *argv[])
   time_t currentTime;
   char fileName[512], currentTimeInfo[25];
   char folderName[] = ".";
-  FILE *logFile;
-  /*folderName=getenv("HOME");
-    strcat(folderName,"/Desktop/polartestResults");*/
+  FILE *logFile = NULL;
 
-if (logFlag){
-	time (&currentTime);
+  if (logFlag){
+    time (&currentTime);
 #ifdef DEBUG_POLAR_TIMING
-  sprintf(fileName,"%s/TIMING_ListSize_%d_Payload_%d_Itr_%d", folderName, decoderListSize, testLength, iterations);
+    sprintf(fileName,"%s/TIMING_ListSize_%d_Payload_%d_Itr_%d", folderName, decoderListSize, testLength, iterations);
 #else
-  sprintf(fileName,"%s/_ListSize_%d_Payload_%d_Itr_%d", folderName, decoderListSize, testLength, iterations);
+    sprintf(fileName,"%s/_ListSize_%d_Payload_%d_Itr_%d", folderName, decoderListSize, testLength, iterations);
 #endif
-  strftime(currentTimeInfo, 25, "_%Y-%m-%d-%H-%M-%S.csv", localtime(&currentTime));
-  strcat(fileName,currentTimeInfo);
-  //Create "~/Desktop/polartestResults" folder if it doesn't already exist.
-  /*struct stat folder = {0};
+    strftime(currentTimeInfo, 25, "_%Y-%m-%d-%H-%M-%S.csv", localtime(&currentTime));
+    strcat(fileName,currentTimeInfo);
+    //Create "~/Desktop/polartestResults" folder if it doesn't already exist.
+    /*struct stat folder = {0};
     if (stat(folderName, &folder) == -1) mkdir(folderName, S_IRWXU | S_IRWXG | S_IRWXO);*/
-  logFile = fopen(fileName, "w");
+    logFile = fopen(fileName, "w");
 
-  if (logFile==NULL) {
-    fprintf(stderr,"[polartest.c] Problem creating file %s with fopen\n",fileName);
-    exit(-1);
-  }
+    if (logFile==NULL) {
+      fprintf(stderr,"[polartest.c] Problem creating file %s with fopen\n",fileName);
+      exit(-1);
+    }
 
 #ifdef DEBUG_POLAR_TIMING
-  fprintf(logFile,",timeEncoderCRCByte[us],timeEncoderCRCBit[us],timeEncoderInterleaver[us],timeEncoderBitInsertion[us],timeEncoder1[us],timeEncoder2[us],timeEncoderRateMatching[us],timeEncoderByte2Bit[us]\n");
+    fprintf(logFile,",timeEncoderCRCByte[us],timeEncoderCRCBit[us],timeEncoderInterleaver[us],timeEncoderBitInsertion[us],timeEncoder1[us],timeEncoder2[us],timeEncoderRateMatching[us],timeEncoderByte2Bit[us]\n");
 #else
-  fprintf(logFile,",SNR,nBitError,blockErrorState,t_encoder[us],t_decoder[us]\n");
+    fprintf(logFile,",SNR,nBitError,blockErrorState,t_encoder[us],t_decoder[us]\n");
 #endif
-}
+  }
 
   const uint8_t testArrayLength = ceil(testLength / 32.0);
   const uint8_t coderArrayLength = ceil(coderLength / 32.0);
@@ -326,8 +323,6 @@ if (logFlag){
 #endif
 
       //Iteration times are in microseconds.
-      timeEncoderCumulative+=(timeEncoder.diff/(get_cpu_freq_GHz()*1000.0));
-      timeDecoderCumulative+=(timeDecoder.diff/(get_cpu_freq_GHz()*1000.0));
       if (logFlag) fprintf(logFile,",%f,%d,%u,%f,%f\n", SNR, nBitError, blockErrorState, (timeEncoder.diff/(get_cpu_freq_GHz()*1000.0)), (timeDecoder.diff/(get_cpu_freq_GHz()*1000.0)));
 
       if (nBitError<0) {
@@ -351,14 +346,11 @@ if (logFlag){
            decoderListSize, SNR, ((double)blockErrorCumulative/iterations),
            ((double)bitErrorCumulative / (iterations*testLength)),
            (double)timeEncoder.diff/timeEncoder.trials/(get_cpu_freq_GHz()*1000.0),(double)timeDecoder.diff/timeDecoder.trials/(get_cpu_freq_GHz()*1000.0));
-    //(timeEncoderCumulative/iterations),timeDecoderCumulative/iterations);
 
     if (blockErrorCumulative==0 && bitErrorCumulative==0) break;
 
     blockErrorCumulative = 0;
     bitErrorCumulative = 0;
-    timeEncoderCumulative = 0;
-    timeDecoderCumulative = 0;
   }
 
   print_meas(&timeEncoder,"polar_encoder",NULL,NULL);

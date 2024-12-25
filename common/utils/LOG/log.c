@@ -45,16 +45,21 @@
 #include "common/config/config_userapi.h"
 #include <time.h>
 #include <sys/time.h>
+#include <stdatomic.h>
+#include "common/utils/LOG/log_extern.h"
 
 // main log variables
 
 // Fixme: a better place to be shure it is called 
 void read_cpu_hardware (void) __attribute__ ((constructor));
-void read_cpu_hardware (void) {__builtin_cpu_init(); }
+#if !defined(__arm__) && !defined(__aarch64__) 
+  void read_cpu_hardware (void) {__builtin_cpu_init(); }
+#else 
+  void read_cpu_hardware (void) {}
+#endif
 
 log_mem_cnt_t log_mem_d[2];
-int log_mem_flag=0;
-int log_mem_multi=1;
+int log_mem_flag = 0;
 volatile int log_mem_side=0;
 pthread_mutex_t log_mem_lock;
 pthread_cond_t log_mem_notify;
@@ -66,32 +71,30 @@ char __log_mem_filename[1024]={0};
 char * log_mem_filename = &__log_mem_filename[0];
 char logmem_filename[1024] = {0};
 
-mapping log_level_names[] = {
-  {"error",  OAILOG_ERR},
-  {"warn",   OAILOG_WARNING},
-  {"analysis", OAILOG_ANALYSIS},
-  {"info",   OAILOG_INFO},
-  {"debug",  OAILOG_DEBUG},
-  {"trace",  OAILOG_TRACE},
-  {NULL, -1}
-};
+const mapping log_level_names[] = {{"error", OAILOG_ERR},
+                                   {"warn", OAILOG_WARNING},
+                                   {"analysis", OAILOG_ANALYSIS},
+                                   {"info", OAILOG_INFO},
+                                   {"debug", OAILOG_DEBUG},
+                                   {"trace", OAILOG_TRACE},
+                                   {NULL, -1}};
 
-mapping log_options[] = {
-  {"nocolor", FLAG_NOCOLOR  },
-  {"level",   FLAG_LEVEL  },
-  {"thread",  FLAG_THREAD },
-  {"line_num",    FLAG_FILE_LINE },
-  {"function", FLAG_FUNCT},
-  {"time",     FLAG_TIME},
-  {"thread_id", FLAG_THREAD_ID},
-  {"wall_clock", FLAG_REAL_TIME},
-  {NULL,-1}
-};
+const mapping log_options[] = {{"nocolor", FLAG_NOCOLOR},
+                               {"level", FLAG_LEVEL},
+                               {"thread", FLAG_THREAD},
+                               {"line_num", FLAG_FILE_LINE},
+                               {"function", FLAG_FUNCT},
+                               {"time", FLAG_TIME},
+                               {"thread_id", FLAG_THREAD_ID},
+                               {"wall_clock", FLAG_REAL_TIME},
+                               {NULL, -1}};
 
 mapping log_maskmap[] = LOG_MASKMAP_INIT;
 
-char *log_level_highlight_start[] = {LOG_RED, LOG_ORANGE, LOG_GREEN, "", LOG_BLUE, LOG_CYBL};  /*!< \brief Optional start-format strings for highlighting */
-char *log_level_highlight_end[]   = {LOG_RESET, LOG_RESET, LOG_RESET, LOG_RESET, LOG_RESET, LOG_RESET};   /*!< \brief Optional end-format strings for highlighting */
+static const char *const log_level_highlight_start[] =
+    {LOG_RED, LOG_ORANGE, LOG_GREEN, "", LOG_BLUE, LOG_CYBL}; /*!< \brief Optional start-format strings for highlighting */
+static const char *const log_level_highlight_end[] =
+    {LOG_RESET, LOG_RESET, LOG_RESET, LOG_RESET, LOG_RESET, LOG_RESET}; /*!< \brief Optional end-format strings for highlighting */
 static void log_output_memory(log_component_t *c, const char *file, const char *func, int line, int comp, int level, const char* format,va_list args);
 
 
@@ -283,7 +286,7 @@ void  log_getconfig(log_t *g_log)
   int ret = config_get( logparams_defaults,sizeof(logparams_defaults)/sizeof(paramdef_t),CONFIG_STRING_LOG_PREFIX);
 
   if (ret <0) {
-    fprintf(stderr,"[LOG] init aborted, configuration couldn't be performed");
+    fprintf(stderr,"[LOG] init aborted, configuration couldn't be performed\n");
     return;
   }
 
@@ -460,7 +463,6 @@ int logInit (void)
   register_log_component("OTG_GP","dat",OTG_GP);
   register_log_component("OTG_GP_BG","dat",OTG_GP_BG);
   register_log_component("OTG_JITTER","dat",OTG_JITTER);
-  register_log_component("OCG","",OCG);
   register_log_component("PERF","",PERF);
   register_log_component("OIP","",OIP);
   register_log_component("OCM","log",OCM);
@@ -489,7 +491,7 @@ int logInit (void)
   register_log_component("SCTP","",SCTP);
   register_log_component("X2AP","",X2AP);
   register_log_component("LOADER","log",LOADER);
-  register_log_component("ASN","log",ASN);
+  register_log_component("ASN1","log",ASN1);
   register_log_component("NFAPI_VNF","log",NFAPI_VNF);
   register_log_component("NFAPI_PNF","log",NFAPI_PNF);
   register_log_component("GNB_APP","log",GNB_APP);
@@ -755,8 +757,7 @@ void close_component_filelog(int comp)
  * with string value NULL
  */
 /* map a string to an int. Takes a mapping array and a string as arg */
-int map_str_to_int(mapping *map,
-		           const char *str)
+int map_str_to_int(const mapping *map, const char *str)
 {
   while (1) {
     if (map->name == NULL) {
@@ -772,8 +773,7 @@ int map_str_to_int(mapping *map,
 }
 
 /* map an int to a string. Takes a mapping array and a value */
-char *map_int_to_str(mapping *map,
-		             int val)
+char *map_int_to_str(const mapping *map, const int val)
 {
   while (1) {
     if (map->name == NULL) {
@@ -814,7 +814,7 @@ void logClean (void)
   }
 }
 
-extern int oai_exit;
+static atomic_bool stop_flush_mem_to_file = false;
 void flush_mem_to_file(void)
 {
   int fp;
@@ -825,7 +825,7 @@ void flush_mem_to_file(void)
   
   pthread_setname_np( pthread_self(), "flush_mem_to_file");
 
-  while (!oai_exit) {
+  while (!atomic_load(&stop_flush_mem_to_file)) {
     pthread_mutex_lock(&log_mem_lock);
     log_mem_write_flag=0;
     pthread_cond_wait(&log_mem_notify, &log_mem_lock);
@@ -854,15 +854,6 @@ void flush_mem_to_file(void)
     }
   }
 }
-
-const char logmem_log_level[NUM_LOG_LEVEL] = {
-  [OAILOG_ERR] = 'E',
-  [OAILOG_WARNING] = 'W',
-  [OAILOG_ANALYSIS] = 'A',
-  [OAILOG_INFO] = 'I',
-  [OAILOG_DEBUG] = 'D',
-  [OAILOG_TRACE] = 'T',
-};
 
 static void log_output_memory(log_component_t *c, const char *file, const char *func, int line, int comp, int level, const char* format,va_list args)
 {
@@ -944,35 +935,24 @@ static void log_output_memory(log_component_t *c, const char *file, const char *
 
 int logInit_log_mem (void)
 {
-  if(log_mem_flag==1){
-    if(log_mem_multi==1){
-      printf("log-mem multi!!!\n");
-      log_mem_d[0].buf_p = malloc(LOG_MEM_SIZE);
-      log_mem_d[0].buf_index=0;
-      log_mem_d[0].enable_flag=1;
-      log_mem_d[1].buf_p = malloc(LOG_MEM_SIZE);
-      log_mem_d[1].buf_index=0;
-      log_mem_d[1].enable_flag=1;
-      log_mem_side=0;
-      if ((pthread_mutex_init (&log_mem_lock, NULL) != 0)
-          || (pthread_cond_init (&log_mem_notify, NULL) != 0)) {
+  if (log_mem_flag == 1) {
+    log_mem_d[0].buf_p = malloc(LOG_MEM_SIZE);
+    log_mem_d[0].buf_index = 0;
+    log_mem_d[0].enable_flag = 1;
+    log_mem_d[1].buf_p = malloc(LOG_MEM_SIZE);
+    log_mem_d[1].buf_index = 0;
+    log_mem_d[1].enable_flag = 1;
+    log_mem_side = 0;
+    if ((pthread_mutex_init(&log_mem_lock, NULL) != 0) || (pthread_cond_init(&log_mem_notify, NULL) != 0)) {
         log_mem_d[1].enable_flag=0;
         return -1;
       }
-      pthread_create(&log_mem_thread, NULL, (void *(*)(void *))flush_mem_to_file, (void*)NULL);
-    }else{
-      printf("log-mem single!!!\n");
-      log_mem_d[0].buf_p = malloc(LOG_MEM_SIZE);
-      log_mem_d[0].buf_index=0;
-      log_mem_d[0].enable_flag=1;
-      log_mem_d[1].enable_flag=0;
-      log_mem_side=0;
-    }
-  }else{
-    log_mem_d[0].buf_p=NULL;
-    log_mem_d[1].buf_p=NULL;
-    log_mem_d[0].enable_flag=0;
-    log_mem_d[1].enable_flag=0;
+      pthread_create(&log_mem_thread, NULL, (void *(*)(void *))flush_mem_to_file, (void *)NULL);
+  } else {
+      log_mem_d[0].buf_p = NULL;
+      log_mem_d[1].buf_p = NULL;
+      log_mem_d[0].enable_flag = 0;
+      log_mem_d[1].enable_flag = 0;
   }
 
   printf("log init done\n");
@@ -985,13 +965,13 @@ void close_log_mem(void){
   char f_name[1024];
 
   if(log_mem_flag==1){
+    atomic_store(&stop_flush_mem_to_file, false);
     log_mem_d[0].enable_flag=0;
     log_mem_d[1].enable_flag=0;
     usleep(10); // wait for log writing
     while(log_mem_write_flag==1){
       usleep(100);
     }
-    if(log_mem_multi==1){
       snprintf(f_name,1024, "%s_%d.log",log_mem_filename,log_mem_file_cnt);
       fp=open(f_name, O_WRONLY | O_CREAT, 0666);
       int ret = write(fp, log_mem_d[0].buf_p, log_mem_d[0].buf_index);
@@ -1011,16 +991,6 @@ void close_log_mem(void){
       }
       close(fp);
       free(log_mem_d[1].buf_p);
-    }else{
-      fp=open(log_mem_filename, O_WRONLY | O_CREAT, 0666);
-      int ret = write(fp, log_mem_d[0].buf_p, log_mem_d[0].buf_index);
-      if ( ret < 0) {
-          fprintf(stderr,"{LOG} %s %d Couldn't write in %s \n",__FILE__,__LINE__,log_mem_filename);
-          exit(EXIT_FAILURE);
-       }
-      close(fp);
-      free(log_mem_d[0].buf_p);
-    }
   }
  }
 

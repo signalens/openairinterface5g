@@ -46,12 +46,15 @@
 #include "pdcp.h"
 #include "pdcp_primitives.h"
 
-#include "UTIL/OSA/osa_defs.h"
-
 #include "LTE_UERadioAccessCapabilityInformation.h"
+#include "uper_encoder.h"
 
 #include "openair3/ocp-gtpu/gtp_itf.h"
 #include <openair3/ocp-gtpu/gtp_itf.h>
+
+#include "openair3/SECU/secu_defs.h"
+#include "openair3/SECU/key_nas_deriver.h"
+
 #include "RRC/LTE/rrc_eNB_GTPV1U.h"
 
 #include "TLVDecoder.h"
@@ -485,9 +488,9 @@ rrc_pdcp_config_security(
 //------------------------------------------------------------------------------
 {
   LTE_SRB_ToAddModList_t             *SRB_configList = ue_context_pP->ue_context.SRB_configList;
-  uint8_t                            *kRRCenc = NULL;
-  uint8_t                            *kRRCint = NULL;
-  uint8_t                            *kUPenc = NULL;
+  uint8_t kRRCenc[32] = {0};
+  uint8_t kRRCint[32] = {0};
+  uint8_t kUPenc[32] = {0};
   pdcp_t                             *pdcp_p   = NULL;
   static int                          print_keys= 1;
   hashtable_rc_t                      h_rc;
@@ -495,19 +498,13 @@ rrc_pdcp_config_security(
 
   /* Derive the keys from kenb */
   if (SRB_configList != NULL) {
-    derive_key_up_enc(ue_context_pP->ue_context.ciphering_algorithm,
-                      ue_context_pP->ue_context.kenb,
-                      &kUPenc);
+    derive_key_nas(UP_ENC_ALG, ue_context_pP->ue_context.ciphering_algorithm, ue_context_pP->ue_context.kenb, kUPenc);
   }
 
-  derive_key_rrc_enc(ue_context_pP->ue_context.ciphering_algorithm,
-                     ue_context_pP->ue_context.kenb,
-                     &kRRCenc);
-  derive_key_rrc_int(ue_context_pP->ue_context.integrity_algorithm,
-                     ue_context_pP->ue_context.kenb,
-                     &kRRCint);
- if (!IS_SOFTMODEM_IQPLAYER) {
-  SET_LOG_DUMP(DEBUG_SECURITY) ;
+  derive_key_nas(RRC_ENC_ALG, ue_context_pP->ue_context.ciphering_algorithm, ue_context_pP->ue_context.kenb, kRRCenc);
+  derive_key_nas(RRC_INT_ALG, ue_context_pP->ue_context.integrity_algorithm, ue_context_pP->ue_context.kenb, kRRCint);
+  if (!IS_SOFTMODEM_IQPLAYER) {
+    SET_LOG_DUMP(DEBUG_SECURITY);
  }
 
 
@@ -921,10 +918,7 @@ int rrc_eNB_process_S1AP_INITIAL_CONTEXT_SETUP_REQ(MessageDef *msg_p, const char
 
       create_tunnel_req.rnti       = ue_context_p->ue_context.rnti; // warning put zero above
       //      create_tunnel_req.num_tunnels    = i;
-      ret = gtpv1u_create_s1u_tunnel(
-              instance,
-              &create_tunnel_req,
-              &create_tunnel_resp);
+      ret = gtpv1u_create_s1u_tunnel(instance, &create_tunnel_req, &create_tunnel_resp, pdcp_data_req);
 
       if ( ret != 0 ) {
         LOG_E(RRC,"rrc_eNB_process_S1AP_INITIAL_CONTEXT_SETUP_REQ : gtpv1u_create_s1u_tunnel failed,start to release UE %x\n",ue_context_p->ue_context.rnti);
@@ -956,6 +950,7 @@ int rrc_eNB_process_S1AP_INITIAL_CONTEXT_SETUP_REQ(MessageDef *msg_p, const char
       &ctxt,
       ue_context_p,
       S1AP_INITIAL_CONTEXT_SETUP_REQ(msg_p).security_key);
+
     {
       uint8_t send_security_mode_command = true;
       rrc_pdcp_config_security(
@@ -1234,10 +1229,7 @@ int rrc_eNB_process_S1AP_E_RAB_SETUP_REQ(MessageDef *msg_p, const char *msg_name
       create_tunnel_req.rnti       = ue_context_p->ue_context.rnti; // warning put zero above
       create_tunnel_req.num_tunnels    = e_rab_done;
       // NN: not sure if we should create a new tunnel: need to check teid, etc.
-      ret = gtpv1u_create_s1u_tunnel(
-              instance,
-              &create_tunnel_req,
-              &create_tunnel_resp);
+      ret = gtpv1u_create_s1u_tunnel(instance, &create_tunnel_req, &create_tunnel_resp, pdcp_data_req);
 
       if ( ret != 0 ) {
         LOG_E(RRC,"rrc_eNB_process_S1AP_E_RAB_SETUP_REQ : gtpv1u_create_s1u_tunnel failed,start to release UE %x\n",ue_context_p->ue_context.rnti);
@@ -1908,14 +1900,8 @@ int rrc_eNB_send_PATH_SWITCH_REQ(const protocol_ctxt_t *const ctxt_pP,
   S1AP_PATH_SWITCH_REQ (msg_p).nb_of_e_rabs = e_rabs_done;
   create_tunnel_req.rnti           = ue_context_pP->ue_context.rnti;
   create_tunnel_req.num_tunnels    = e_rabs_done;
-  gtpv1u_create_s1u_tunnel(
-    ctxt_pP->instance,
-    &create_tunnel_req,
-    &create_tunnel_resp);
-  rrc_eNB_process_GTPV1U_CREATE_TUNNEL_RESP(
-    ctxt_pP,
-    &create_tunnel_resp,
-    &inde_list[0]);
+  gtpv1u_create_s1u_tunnel(ctxt_pP->instance, &create_tunnel_req, &create_tunnel_resp, pdcp_data_req);
+  rrc_eNB_process_GTPV1U_CREATE_TUNNEL_RESP(ctxt_pP, &create_tunnel_resp, &inde_list[0]);
 
   for (e_rab = 0; e_rab < e_rabs_done; e_rab++) {
     S1AP_PATH_SWITCH_REQ (msg_p).e_rabs_tobeswitched[e_rab].e_rab_id = create_tunnel_resp.eps_bearer_id[e_rab];

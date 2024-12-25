@@ -131,8 +131,8 @@ void layer1prec2A(int32_t *antenna0_sample, int32_t *antenna1_sample, uint8_t pr
       ((int16_t *)antenna1_sample)[1] = (int16_t)((((int16_t *)antenna1_sample)[1]*ONE_OVER_SQRT2_Q15)>>15);  */
 }
 
-uint32_t FOUR[2]={0,4};
-uint32_t TWO[2]={0,2};
+static const uint32_t FOUR[2] = {0, 4};
+static const uint32_t TWO[2] = {0, 2};
 
 int allocate_REs_in_RB_no_pilots_QPSK_siso(PHY_VARS_eNB* phy_vars_eNB,
                                            int **txdataF,
@@ -840,16 +840,16 @@ int allocate_REs_in_RB_no_pilots_16QAM_tm2(PHY_VARS_eNB* phy_vars_eNB,
                      (((uint32_t)x0p[4])<<5)|(((uint32_t)x0p[6])<<4)|
                      (((uint32_t)x0p[5])<<7)|(((uint32_t)x0p[7])<<6);
 
-  txF0[0]=qam_table16_0[qam16_table_offset];
-  txF1[0]=qam_table16_1[qam16_table_offset];
+  memcpy(txF0, &qam_table16_0[qam16_table_offset], sizeof(*txF0));
+  memcpy(txF1, &qam_table16_1[qam16_table_offset], sizeof(*txF1));
   x0p+=8;
   qam16_table_offset=(((uint32_t)x0p[0])<<1)|(((uint32_t)x0p[2]))|
                      (((uint32_t)x0p[1])<<3)|(((uint32_t)x0p[3])<<2) |
                      (((uint32_t)x0p[4])<<5)|(((uint32_t)x0p[6])<<4) |
                      (((uint32_t)x0p[5])<<7)|(((uint32_t)x0p[7])<<6);
 
-  txF0[1]=qam_table16_0[qam16_table_offset];
-  txF1[1]=qam_table16_1[qam16_table_offset];
+  memcpy(txF0 + 1, &qam_table16_0[qam16_table_offset], sizeof(*txF0));
+  memcpy(txF1 + 1, &qam_table16_1[qam16_table_offset], sizeof(*txF1));
 
   x0p+=8;
   qam16_table_offset=(((uint32_t)x0p[0])<<1)|(((uint32_t)x0p[2]))|
@@ -857,8 +857,8 @@ int allocate_REs_in_RB_no_pilots_16QAM_tm2(PHY_VARS_eNB* phy_vars_eNB,
                      (((uint32_t)x0p[4])<<5)|(((uint32_t)x0p[6])<<4) |
                      (((uint32_t)x0p[5])<<7)|(((uint32_t)x0p[7])<<6);
 
-  txF0[2]=qam_table16_0[qam16_table_offset];
-  txF1[2]=qam_table16_1[qam16_table_offset];
+  memcpy(txF0 + 2, &qam_table16_0[qam16_table_offset], sizeof(*txF0));
+  memcpy(txF1 + 2, &qam_table16_1[qam16_table_offset], sizeof(*txF1));
 
   if(skip_half==0) {
     if (skip_dc>0) {
@@ -872,23 +872,23 @@ int allocate_REs_in_RB_no_pilots_16QAM_tm2(PHY_VARS_eNB* phy_vars_eNB,
                        (((uint32_t)x0p[4])<<5)|(((uint32_t)x0p[6])<<4) |
                        (((uint32_t)x0p[5])<<7)|(((uint32_t)x0p[7])<<6);
 
-    txF0[3]=qam_table16_0[qam16_table_offset];
-    txF1[3]=qam_table16_1[qam16_table_offset];
+    memcpy(txF0 + 3, &qam_table16_0[qam16_table_offset], sizeof(*txF0));
+    memcpy(txF1 + 3, &qam_table16_1[qam16_table_offset], sizeof(*txF1));
     x0p+=8;
     qam16_table_offset=(((uint32_t)x0p[0])<<1)|(((uint32_t)x0p[2]))|
                        (((uint32_t)x0p[1])<<3)|(((uint32_t)x0p[3])<<2) |
                        (((uint32_t)x0p[4])<<5)|(((uint32_t)x0p[6])<<4) |
                        (((uint32_t)x0p[5])<<7)|(((uint32_t)x0p[7])<<6);
 
-    txF0[4]=qam_table16_0[qam16_table_offset];
-    txF1[4]=qam_table16_1[qam16_table_offset];
+    memcpy(txF0 + 4, &qam_table16_0[qam16_table_offset], sizeof(*txF0));
+    memcpy(txF1 + 4, &qam_table16_1[qam16_table_offset], sizeof(*txF1));
     x0p+=8;
     qam16_table_offset=(((uint32_t)x0p[0])<<1)|(((uint32_t)x0p[2]))|
                        (((uint32_t)x0p[1])<<3)|(((uint32_t)x0p[3])<<2) |
                        (((uint32_t)x0p[4])<<5)|(((uint32_t)x0p[6])<<4) |
                        (((uint32_t)x0p[5])<<7)|(((uint32_t)x0p[7])<<6);
-    txF0[5]=qam_table16_0[qam16_table_offset];
-    txF1[5]=qam_table16_1[qam16_table_offset];
+    memcpy(txF0 + 5, &qam_table16_0[qam16_table_offset], sizeof(*txF0));
+    memcpy(txF1 + 5, &qam_table16_1[qam16_table_offset], sizeof(*txF1));
   }
   if(skip_half!=0)
   {

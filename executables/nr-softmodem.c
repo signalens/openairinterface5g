@@ -40,7 +40,7 @@
 //#undef FRAME_LENGTH_COMPLEX_SAMPLES //there are two conflicting definitions, so we better make sure we don't use it at all
 
 #include "radio/COMMON/common_lib.h"
-#include "radio/ETHERNET/USERSPACE/LIB/if_defs.h"
+#include "radio/ETHERNET/if_defs.h"
 
 //#undef FRAME_LENGTH_COMPLEX_SAMPLES //there are two conflicting definitions, so we better make sure we don't use it at all
 
@@ -59,10 +59,11 @@ unsigned short config_frames[4] = {2,9,11,13};
 #include "common/utils/LOG/log.h"
 #include "common/utils/LOG/vcd_signal_dumper.h"
 #include "UTIL/OPT/opt.h"
+#include "LAYER2/nr_pdcp/nr_pdcp_oai_api.h"
 
 #include "intertask_interface.h"
 
-#include "PHY/INIT/phy_init.h"
+#include "PHY/INIT/nr_phy_init.h"
 
 #include "system.h"
 #include <openair2/GNB_APP/gnb_app.h>
@@ -92,6 +93,11 @@ pthread_t    dup_thread;
 
 fuzz_nr_duplication_t fuzz_nr_dup;
 /* -------------------- */
+#ifdef E2_AGENT
+#include "openair2/E2AP/flexric/src/agent/e2_agent_api.h"
+#include "openair2/E2AP/RAN_FUNCTION/init_ran_func.h"
+#endif
+
 
 pthread_cond_t nfapi_sync_cond;
 pthread_mutex_t nfapi_sync_mutex;
@@ -143,15 +149,9 @@ static int tx_max_power[MAX_NUM_CCs]; /* =  {0,0}*/;
 
 int chain_offset=0;
 
-
 uint8_t dci_Format = 0;
-uint8_t agregation_Level =0xFF;
-
 uint8_t nb_antenna_tx = 1;
 uint8_t nb_antenna_rx = 1;
-
-char ref[128] = "internal";
-char channels[128] = "0";
 
 int rx_input_level_dBm;
 
@@ -187,6 +187,12 @@ openair0_config_t openair0_cfg[MAX_CARDS];
 
 double cpuf;
 
+/* hack: pdcp_run() is required by 4G scheduler which is compiled into
+ * nr-softmodem because of linker issues */
+void pdcp_run(const protocol_ctxt_t *const ctxt_pP)
+{
+  abort();
+}
 
 /* see file openair2/LAYER2/MAC/main.c for why abstraction_flag is needed
  * this is very hackish - find a proper solution
@@ -261,8 +267,8 @@ unsigned int build_rfdc(int dcoff_i_rxfe, int dcoff_q_rxfe) {
 #define KBLU  "\x1B[34m"
 #define RESET "\033[0m"
 
-
-void exit_function(const char *file, const char *function, const int line, const char *s) {
+void exit_function(const char *file, const char *function, const int line, const char *s, const int assert)
+{
   int ru_id;
 
   if (s != NULL) {
@@ -286,19 +292,24 @@ void exit_function(const char *file, const char *function, const int line, const
     }
   }
 
-  sleep(1); //allow lte-softmodem threads to exit first
-  exit(1);
+  if (assert) {
+    abort();
+  } else {
+    sleep(1); // allow nr-softmodem threads to exit first
+    exit(EXIT_SUCCESS);
+  }
 }
 
-
-
-static int create_gNB_tasks(void) {
+static int create_gNB_tasks(ngran_node_t node_type)
+{
   uint32_t                        gnb_nb = RC.nb_nr_inst; 
   uint32_t                        gnb_id_start = 0;
   uint32_t                        gnb_id_end = gnb_id_start + gnb_nb;
   LOG_D(GNB_APP, "%s(gnb_nb:%d)\n", __FUNCTION__, gnb_nb);
   itti_wait_ready(1);
   LOG_I(PHY, "%s() Task ready initialize structures\n", __FUNCTION__);
+
+  RCconfig_verify(node_type);
 
   RCconfig_NR_L1();
   RCconfig_nr_prs();
@@ -315,13 +326,11 @@ static int create_gNB_tasks(void) {
 
   LOG_I(GNB_APP,"Allocating gNB_RRC_INST for %d instances\n",RC.nb_nr_inst);
 
-  RC.nrrrc = (gNB_RRC_INST **)malloc(RC.nb_nr_inst*sizeof(gNB_RRC_INST *));
-  LOG_I(PHY, "%s() RC.nb_nr_inst:%d RC.nrrrc:%p\n", __FUNCTION__, RC.nb_nr_inst, RC.nrrrc);
-  ngran_node_t node_type = get_node_type();
-  for (int gnb_id = gnb_id_start; (gnb_id < gnb_id_end) ; gnb_id++) {
-    RC.nrrrc[gnb_id] = (gNB_RRC_INST*)calloc(1,sizeof(gNB_RRC_INST));
-    LOG_I(PHY, "%s() Creating RRC instance RC.nrrrc[%d]:%p (%d of %d)\n", __FUNCTION__, gnb_id, RC.nrrrc[gnb_id], gnb_id+1, gnb_id_end);
-    configure_nr_rrc(gnb_id);
+  if (RC.nb_nr_inst > 0) {
+    AssertFatal(RC.nb_nr_inst == 1, "multiple RRC instances are not supported\n");
+    RC.nrrrc = calloc(1, sizeof(*RC.nrrrc));
+    RC.nrrrc[0] = calloc(1,sizeof(gNB_RRC_INST));
+    RCconfig_NRRRC(RC.nrrrc[0]);
   }
 
   if (RC.nb_nr_inst > 0 &&
@@ -540,7 +549,7 @@ void wait_gNBs(void) {
 void terminate_task(task_id_t task_id, module_id_t mod_id) {
   LOG_I(GNB_APP, "sending TERMINATE_MESSAGE to task %s (%d)\n", itti_get_task_name(task_id), task_id);
   MessageDef *msg;
-  msg = itti_alloc_new_message (ENB_APP, 0, TERMINATE_MESSAGE);
+  msg = itti_alloc_new_message (TASK_ENB_APP, 0, TERMINATE_MESSAGE);
   itti_send_msg_to_task (task_id, ENB_MODULE_ID_TO_INSTANCE(mod_id), msg);
 }
 
@@ -563,13 +572,8 @@ void init_pdcp(void) {
     PDCP_USE_NETLINK_BIT | LINK_ENB_PDCP_TO_IP_DRIVER_BIT | ENB_NAS_USE_TUN_BIT | SOFTMODEM_NOKRNMOD_BIT:
     LINK_ENB_PDCP_TO_GTPV1U_BIT;
   
-  if (!get_softmodem_params()->nsa) {
-    if (!NODE_IS_DU(get_node_type())) {
-      pdcp_layer_init();
-      nr_pdcp_module_init(pdcp_initmask, 0);
-    }
-  } else {
-    pdcp_layer_init();
+  if (!NODE_IS_DU(get_node_type())) {
+    nr_pdcp_layer_init();
     nr_pdcp_module_init(pdcp_initmask, 0);
   }
 }
@@ -764,8 +768,9 @@ int main( int argc, char **argv ) {
     RCconfig_NR_L1();
 
   // don't create if node doesn't connect to RRC/S1/GTP
+  const ngran_node_t node_type = get_node_type();
   if (NFAPI_MODE != NFAPI_MODE_PNF) {
-    int ret = create_gNB_tasks();
+    int ret = create_gNB_tasks(node_type);
     AssertFatal(ret == 0, "cannot create ITTI tasks\n");
   }
 
@@ -812,9 +817,69 @@ int main( int argc, char **argv ) {
 
   config_sync_var=0;
 
+
+
+
+#ifdef E2_AGENT
+
+//////////////////////////////////
+//////////////////////////////////
+//// Init the E2 Agent
+
+  sm_io_ag_ran_t io = init_ran_func_ag();
+  
+  // OAI Wrapper 
+  e2_agent_args_t oai_args = RCconfig_NR_E2agent();
+  AssertFatal(oai_args.sm_dir != NULL , "Please, specify the directory where the SMs are located in the config file, i.e., add in config file the next line: e2_agent = {near_ric_ip_addr = \"127.0.0.1\"; sm_dir = \"/usr/local/lib/flexric/\");} ");
+
+  AssertFatal(oai_args.ip != NULL , "Please, specify the IP address of the nearRT-RIC in the config file, i.e., e2_agent = {near_ric_ip_addr = \"127.0.0.1\"; sm_dir = \"/usr/local/lib/flexric/\"");
+
+  printf("After RCconfig_NR_E2agent %s %s \n",oai_args.sm_dir, oai_args.ip  );
+
+  fr_args_t args = { .ip = oai_args.ip }; // init_fr_args(0, NULL);
+  memcpy(args.libs_dir, oai_args.sm_dir, 128);
+
+  sleep(1);
+  const gNB_RRC_INST* rrc = RC.nrrrc[0];
+  assert(rrc != NULL && "rrc cannot be NULL");
+
+  const int mcc = rrc->configuration.mcc[0];
+  const int mnc = rrc->configuration.mnc[0];
+  const int mnc_digit_len = rrc->configuration.mnc_digit_length[0];
+  // const ngran_node_t node_type = rrc->node_type;
+  int nb_id = 0;
+  int cu_du_id = 0;
+  if (node_type == ngran_gNB) {
+    nb_id = rrc->configuration.cell_identity;
+  } else if (node_type == ngran_gNB_DU) {
+    cu_du_id = rrc->node_id + 1; // Hack to avoid been 0
+    nb_id = rrc->configuration.cell_identity;
+  } else if (node_type == ngran_gNB_CU) {
+    cu_du_id = rrc->node_id + 1;
+    nb_id = rrc->configuration.cell_identity;
+  } else {
+    LOG_E(NR_RRC, "not supported ran type detect\n");
+  }
+     
+  printf("[E2 NODE]: mcc = %d mnc = %d mnc_digit = %d nb_id = %d \n", mcc, mnc, mnc_digit_len, nb_id);
+
+  printf("[E2 NODE]: Args %s %s \n", args.ip, args.libs_dir);
+  init_agent_api(mcc, mnc, mnc_digit_len, nb_id, cu_du_id, node_type, io, &args);
+//   }
+
+#endif // E2_AGENT
+
+
   if (NFAPI_MODE==NFAPI_MODE_PNF) {
     wait_nfapi_init("main?");
   }
+
+  // wait for F1 Setup Response before starting L1 for real
+  if (NODE_IS_DU(node_type) || NODE_IS_MONOLITHIC(node_type))
+    wait_f1_setup_response();
+
+  if (RC.nb_RU > 0)
+    start_NR_RU();
 
   if (RC.nb_nr_L1_inst > 0) {
     printf("wait RUs\n");
@@ -863,7 +928,7 @@ int main( int argc, char **argv ) {
   // wait for end of program
   printf("Entering ITTI signals handler\n");
   printf("TYPE <CTRL-C> TO TERMINATE\n");
-  itti_wait_tasks_end();
+  itti_wait_tasks_end(NULL);
   printf("Returned from ITTI signal handler\n");
   oai_exit=1;
   printf("oai_exit=%d\n",oai_exit);

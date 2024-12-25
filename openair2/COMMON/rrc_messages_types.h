@@ -69,12 +69,11 @@
 
 #define NBIOTRRC_CONFIGURATION_REQ(mSGpTR)   (mSGpTR)->ittiMsg.nbiotrrc_configuration_req
 
-#define NRRRC_CONFIGURATION_REQ(mSGpTR)   (mSGpTR)->ittiMsg.nrrrc_configuration_req
-
 #define NAS_KENB_REFRESH_REQ(mSGpTR)    (mSGpTR)->ittiMsg.nas_kenb_refresh_req
 #define NAS_CELL_SELECTION_REQ(mSGpTR)  (mSGpTR)->ittiMsg.nas_cell_selection_req
 #define NAS_CONN_ESTABLI_REQ(mSGpTR)    (mSGpTR)->ittiMsg.nas_conn_establi_req
 #define NAS_UPLINK_DATA_REQ(mSGpTR)     (mSGpTR)->ittiMsg.nas_ul_data_req
+#define NAS_DEREGISTRATION_REQ(mSGpTR)  (mSGpTR)->ittiMsg.nas_deregistration_req
 
 #define NAS_RAB_ESTABLI_RSP(mSGpTR)     (mSGpTR)->ittiMsg.nas_rab_est_rsp
 
@@ -87,6 +86,7 @@
 #define NAS_DOWNLINK_DATA_IND(mSGpTR)   (mSGpTR)->ittiMsg.nas_dl_data_ind
 
 #define RRC_SUBFRAME_PROCESS(mSGpTR)    (mSGpTR)->ittiMsg.rrc_subframe_process
+#define NRRRC_FRAME_PROCESS(mSGpTR)     (mSGpTR)->ittiMsg.nr_rrc_frame_process
 
 #define RLC_SDU_INDICATION(mSGpTR)      (mSGpTR)->ittiMsg.rlc_sdu_indication
 #define NRDuDlReq(mSGpTR)      (mSGpTR)->ittiMsg.nr_du_dl_req
@@ -401,12 +401,6 @@ typedef struct NbIoTRrcConfigurationReq_s {
   long                    ue_TimersAndConstants_n311_NB;
 } NbIoTRrcConfigurationReq;
 
-typedef struct {
-  int N1;
-  int N2;
-  int XP;
-} rrc_pdsch_AntennaPorts_t;
-
 // gNB: GNB_APP -> RRC messages
 typedef struct NRRrcConfigurationReq_s {
   uint64_t                cell_identity;
@@ -415,17 +409,7 @@ typedef struct NRRrcConfigurationReq_s {
   uint16_t                mnc[PLMN_LIST_MAX_SIZE];
   uint8_t                 mnc_digit_length[PLMN_LIST_MAX_SIZE];
   uint8_t                 num_plmn;
-  NR_ServingCellConfigCommon_t *scc;
-  NR_ServingCellConfig_t  *scd;
-  int                     sib1_tda;
-  rrc_pdsch_AntennaPorts_t pdsch_AntennaPorts;
-  int                     pusch_AntennaPorts;
-  int                     minRXTXTIME;
-  int                     do_CSIRS;
-  int                     do_SRS;
-  bool                    force_256qam_off;
-  int                     pusch_TargetSNRx10;
-  int                     pucch_TargetSNRx10;
+
   bool                    enable_sdap;
   int                     drbs;
 } gNB_RrcConfigurationReq;
@@ -441,6 +425,7 @@ typedef kenb_refresh_req_t      NasKenbRefreshReq;
 typedef cell_info_req_t         NasCellSelectionReq;
 typedef nas_establish_req_t     NasConnEstabliReq;
 typedef ul_info_transfer_req_t  NasUlDataReq;
+typedef nas_deregistration_req_t NasDeregistrationReq;
 
 typedef rab_establish_rsp_t     NasRabEstRsp;
 
@@ -458,8 +443,13 @@ typedef dl_info_transfer_ind_t  NasDlDataInd;
 // eNB: realtime -> RRC messages
 typedef struct rrc_subframe_process_s {
   protocol_ctxt_t ctxt;
-  int             CC_id;
+  int CC_id;
 } RrcSubframeProcess;
+
+typedef struct nrrrc_frame_process_s {
+  int frame;
+  int gnb_id;
+} NRRrcFrameProcess;
 
 // eNB: RLC -> RRC messages
 typedef struct rlc_sdu_indication_s {

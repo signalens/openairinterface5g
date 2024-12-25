@@ -49,9 +49,9 @@ static void nr_polar_delete_list(t_nrPolar_params * polarParams) {
   
   delete_decoder_tree(polarParams);
   //From build_polar_tables()
-  for (int k=0; k < polarParams->K + polarParams->n_pc; k++)
-    if (polarParams->G_N_tab[k]) 
-      free(polarParams->G_N_tab[k]);
+  for (int n=0; n < polarParams->N; n++)
+    if (polarParams->G_N_tab[n])
+      free(polarParams->G_N_tab[n]);
   free(polarParams->G_N_tab);
   free(polarParams->rm_tab);
   if (polarParams->crc_generator_matrix)
@@ -71,6 +71,7 @@ static void nr_polar_delete_list(t_nrPolar_params * polarParams) {
   free(polarParams->deinterleaving_pattern);
   free(polarParams->rate_matching_pattern);
   free(polarParams->information_bit_pattern);
+  free(polarParams->parity_check_bit_pattern);
   free(polarParams->Q_I_N);
   free(polarParams->Q_F_N);
   free(polarParams->Q_PC_N);
@@ -85,10 +86,8 @@ static void nr_polar_delete(void) {
   pthread_mutex_unlock(&PolarListMutex);  
 }
 
-t_nrPolar_params * nr_polar_params(int8_t messageType,
-                          uint16_t messageLength,
-                          uint8_t aggregation_level,
-			  int decoder_flag) {
+t_nrPolar_params *nr_polar_params(int8_t messageType, uint16_t messageLength, uint8_t aggregation_level, int decoder_flag)
+{
   // The lock is weak, because we never delete in the list, only at exit time
   // therefore, returning t_nrPolar_params * from the list is safe for future usage
   pthread_mutex_lock(&PolarListMutex);
@@ -123,8 +122,8 @@ t_nrPolar_params * nr_polar_params(int8_t messageType,
   newPolarInitNode->idx = PolarKey;
   newPolarInitNode->nextPtr = NULL;
   //printf("newPolarInitNode->idx %d, (%d,%d,%d:%d)\n",newPolarInitNode->idx,messageType,messageLength,aggregation_prime,aggregation_level);
-  
-  if (messageType == 0) { //PBCH
+
+  if (messageType == NR_POLAR_PBCH_MESSAGE_TYPE) {
     newPolarInitNode->n_max = NR_POLAR_PBCH_N_MAX;
     newPolarInitNode->i_il = NR_POLAR_PBCH_I_IL;
     newPolarInitNode->i_seg = NR_POLAR_PBCH_I_SEG;
@@ -135,9 +134,10 @@ t_nrPolar_params * nr_polar_params(int8_t messageType,
     newPolarInitNode->payloadBits = NR_POLAR_PBCH_PAYLOAD_BITS;
     newPolarInitNode->encoderLength = NR_POLAR_PBCH_E;
     newPolarInitNode->crcCorrectionBits = NR_POLAR_PBCH_CRC_ERROR_CORRECTION_BITS;
-    newPolarInitNode->crc_generator_matrix = crc24c_generator_matrix(newPolarInitNode->payloadBits);//G_P
+    newPolarInitNode->crc_generator_matrix = crc24c_generator_matrix(newPolarInitNode->payloadBits); // G_P
     //printf("Initializing polar parameters for PBCH (K %d, E %d)\n",newPolarInitNode->payloadBits,newPolarInitNode->encoderLength);
-  } else if (messageType == 1) { //DCI
+
+  } else if (messageType == NR_POLAR_DCI_MESSAGE_TYPE) {
     newPolarInitNode->n_max = NR_POLAR_DCI_N_MAX;
     newPolarInitNode->i_il = NR_POLAR_DCI_I_IL;
     newPolarInitNode->i_seg = NR_POLAR_DCI_I_SEG;
@@ -146,40 +146,55 @@ t_nrPolar_params * nr_polar_params(int8_t messageType,
     newPolarInitNode->i_bil = NR_POLAR_DCI_I_BIL;
     newPolarInitNode->crcParityBits = NR_POLAR_DCI_CRC_PARITY_BITS;
     newPolarInitNode->payloadBits = messageLength;
-    newPolarInitNode->encoderLength = aggregation_level*108;
+    newPolarInitNode->encoderLength = aggregation_level * 108;
     newPolarInitNode->crcCorrectionBits = NR_POLAR_DCI_CRC_ERROR_CORRECTION_BITS;
-    newPolarInitNode->crc_generator_matrix=crc24c_generator_matrix(newPolarInitNode->payloadBits+newPolarInitNode->crcParityBits);//G_P
+    newPolarInitNode->crc_generator_matrix = crc24c_generator_matrix(newPolarInitNode->payloadBits + newPolarInitNode->crcParityBits); // G_P
     //printf("Initializing polar parameters for DCI (K %d, E %d, L %d)\n",newPolarInitNode->payloadBits,newPolarInitNode->encoderLength,aggregation_level);
-  } else if (messageType == 2) { //UCI PUCCH2
-    AssertFatal(aggregation_level>2,"Aggregation level (%d) for PUCCH 2 encoding is NPRB and should be > 2\n",aggregation_level);
-    AssertFatal(messageLength>11,"Message length %d is too short for polar encoding of UCI\n",messageLength);
-    newPolarInitNode->n_max = NR_POLAR_PUCCH_N_MAX;
-    newPolarInitNode->i_il = NR_POLAR_PUCCH_I_IL;
+
+  } else if (messageType == NR_POLAR_UCI_PUCCH_MESSAGE_TYPE) {
+    AssertFatal(aggregation_level > 2, "Aggregation level (%d) for PUCCH 2 encoding is NPRB and should be > 2\n", aggregation_level);
+    AssertFatal(messageLength > 11, "Message length %d is too short for polar encoding of UCI\n", messageLength);
+
+    // TS 38.212 - Section 6.3.1.2.1 UCI encoded by Polar code
+    int L = 0;
+    if (messageLength >= 12 && messageLength <= 19) {
+      L = 6;
+    } else if (messageLength >= 20) {
+      L = 11;
+    } else {
+      AssertFatal(1 == 0, "L = %i is an invalid value\n", L);
+    }
     newPolarInitNode->encoderLength = aggregation_level * 16;
-
     newPolarInitNode->i_seg = 0;
-      
-    if ((messageLength >= 360 && newPolarInitNode->encoderLength >= 1088)||
-        (messageLength >= 1013)) newPolarInitNode->i_seg = 1;
-
-    newPolarInitNode->crcParityBits = 11;
-    newPolarInitNode->n_pc = 0;
-    newPolarInitNode->n_pc_wm = 0;
-
-    if (messageLength < 20) {
-      newPolarInitNode->crcParityBits = 6;
-      newPolarInitNode->n_pc = 3;
-      if ((newPolarInitNode->encoderLength - messageLength - 6 + 3) < 193) newPolarInitNode->n_pc_wm = 1; 
+    if ((messageLength >= 360 && newPolarInitNode->encoderLength >= 1088) || (messageLength >= 1013)) {
+      newPolarInitNode->i_seg = 1;
+      AssertFatal(1 == 0, "Segmentation is not supported yet (i_seg = %i)\n", newPolarInitNode->i_seg);
     }
 
-
+    // TS 38.212 - Section 6.3.1.3.1 UCI encoded by Polar code
+    newPolarInitNode->n_max = NR_POLAR_PUCCH_N_MAX;
+    newPolarInitNode->i_il = NR_POLAR_PUCCH_I_IL;
+    newPolarInitNode->crcParityBits = L;
+    int Kr = messageLength + L;
+    if (Kr >= 18 && Kr <= 25) {
+      newPolarInitNode->n_pc = 3;
+      if ((newPolarInitNode->encoderLength - Kr + 3) > 192) {
+        newPolarInitNode->n_pc_wm = 1;
+      } else {
+        newPolarInitNode->n_pc_wm = 0;
+      }
+    } else if (Kr > 30) {
+      newPolarInitNode->n_pc = 0;
+      newPolarInitNode->n_pc_wm = 0;
+    } else {
+      AssertFatal(1 == 0, "Kr = %i is an invalid value\n", Kr);
+    }
 
     newPolarInitNode->i_bil = NR_POLAR_PUCCH_I_BIL;
-
     newPolarInitNode->payloadBits = messageLength;
     newPolarInitNode->crcCorrectionBits = NR_POLAR_PUCCH_CRC_ERROR_CORRECTION_BITS;
-    //newPolarInitNode->crc_generator_matrix=crc24c_generator_matrix(newPolarInitNode->payloadBits+newPolarInitNode->crcParityBits);//G_P
     //LOG_D(PHY,"New polar node, encoderLength %d, aggregation_level %d\n",newPolarInitNode->encoderLength,aggregation_level);
+
   } else {
     AssertFatal(1 == 0, "[nr_polar_init] Incorrect Message Type(%d)", messageType);
   }
@@ -220,6 +235,7 @@ t_nrPolar_params * nr_polar_params(int8_t messageType,
                                  newPolarInitNode->N,
                                  newPolarInitNode->encoderLength);
   newPolarInitNode->information_bit_pattern = malloc(sizeof(uint8_t) * newPolarInitNode->N);
+  newPolarInitNode->parity_check_bit_pattern = malloc(sizeof(uint8_t) * newPolarInitNode->N);
   newPolarInitNode->Q_I_N = malloc(sizeof(int16_t) * (newPolarInitNode->K + newPolarInitNode->n_pc));
   newPolarInitNode->Q_F_N = malloc( sizeof(int16_t) * (newPolarInitNode->N + 1)); // Last element shows the final array index assigned a value.
   newPolarInitNode->Q_PC_N = malloc( sizeof(int16_t) * (newPolarInitNode->n_pc));
@@ -228,14 +244,18 @@ t_nrPolar_params * nr_polar_params(int8_t messageType,
     newPolarInitNode->Q_F_N[i] = -1; // Empty array.
 
   nr_polar_info_bit_pattern(newPolarInitNode->information_bit_pattern,
+                            newPolarInitNode->parity_check_bit_pattern,
                             newPolarInitNode->Q_I_N,
                             newPolarInitNode->Q_F_N,
+                            newPolarInitNode->Q_PC_N,
                             J,
                             newPolarInitNode->Q_0_Nminus1,
                             newPolarInitNode->K,
                             newPolarInitNode->N,
                             newPolarInitNode->encoderLength,
-                            newPolarInitNode->n_pc);
+                            newPolarInitNode->n_pc,
+                            newPolarInitNode->n_pc_wm);
+
   // sort the Q_I_N array in ascending order (first K positions)
   qsort((void *)newPolarInitNode->Q_I_N,newPolarInitNode->K,sizeof(int16_t),intcmp);
   newPolarInitNode->channel_interleaver_pattern = malloc(sizeof(uint16_t) * newPolarInitNode->encoderLength);

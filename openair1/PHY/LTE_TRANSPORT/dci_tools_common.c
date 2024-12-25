@@ -40,8 +40,7 @@
 #include "transport_common_proto.h"
 #include "SCHED/sched_common.h"
 //#define DEBUG_HARQ
-
-
+#include "openair1/PHY/LTE_TRANSPORT/dci_tools_common_extern.h"
 
 //#define DEBUG_DCI
 
@@ -97,70 +96,6 @@ uint32_t distRIV2alloc_gap1_odd_LUT100_3[6000];
 uint16_t RIV2nb_rb_LUT100[6000];
 uint16_t RIV2first_rb_LUT100[6000];
 uint16_t RIV_max100=0;
-
-
-extern uint32_t current_dlsch_cqi;
-
-// Table 8.6.3-3 36.213
-uint16_t beta_cqi[16] = {0,   //reserved
-                         0,   //reserved
-                         9,   //1.125
-                         10,  //1.250
-                         11,  //1.375
-                         13,  //1.625
-                         14,  //1.750
-                         16,  //2.000
-                         18,  //2.250
-                         20,  //2.500
-                         23,  //2.875
-                         25,  //3.125
-                         28,  //3.500
-                         32,  //4.000
-                         40,  //5.000
-                         50
-                        }; //6.250
-
-// Table 8.6.3-2 36.213
-uint16_t beta_ri[16] = {10,   //1.250
-                        13,   //1.625
-                        16,   //2.000
-                        20,   //2.500
-                        25,   //3.125
-                        32,   //4.000
-                        40,   //5.000
-                        50,   //6.250
-                        64,   //8.000
-                        80,   //10.000
-                        101,  //12.625
-                        127,  //15.875
-                        160,  //20.000
-                        0,    //reserved
-                        0,    //reserved
-                        0
-                       };   //reserved
-
-// Table 8.6.3-2 36.213
-uint16_t beta_ack[16] = {16,  //2.000
-                         20,  //2.500
-                         25,  //3.125
-                         32,  //4.000
-                         40,  //5.000
-                         50,  //6.250
-                         64,  //8.000
-                         80,  //10.000
-                         101, //12.625
-                         127, //15.875
-                         160, //20.000
-                         248, //31.000
-                         400, //50.000
-                         640, //80.000
-                         808
-                        };//126.00
-
-int8_t delta_PUSCH_abs[4] = {-4,-1,1,4};
-int8_t delta_PUSCH_acc[4] = {-1,0,1,3};
-
-int8_t *delta_PUCCH_lut = delta_PUSCH_acc;
 
 uint32_t check_phich_reg(LTE_DL_FRAME_PARMS *frame_parms,uint32_t kprime,uint8_t lprime,uint8_t mi)
 {
@@ -352,16 +287,16 @@ void conv_rballoc(uint8_t ra_header,uint32_t rb_alloc,uint32_t N_RB_DL,uint32_t 
     if (ra_header==0) {
 
       for (i=16; i>0; i--) {
-	if ((rb_alloc&(1<<i)) != 0)
-	  rb_alloc2[(3*(16-i))>>5] |= (7<<((3*(16-i))%32));
+        if ((rb_alloc & (1 << i)) != 0)
+          rb_alloc2[(3 * (16 - i)) >> 5] |= (7U << ((3 * (16 - i)) % 32));
       }
 
       // bit mask across
       if ((rb_alloc2[0]>>31)==1)
-	rb_alloc2[1] |= 1;
+        rb_alloc2[1] |= 1;
 
       if ((rb_alloc&1) != 0)
-	rb_alloc2[1] |= (3<<16);
+        rb_alloc2[1] |= (3 << 16);
     }
     else {
       LOG_W(PHY,"resource type 1 not supported for  N_RB_DL=50\n");
@@ -371,10 +306,10 @@ void conv_rballoc(uint8_t ra_header,uint32_t rb_alloc,uint32_t N_RB_DL,uint32_t 
   case 100:
     if (ra_header==0) {
       for (i=0; i<25; i++) {
-	if ((rb_alloc&(1<<(24-i))) != 0)
-	  rb_alloc2[(4*i)>>5] |= (0xf<<((4*i)%32));
+        if ((rb_alloc & (1 << (24 - i))) != 0)
+          rb_alloc2[(4 * i) >> 5] |= (0xfU << ((4 * i) % 32));
 
-	//  printf("rb_alloc2[%d] (type 0) %x (%d)\n",(4*i)>>5,rb_alloc2[(4*i)>>5],rb_alloc&(1<<i));
+        //  printf("rb_alloc2[%d] (type 0) %x (%d)\n",(4*i)>>5,rb_alloc2[(4*i)>>5],rb_alloc&(1<<i));
       }
     }
     else {
@@ -960,8 +895,8 @@ uint8_t subframe2harq_pid(LTE_DL_FRAME_PARMS *frame_parms,uint32_t frame,uint8_t
 
     case 2:
       if ((subframe!=2) && (subframe!=7)) {
-	LOG_E(PHY,"subframe2_harq_pid, Illegal subframe %d for TDD mode %d\n",subframe,frame_parms->tdd_config);
-	ret=255;
+        LOG_E(PHY, "subframe2_harq_pid, Illegal subframe %d for TDD mode %d\n", subframe, frame_parms->tdd_config);
+        ret = 255;
       }
       else ret = (subframe/7);
       break;
@@ -996,8 +931,7 @@ uint8_t subframe2harq_pid(LTE_DL_FRAME_PARMS *frame_parms,uint32_t frame,uint8_t
     }
   }
 
-  AssertFatal(ret!=255,
-	      "invalid harq_pid(%d) at SFN/SF = %d/%d\n", (int8_t)ret, frame, subframe);
+  AssertFatal(ret != 255, "invalid harq_pid(%u) at SFN/SF = %u/%u\n", ret, frame, subframe);
   return ret;
 }
 

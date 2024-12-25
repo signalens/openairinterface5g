@@ -39,6 +39,7 @@
 #include "assertions.h"
 
 #include "PHY/types.h"
+#include "pdcp.h"
 
 #include "PHY/defs_UE.h"
 #include "common/ran_context.h"
@@ -48,7 +49,7 @@
 //#undef FRAME_LENGTH_COMPLEX_SAMPLES //there are two conflicting definitions, so we better make sure we don't use it at all
 
 #include "radio/COMMON/common_lib.h"
-#include "radio/ETHERNET/USERSPACE/LIB/if_defs.h"
+#include "radio/ETHERNET/if_defs.h"
 
 //#undef FRAME_LENGTH_COMPLEX_SAMPLES //there are two conflicting definitions, so we better make sure we don't use it at all
 
@@ -131,9 +132,7 @@ double bw = 10.0e6;
 
 static int                      tx_max_power[MAX_NUM_CCs]; /* =  {0,0}*/;
 
-
 uint8_t dci_Format = 0;
-uint8_t agregation_Level =0xFF;
 
 uint8_t nb_antenna_tx = 1;
 uint8_t nb_antenna_rx = 1;
@@ -244,7 +243,7 @@ unsigned int build_rfdc(int dcoff_i_rxfe, int dcoff_q_rxfe) {
 }
 
 
-void exit_function(const char *file, const char *function, const int line, const char *s) {
+void exit_function(const char *file, const char *function, const int line, const char *s, const int assert) {
   int CC_id;
   logClean();
   printf("%s:%d %s() Exiting OAI softmodem: %s\n",file,line, function, ((s==NULL)?"":s));
@@ -258,12 +257,15 @@ void exit_function(const char *file, const char *function, const int line, const
             PHY_vars_UE_g[0][CC_id]->rfdevice.trx_end_func(&PHY_vars_UE_g[0][CC_id]->rfdevice);
   }
 
-  sleep(1); //allow lte-softmodem threads to exit first
-
   if(PHY_vars_UE_g != NULL )
     itti_terminate_tasks (TASK_UNKNOWN);
 
-  exit(1);
+  if (assert) {
+    abort();
+  } else {
+    sleep(1); // allow lte-softmodem threads to exit first
+    exit(EXIT_SUCCESS);
+  }
 }
 
 extern int16_t dlsch_demod_shift;
@@ -478,7 +480,7 @@ void init_openair0(LTE_DL_FRAME_PARMS *frame_parms,int rxgain) {
 void terminate_task(task_id_t task_id, module_id_t mod_id) {
   LOG_I(ENB_APP, "sending TERMINATE_MESSAGE to task %s (%d)\n", itti_get_task_name(task_id), task_id);
   MessageDef *msg;
-  msg = itti_alloc_new_message (ENB_APP, 0, TERMINATE_MESSAGE);
+  msg = itti_alloc_new_message (TASK_ENB_APP, 0, TERMINATE_MESSAGE);
   itti_send_msg_to_task (task_id, ENB_MODULE_ID_TO_INSTANCE(mod_id), msg);
 }
 
@@ -695,7 +697,7 @@ int main( int argc, char **argv ) {
   printf("TYPE <CTRL-C> TO TERMINATE\n");
   //getchar();
   printf("Entering ITTI signals handler\n");
-  itti_wait_tasks_end();
+  itti_wait_tasks_end(NULL);
   printf("Returned from ITTI signal handler\n");
   oai_exit=1;
   printf("oai_exit=%d\n",oai_exit);
@@ -742,7 +744,7 @@ void init_bler_table(void)
   for (unsigned int i = 0; i < NUM_MCS; i++)
   {
     char fName[1024];
-    snprintf(fName, sizeof(fName), "%s/openair1/SIMULATION/LTE_PHY/BLER_SIMULATIONS/AWGN/AWGN_results/bler_tx1_chan18_nrx1_mcs%d.csv", openair_dir, i);
+    snprintf(fName, sizeof(fName), "%s/openair1/SIMULATION/LTE_PHY/BLER_SIMULATIONS/AWGN/AWGN_results/bler_tx1_chan18_nrx1_mcs%u.csv", openair_dir, i);
     FILE *pFile = fopen(fName, "r");
     if (!pFile)
     {

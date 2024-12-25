@@ -38,6 +38,11 @@
 
 static  loader_shlibfunc_t scope_fdesc[]= {{"end_forms",NULL}};
 
+int copyDataMutexInit(scopeData_t *p)
+{
+  return pthread_mutex_init(&p->copyDataMutex, NULL);
+}
+
 int load_softscope(char *exectype, void *initarg) {
   char libname[64];
   sprintf(libname,"%.10sscope",exectype);
@@ -53,43 +58,44 @@ int end_forms(void) {
   return -1;
 }
 
-void UEcopyData(PHY_VARS_NR_UE *ue, enum UEdataType type, void *dataIn, int elementSz, int colSz, int lineSz) {
-  // Local static copy of the scope data bufs
-  // The active data buf is alterned to avoid interference between the Scope thread (display) and the Rx thread (data input)
-  // Index of "2" could be set to the number of Rx threads + 1
-  static scopeGraphData_t *copyDataBufs[UEdataTypeNumberOfItems][2] = {0};
-  static int  copyDataBufsIdx[UEdataTypeNumberOfItems] = {0};
-
-  scopeData_t *tmp = (scopeData_t *)ue->scopeData;
+void copyData(void *scopeData, enum scopeDataType type, void *dataIn, int elementSz, int colSz, int lineSz, int offset)
+{
+  scopeData_t *tmp = (scopeData_t *)scopeData;
 
   if (tmp) {
-    // Begin of critical zone between UE Rx threads that might copy new data at the same time: might require a mutex
-    int newCopyDataIdx = (copyDataBufsIdx[type]==0)?1:0;
-    copyDataBufsIdx[type] = newCopyDataIdx;
+    // Begin of critical zone between UE Rx threads that might copy new data at the same time:
+    pthread_mutex_lock(&tmp->copyDataMutex);
+    scopeGraphData_t *oldData = ((scopeGraphData_t **)tmp->liveData)[type];
+    tmp->copyDataBufsIdx[type] = (tmp->copyDataBufsIdx[type] + 1) % COPIES_MEM;
+    int newCopyDataIdx = tmp->copyDataBufsIdx[type];
+    pthread_mutex_unlock(&tmp->copyDataMutex);
     // End of critical zone between UE Rx threads
-
+    int oldDataSz = oldData ? oldData->dataSize : 0;
+    int newSz = max(elementSz * colSz * (lineSz + offset), oldDataSz);
     // New data will be copied in a different buffer than the live one
-    scopeGraphData_t *copyData = copyDataBufs[type][newCopyDataIdx];
-
-    if (copyData == NULL || copyData->dataSize < elementSz*colSz*lineSz) {
-      scopeGraphData_t *ptr = (scopeGraphData_t*) realloc(copyData, sizeof(scopeGraphData_t) + elementSz*colSz*lineSz);
-
+    scopeGraphData_t *newData = tmp->copyDataBufs[type][newCopyDataIdx];
+    if (newData == NULL || newData->dataSize < newSz) {
+      scopeGraphData_t *ptr = (scopeGraphData_t *)realloc(newData, sizeof(scopeGraphData_t) + newSz);
       if (!ptr) {
-        LOG_E(PHY,"can't realloc\n");
+        LOG_E(PHY, "can't realloc\n");
         return;
       } else {
-        copyData = ptr;
+        tmp->copyDataBufs[type][newCopyDataIdx] = ptr;
+        if (!newData) // we have a new malloc
+          *ptr = (scopeGraphData_t){0};
+        newData = ptr;
+        newData->dataSize = newSz;
       }
     }
+    if (offset && oldDataSz) // we copy the previous buffer because we have as input only a part of
+      memcpy(newData + 1, oldData + 1, oldDataSz);
 
-    copyData->dataSize = elementSz*colSz*lineSz;
-    copyData->elementSz = elementSz;
-    copyData->colSz = colSz;
-    copyData->lineSz = lineSz;
-    memcpy(copyData+1, dataIn,  elementSz*colSz*lineSz);
-    copyDataBufs[type][newCopyDataIdx] = copyData;
+    newData->elementSz = elementSz;
+    newData->colSz = colSz;
+    newData->lineSz = lineSz + offset;
+    memcpy(((void *)(newData + 1)) + elementSz * colSz * offset, dataIn, elementSz * colSz * lineSz);
 
-    // The new data just copied in the local static buffer becomes live now
-    ((scopeGraphData_t **)tmp->liveData)[type] = copyData;
+    // The new data just copied becomes live now
+    ((scopeGraphData_t **)tmp->liveData)[type] = newData;
   }
 }

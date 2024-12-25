@@ -47,15 +47,18 @@ int nr_pusch_channel_estimation(PHY_VARS_gNB *gNB,
                                 int ul_id,
                                 unsigned short bwp_start_subcarrier,
                                 nfapi_nr_pusch_pdu_t *pusch_pdu,
-                                int *max_ch);
+                                int *max_ch,
+                                uint32_t *nvar);
 
 void dump_nr_I0_stats(FILE *fd,PHY_VARS_gNB *gNB);
 
 void gNB_I0_measurements(PHY_VARS_gNB *gNB,int slot,int first_symb,int num_symb);
 
-void nr_gnb_measurements(PHY_VARS_gNB *gNB, uint8_t ulsch_id, unsigned char harq_pid, unsigned char symbol, uint8_t nrOfLayers);
-
-int nr_est_timing_advance_pusch(PHY_VARS_gNB* phy_vars_gNB, int UE_id);
+void nr_gnb_measurements(PHY_VARS_gNB *gNB,
+                         NR_gNB_ULSCH_t *ulsch,
+                         NR_gNB_PUSCH *pusch_vars,
+                         unsigned char symbol,
+                         uint8_t nrOfLayers);
 
 int nr_est_timing_advance_srs(const NR_DL_FRAME_PARMS *frame_parms,
                               const int32_t srs_estimated_channel_time[][frame_parms->ofdm_symbol_size]);
@@ -80,4 +83,15 @@ int nr_srs_channel_estimation(const PHY_VARS_gNB *gNB,
                               int32_t srs_estimated_channel_time_shifted[][1<<srs_pdu->num_ant_ports][gNB->frame_parms.ofdm_symbol_size],
                               int8_t *snr_per_rb,
                               int8_t *snr);
+
+void nr_freq_equalization(NR_DL_FRAME_PARMS *frame_parms,
+                          int *rxdataF_comp,
+                          int *ul_ch_mag,
+                          int *ul_ch_mag_b,
+                          unsigned char symbol,
+                          unsigned short Msc_RS,
+                          unsigned char Qm);
+
+void nr_init_fde(void);
+
 #endif

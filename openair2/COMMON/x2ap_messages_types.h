@@ -22,6 +22,8 @@
 #ifndef X2AP_MESSAGES_TYPES_H_
 #define X2AP_MESSAGES_TYPES_H_
 
+#include <netinet/in.h>
+#include <netinet/sctp.h>
 #include "s1ap_messages_types.h"
 #include "LTE_PhysCellId.h"
 
@@ -174,6 +176,9 @@ typedef struct x2ap_register_enb_req_s {
 
 typedef struct x2ap_subframe_process_s {
   /* nothing, we simply use the module ID in the header */
+  // This dummy element is to avoid CLANG warning: empty struct has size 0 in C, size 1 in C++
+  // To be removed if the structure is filled
+  uint32_t dummy;
 } x2ap_subframe_process_t;
 
 //-------------------------------------------------------------------------------------------//
@@ -422,7 +427,7 @@ typedef struct x2ap_ENDC_reconf_complete_s {
 typedef struct x2ap_ENDC_sgnb_release_request_s {
   int          rnti;
   x2ap_cause_t cause;
-  int          assoc_id;
+  sctp_assoc_t assoc_id;
 } x2ap_ENDC_sgnb_release_request_t;
 
 typedef struct x2ap_ENDC_sgnb_release_required_s {

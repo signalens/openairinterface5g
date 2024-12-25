@@ -52,6 +52,7 @@
 #include "common/utils/LOG/log.h"
 
 #include "PHY/INIT/phy_init.h"
+#include "PHY/INIT/nr_phy_init.h"
 #include "PHY/LTE_TRANSPORT/transport_proto.h"
 #include "openair2/LAYER2/NR_MAC_gNB/mac_proto.h"
 #include "openair1/SCHED_NR/fapi_nr_l1.h"
@@ -82,7 +83,6 @@ nfapi_nr_pdu_t *tx_data_request[1023][20][10]; //[frame][slot][max_num_pdus]
 uint8_t tx_pdus[32][8][4096];
 
 nfapi_ue_release_request_body_t release_rntis;
-uint16_t phy_antenna_capability_values[] = { 1, 2, 4, 8, 16 };
 
 nfapi_nr_pnf_param_response_t g_pnf_param_resp;
 
@@ -250,7 +250,8 @@ void *pnf_nr_p7_thread_start(void *ptr) {
   return 0;
 }
 
-int pnf_nr_param_request(nfapi_pnf_config_t *config, nfapi_nr_pnf_param_request_t *req) {
+int pnf_nr_param_request(nfapi_pnf_config_t *config, nfapi_nr_pnf_param_request_t *req)
+{
   printf("[PNF] pnf param request\n");
   nfapi_nr_pnf_param_response_t resp;
   memset(&resp, 0, sizeof(resp));
@@ -271,10 +272,11 @@ int pnf_nr_param_request(nfapi_pnf_config_t *config, nfapi_nr_pnf_param_request_
   resp.pnf_param_general.shared_bands = pnf->shared_bands;
   resp.pnf_param_general.shared_pa = pnf->shared_pa;
   resp.pnf_param_general.maximum_total_power = pnf->max_total_power;
+  resp.num_tlvs = 1;
   resp.pnf_phy.tl.tag = NFAPI_PNF_PHY_TAG;
   resp.pnf_phy.number_of_phys = 1;
 
-  for(int i = 0; i < 1; ++i) {
+  for (int i = 0; i < 1; ++i) {
     resp.pnf_phy.phy[i].phy_config_index = pnf->phys[i].index;
     resp.pnf_phy.phy[i].downlink_channel_bandwidth_supported = pnf->phys[i].dl_channel_bw_support;
     resp.pnf_phy.phy[i].uplink_channel_bandwidth_supported = pnf->phys[i].ul_channel_bw_support;
@@ -284,20 +286,20 @@ int pnf_nr_param_request(nfapi_pnf_config_t *config, nfapi_nr_pnf_param_request_
     resp.pnf_phy.phy[i].nmm_modes_supported = pnf->phys[i].nmm_modes_supported;
     resp.pnf_phy.phy[i].number_of_rfs = 2;
 
-    for(int j = 0; j < 1; ++j) {
+    for (int j = 0; j < 1; ++j) {
       resp.pnf_phy.phy[i].rf_config[j].rf_config_index = pnf->phys[i].rfs[j];
     }
 
     resp.pnf_phy.phy[i].number_of_rf_exclusions = 0;
 
-    for(int j = 0; j < 0; ++j) {
+    for (int j = 0; j < 0; ++j) {
       resp.pnf_phy.phy[i].excluded_rf_config[j].rf_config_index = pnf->phys[i].excluded_rfs[j];
     }
+    resp.num_tlvs++;
   }
   nfapi_nr_pnf_pnf_param_resp(config, &resp);
   return 0;
 }
-
 
 int pnf_param_request(nfapi_pnf_config_t *config, nfapi_pnf_param_request_t *req) {
   printf("[PNF] pnf param request\n");
@@ -495,7 +497,7 @@ void nfapi_nr_send_pnf_start_resp(nfapi_pnf_config_t *config, uint16_t phy_id) {
   memset(&start_resp, 0, sizeof(start_resp));
   start_resp.header.message_id = NFAPI_NR_PHY_MSG_TYPE_START_RESPONSE;
   start_resp.header.phy_id = phy_id;
-  start_resp.error_code = NFAPI_MSG_OK;
+  start_resp.error_code = NFAPI_NR_START_MSG_OK;
   nfapi_nr_pnf_start_resp(config, &start_resp);
 }
 
@@ -879,7 +881,6 @@ int config_request(nfapi_pnf_config_t *config, nfapi_pnf_phy_config_t *phy, nfap
 
   if (req->sch_config.physical_cell_id.tl.tag == NFAPI_SCH_CONFIG_PHYSICAL_CELL_ID_TAG) {
     fp->Nid_cell = req->sch_config.physical_cell_id.value;
-    fp->nushift = fp->Nid_cell%6;
     num_tlv++;
   }
 
@@ -990,33 +991,35 @@ int config_request(nfapi_pnf_config_t *config, nfapi_pnf_phy_config_t *phy, nfap
   return 0;
 }
 
-int nr_config_request(nfapi_pnf_config_t *config, nfapi_pnf_phy_config_t *phy, nfapi_nr_config_request_scf_t *req) 
+int nr_config_request(nfapi_pnf_config_t *config, nfapi_pnf_phy_config_t *phy, nfapi_nr_config_request_scf_t *req)
 {
   printf("[PNF] Received NFAPI_CONFIG_REQ phy_id:%d\n", req->header.phy_id);
   pnf_info *pnf = (pnf_info *)(config->user_data);
   uint8_t num_tlv = 0;
-  //struct PHY_VARS_eNB_s *eNB = RC.eNB[0][0];
-  //  In the case of nfapi_mode = 3 (UE = PNF) we should not have dependency on any eNB var. So we aim
-  // to keep only the necessary just to keep the nfapi FSM rolling by sending a dummy response.
+  // struct PHY_VARS_eNB_s *eNB = RC.eNB[0][0];
+  //   In the case of nfapi_mode = 3 (UE = PNF) we should not have dependency on any eNB var. So we aim
+  //  to keep only the necessary just to keep the nfapi FSM rolling by sending a dummy response.
   NR_DL_FRAME_PARMS *fp;
 
-  if (NFAPI_MODE!=NFAPI_UE_STUB_PNF) {
+  if (NFAPI_MODE != NFAPI_UE_STUB_PNF) {
     struct PHY_VARS_gNB_s *gNB = RC.gNB[0];
     fp = &gNB->frame_parms;
   } else {
-    fp = (NR_DL_FRAME_PARMS *) malloc(sizeof(NR_DL_FRAME_PARMS));
+    fp = (NR_DL_FRAME_PARMS *)malloc(sizeof(NR_DL_FRAME_PARMS));
   }
 
   phy_info *phy_info = pnf->phys;
 
-  printf("\nTiming window tag: %d\n",NFAPI_NR_NFAPI_TIMING_WINDOW_TAG);
-  if(req->nfapi_config.timing_window.tl.tag == NFAPI_NR_NFAPI_TIMING_WINDOW_TAG) {
+  printf("\nTiming window tag: %d\n", NFAPI_NR_NFAPI_TIMING_WINDOW_TAG);
+  if (req->nfapi_config.timing_window.tl.tag == NFAPI_NR_NFAPI_TIMING_WINDOW_TAG) {
     phy_info->timing_window = req->nfapi_config.timing_window.value;
-    printf("Phy_info:Timing window:%u NFAPI_CONFIG:timing_window:%u\n", phy_info->timing_window, req->nfapi_config.timing_window.value);
+    printf("Phy_info:Timing window:%u NFAPI_CONFIG:timing_window:%u\n",
+           phy_info->timing_window,
+           req->nfapi_config.timing_window.value);
     num_tlv++;
   }
 
-  if(req->nfapi_config.timing_info_mode.tl.tag == NFAPI_NR_NFAPI_TIMING_INFO_MODE_TAG) {
+  if (req->nfapi_config.timing_info_mode.tl.tag == NFAPI_NR_NFAPI_TIMING_INFO_MODE_TAG) {
     printf("timing info mode:%d\n", req->nfapi_config.timing_info_mode.value);
     phy_info->timing_info_mode = req->nfapi_config.timing_info_mode.value;
     num_tlv++;
@@ -1024,8 +1027,8 @@ int nr_config_request(nfapi_pnf_config_t *config, nfapi_pnf_phy_config_t *phy, n
     phy_info->timing_info_mode = 0;
     printf("NO timing info mode provided\n");
   }
-  //TODO: Read the P7 message offset values
-  if(req->nfapi_config.timing_info_period.tl.tag == NFAPI_NR_NFAPI_TIMING_INFO_PERIOD_TAG) {
+  // TODO: Read the P7 message offset values
+  if (req->nfapi_config.timing_info_period.tl.tag == NFAPI_NR_NFAPI_TIMING_INFO_PERIOD_TAG) {
     printf("timing info period provided value:%d\n", req->nfapi_config.timing_info_period.value);
     phy_info->timing_info_period = req->nfapi_config.timing_info_period.value;
     num_tlv++;
@@ -1033,33 +1036,32 @@ int nr_config_request(nfapi_pnf_config_t *config, nfapi_pnf_phy_config_t *phy, n
     phy_info->timing_info_period = 0;
   }
 
-  if(req->carrier_config.dl_bandwidth.tl.tag == NFAPI_NR_CONFIG_DL_BANDWIDTH_TAG) {
-    phy_info->dl_channel_bw_support = req->carrier_config.dl_bandwidth.value; //rf_config.dl_channel_bandwidth.value;
-    fp->N_RB_DL = req->carrier_config.dl_bandwidth.value; //rf_config.dl_channel_bandwidth.value;
+  if (req->carrier_config.dl_bandwidth.tl.tag == NFAPI_NR_CONFIG_DL_BANDWIDTH_TAG) {
+    phy_info->dl_channel_bw_support = req->carrier_config.dl_bandwidth.value; // rf_config.dl_channel_bandwidth.value;
+    fp->N_RB_DL = req->carrier_config.dl_bandwidth.value; // rf_config.dl_channel_bandwidth.value;
     num_tlv++;
     NFAPI_TRACE(NFAPI_TRACE_ERROR, "%s() NFAPI_NR_CONFIG_DL_BANDWIDTH_TAG N_RB_DL:%u\n", __FUNCTION__, fp->N_RB_DL);
-  } else {            
+  } else {
     NFAPI_TRACE(NFAPI_TRACE_ERROR, "%s() Missing NFAPI_NR_CONFIG_DL_BANDWIDTH_TAG\n", __FUNCTION__);
   }
 
-  if(req->carrier_config.uplink_bandwidth.tl.tag == NFAPI_NR_CONFIG_UPLINK_BANDWIDTH_TAG) {
-    phy_info->ul_channel_bw_support = req->carrier_config.uplink_bandwidth.value; //req->rf_config.ul_channel_bandwidth.value;
-    fp->N_RB_UL = req->carrier_config.uplink_bandwidth.value; //req->rf_config.ul_channel_bandwidth.value;
+  if (req->carrier_config.uplink_bandwidth.tl.tag == NFAPI_NR_CONFIG_UPLINK_BANDWIDTH_TAG) {
+    phy_info->ul_channel_bw_support = req->carrier_config.uplink_bandwidth.value; // req->rf_config.ul_channel_bandwidth.value;
+    fp->N_RB_UL = req->carrier_config.uplink_bandwidth.value; // req->rf_config.ul_channel_bandwidth.value;
     num_tlv++;
   }
 
   if (req->cell_config.phy_cell_id.tl.tag == NFAPI_NR_CONFIG_PHY_CELL_ID_TAG) {
-    fp->Nid_cell = req->cell_config.phy_cell_id.value; //sch_config.physical_cell_id.value;
-    fp->nushift = fp->Nid_cell%6;
+    fp->Nid_cell = req->cell_config.phy_cell_id.value; // sch_config.physical_cell_id.value;
     num_tlv++;
   }
 
-  if(NFAPI_MODE!=NFAPI_UE_STUB_PNF) {
+  if (NFAPI_MODE != NFAPI_UE_STUB_PNF) {
     printf("[PNF] CONFIG_REQUEST[num_tlv:%d] TLVs processed:%d\n", req->num_tlv, num_tlv);
     printf("[PNF] Simulating PHY CONFIG\n");
     NR_PHY_Config_t nr_phy_config;
     nr_phy_config.Mod_id = 0;
-    nr_phy_config.CC_id=0;
+    nr_phy_config.CC_id = 0;
     nr_phy_config.cfg = req;
     nr_phy_config_request(&nr_phy_config);
     nr_dump_frame_parms(fp);
@@ -1068,19 +1070,28 @@ int nr_config_request(nfapi_pnf_config_t *config, nfapi_pnf_phy_config_t *phy, n
   struct sockaddr_in vnf_p7_sockaddr;
   memcpy(&vnf_p7_sockaddr.sin_addr.s_addr, &(req->nfapi_config.p7_vnf_address_ipv4.address[0]), 4);
   phy_info->remote_addr = inet_ntoa(vnf_p7_sockaddr.sin_addr);
-  printf("[PNF] %d vnf p7 %s:%d timing %d %d %d\n", phy_info->id, phy_info->remote_addr, phy_info->remote_port,
-         phy_info->timing_window, phy_info->timing_info_mode, phy_info->timing_info_period);
+  printf("[PNF] %d vnf p7 %s:%d timing %d %d %d\n",
+         phy_info->id,
+         phy_info->remote_addr,
+         phy_info->remote_port,
+         phy_info->timing_window,
+         phy_info->timing_info_mode,
+         phy_info->timing_info_period);
   nfapi_nr_config_response_scf_t nfapi_resp;
   memset(&nfapi_resp, 0, sizeof(nfapi_resp));
   nfapi_resp.header.message_id = NFAPI_NR_PHY_MSG_TYPE_CONFIG_RESPONSE;
   nfapi_resp.header.phy_id = phy_info->id;
   nfapi_resp.error_code = 0;
+  nfapi_resp.num_invalid_tlvs = 0;
+  nfapi_resp.num_invalid_tlvs_configured_in_idle = 0;
+  nfapi_resp.num_invalid_tlvs_configured_in_running = 0;
+  nfapi_resp.num_missing_tlvs = 0;
   nfapi_nr_pnf_config_resp(config, &nfapi_resp);
   printf("[PNF] Sent NFAPI_PNF_CONFIG_RESPONSE phy_id:%d\n", phy_info->id);
 
-  if(NFAPI_MODE==NFAPI_UE_STUB_PNF)
+  if (NFAPI_MODE == NFAPI_UE_STUB_PNF)
     free(fp);
- 
+
   return 0;
 }
 
@@ -1219,8 +1230,10 @@ int pnf_phy_dl_tti_req(gNB_L1_rxtx_proc_t *proc, nfapi_pnf_p7_config_t *pnf_p7, 
       if (tx_data != NULL) {
         uint8_t *dlsch_sdu = (uint8_t *)tx_data->TLVs[0].value.direct;
         //NFAPI_TRACE(NFAPI_TRACE_INFO, "%s() DLSCH:pdu_index:%d handle_nfapi_dlsch_pdu(eNB, proc_rxtx, dlsch_pdu, transport_blocks:%d sdu:%p) eNB->pdcch_vars[proc->subframe_tx & 1].num_pdcch_symbols:%d\n", __FUNCTION__, rel8_pdu->pdu_index, rel8_pdu->transport_blocks, dlsch_sdu, eNB->pdcch_vars[proc->subframe_tx & 1].num_pdcch_symbols);
-        AssertFatal(msgTx->num_pdsch_slot < NUMBER_OF_NR_DLSCH_MAX,"Number of PDSCH PDUs %d exceeded the limit %d\n",
-          msgTx->num_pdsch_slot, NUMBER_OF_NR_DLSCH_MAX);
+        AssertFatal(msgTx->num_pdsch_slot < gNB->max_nb_pdsch,
+                    "Number of PDSCH PDUs %d exceeded the limit %d\n",
+                    msgTx->num_pdsch_slot,
+                    gNB->max_nb_pdsch);
         handle_nr_nfapi_pdsch_pdu(msgTx, pdsch_pdu, dlsch_sdu);
       } 
       else {
@@ -2146,10 +2159,13 @@ void configure_nr_nfapi_pnf(char *vnf_ip_addr, int vnf_p5_port, char *pnf_ip_add
   pnf.phys[0].udp.tx_port = vnf_p7_port;
   strcpy(pnf.phys[0].udp.tx_addr, vnf_ip_addr);
   strcpy(pnf.phys[0].local_addr, pnf_ip_addr);
-  printf("%s() VNF:%s:%d PNF_PHY[addr:%s UDP:tx_addr:%s:%d rx:%d]\n",
-         __FUNCTION__,config->vnf_ip_addr, config->vnf_p5_port,
+  printf("%s() VNF:%s:%d PNF_PHY[addr:%s UDP:tx_addr:%s:%u rx:%u]\n",
+         __FUNCTION__,
+         config->vnf_ip_addr,
+         config->vnf_p5_port,
          pnf.phys[0].local_addr,
-         pnf.phys[0].udp.tx_addr, pnf.phys[0].udp.tx_port,
+         pnf.phys[0].udp.tx_addr,
+         pnf.phys[0].udp.tx_port,
          pnf.phys[0].udp.rx_port);
   config->cell_search_req = &cell_search_request;
          
@@ -2197,11 +2213,13 @@ void configure_nfapi_pnf(char *vnf_ip_addr, int vnf_p5_port, char *pnf_ip_addr, 
   pnf.phys[0].udp.tx_port = vnf_p7_port;
   strcpy(pnf.phys[0].udp.tx_addr, vnf_ip_addr);
   strcpy(pnf.phys[0].local_addr, pnf_ip_addr);
-  printf("%s() VNF:%s:%d PNF_PHY[addr:%s UDP:tx_addr:%s:%d rx:%d]\n",
+  printf("%s() VNF:%s:%d PNF_PHY[addr:%s UDP:tx_addr:%s:%u rx:%u]\n",
          __FUNCTION__,
-         config->vnf_ip_addr, config->vnf_p5_port,
+         config->vnf_ip_addr,
+         config->vnf_p5_port,
          pnf.phys[0].local_addr,
-         pnf.phys[0].udp.tx_addr, pnf.phys[0].udp.tx_port,
+         pnf.phys[0].udp.tx_addr,
+         pnf.phys[0].udp.tx_port,
          pnf.phys[0].udp.rx_port);
   config->pnf_param_req = &pnf_param_request;
   config->pnf_config_req = &pnf_config_request;

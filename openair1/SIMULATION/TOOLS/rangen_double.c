@@ -55,7 +55,9 @@ void randominit(unsigned long seed_init)
   unsigned long seed = seed_init;
   if (seed_init == 0)
     fill_random(&seed, sizeof(seed));
-  printf("Initializing random number generator, seed %ld\n", seed);
+  if (getenv("OAI_RNGSEED"))
+    seed = atoi(getenv("OAI_RNGSEED"));
+  printf("Initializing random number generator, seed %lu\n", seed);
 
   // initialize uniformrandom RNG
   urseed = (unsigned int) seed;
@@ -190,7 +192,7 @@ void tableNor(unsigned long seed)
   return;
 }
 
-double __attribute__ ((no_sanitize_address)) gaussZiggurat(double mean, double variance)
+double __attribute__ ((no_sanitize("address", "undefined"))) gaussZiggurat(double mean, double variance)
 {
   if (!tableNordDone) {
     // let's make reasonnable constant tables
@@ -200,7 +202,7 @@ double __attribute__ ((no_sanitize_address)) gaussZiggurat(double mean, double v
   }
   hz = SHR3;
   iz = hz & 127;
-  return abs(hz) < kn[iz] ? hz * wn[iz] : nfix();
+  return hz != INT32_MIN && abs(hz) < kn[iz] ? hz * wn[iz] : nfix();
 }
 
 #ifdef MAIN

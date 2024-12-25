@@ -33,11 +33,7 @@
 #include "PHY/defs_gNB.h"
 #include "PHY/NR_TRANSPORT/nr_transport_proto.h"
 #include "PHY/NR_TRANSPORT/nr_transport_common_proto.h"
-
-extern uint16_t prach_root_sequence_map_0_3[838];
-extern uint16_t prach_root_sequence_map_abc[138];
-extern uint16_t nr_du[838];
-extern const char *prachfmt[];
+#include "openair1/PHY/NR_TRANSPORT/nr_prach.h"
 
 void init_prach_list(PHY_VARS_gNB *gNB)
 {
@@ -322,8 +318,6 @@ void rx_nr_prach_ru(RU_t *ru,
 
   case 30720:
     // 20, 25, 30 MHz @ 30.72 Ms/s
-    Ncp = Ncp;
-    dftlen = dftlen;
     break;
 
   case 46080:
@@ -350,11 +344,17 @@ void rx_nr_prach_ru(RU_t *ru,
     dftlen <<= 2;
     break;
 
+  case 184320:
+    // 100 MHz @ 184.32 Ms/s
+    Ncp = Ncp*6;
+    dftlen = dftlen*6;
+    break;
+
   default:
     AssertFatal(1==0,"sample rate %f MHz not supported for numerology %d\n", fp->samples_per_subframe / 1000.0, mu);
   }
 
-  const idft_size_idx_t dftsize = get_dft(dftlen);
+  const dft_size_idx_t dftsize = get_dft(dftlen);
 
   // Do forward transform
   if (LOG_DEBUGFLAG(PRACH)) {
@@ -444,7 +444,7 @@ void rx_nr_prach(PHY_VARS_gNB *gNB,
   uint16_t preamble_index0=0,n_shift_ra=0,n_shift_ra_bar;
   uint16_t d_start=0;
   uint16_t numshift=0;
-  uint16_t *prach_root_sequence_map;
+  const uint16_t *prach_root_sequence_map;
   uint8_t not_found;
   uint16_t u;
   int16_t *Xu=0;

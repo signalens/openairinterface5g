@@ -194,14 +194,19 @@ static void nr_pdcp_entity_recv_pdu(nr_pdcp_entity_t *entity,
   }
 }
 
-static void nr_pdcp_entity_recv_sdu(nr_pdcp_entity_t *entity,
-                                    char *buffer, int size, int sdu_id)
+static int nr_pdcp_entity_process_sdu(nr_pdcp_entity_t *entity,
+                                      char *buffer,
+                                      int size,
+                                      int sdu_id,
+                                      char *pdu_buffer,
+                                      int pdu_max_size)
 {
   uint32_t count;
   int      sn;
   int      header_size;
   int      integrity_size;
-  char     buf[size + 3 + 4];
+  char    *buf = pdu_buffer;
+  DevAssert(size + 3 + 4 <= pdu_max_size);
   int      dc_bit;
   entity->stats.rxsdu_pkts++;
   entity->stats.rxsdu_bytes += size;
@@ -294,13 +299,11 @@ static void nr_pdcp_entity_recv_sdu(nr_pdcp_entity_t *entity,
 
   entity->tx_next++;
 
-  entity->deliver_pdu(entity->deliver_pdu_data, entity, buf,
-                      header_size + size + integrity_size, sdu_id);
   entity->stats.txpdu_pkts++;
   entity->stats.txpdu_bytes += header_size + size + integrity_size;
   entity->stats.txpdu_sn = sn;
 
-
+  return header_size + size + integrity_size;
 }
 
 /* may be called several times, take care to clean previous settings */
@@ -417,6 +420,37 @@ void nr_pdcp_entity_set_time(struct nr_pdcp_entity_t *entity, uint64_t now)
   check_t_reordering(entity);
 }
 
+static void deliver_all_sdus(nr_pdcp_entity_t *entity)
+{
+  // deliver the PDCP SDUs stored in the receiving PDCP entity to upper layers
+  while (entity->rx_list != NULL) {
+    nr_pdcp_sdu_t *cur = entity->rx_list;
+    entity->deliver_sdu(entity->deliver_sdu_data, entity,
+                        cur->buffer, cur->size);
+    entity->rx_list = cur->next;
+    entity->rx_size -= cur->size;
+    entity->stats.txsdu_pkts++;
+    entity->stats.txsdu_bytes += cur->size;
+    nr_pdcp_free_sdu(cur);
+  }
+}
+
+void nr_pdcp_entity_suspend(nr_pdcp_entity_t *entity)
+{
+  entity->tx_next = 0;
+  if (entity->t_reordering_start != 0) {
+    entity->t_reordering_start = 0;
+    deliver_all_sdus(entity);
+  }
+  entity->rx_next = 0;
+  entity->rx_deliv = 0;
+}
+
+void nr_pdcp_entity_release(nr_pdcp_entity_t *entity)
+{
+  deliver_all_sdus(entity);
+}
+
 void nr_pdcp_entity_delete(nr_pdcp_entity_t *entity)
 {
   nr_pdcp_sdu_t *cur = entity->rx_list;
@@ -449,7 +483,7 @@ nr_pdcp_entity_t *new_nr_pdcp_entity(
     void (*deliver_sdu)(void *deliver_sdu_data, struct nr_pdcp_entity_t *entity,
                         char *buf, int size),
     void *deliver_sdu_data,
-    void (*deliver_pdu)(void *deliver_pdu_data, struct nr_pdcp_entity_t *entity,
+    void (*deliver_pdu)(void *deliver_pdu_data, ue_id_t ue_id, int rb_id,
                         char *buf, int size, int sdu_id),
     void *deliver_pdu_data,
     int sn_size,
@@ -471,11 +505,13 @@ nr_pdcp_entity_t *new_nr_pdcp_entity(
   ret->type = type;
 
   ret->recv_pdu     = nr_pdcp_entity_recv_pdu;
-  ret->recv_sdu     = nr_pdcp_entity_recv_sdu;
+  ret->process_sdu  = nr_pdcp_entity_process_sdu;
   ret->set_security = nr_pdcp_entity_set_security;
   ret->set_time     = nr_pdcp_entity_set_time;
 
   ret->delete_entity = nr_pdcp_entity_delete;
+  ret->release_entity = nr_pdcp_entity_release;
+  ret->suspend_entity = nr_pdcp_entity_suspend;
   
   ret->get_stats = nr_pdcp_entity_get_stats;
   ret->deliver_sdu = deliver_sdu;

@@ -98,13 +98,15 @@ void *one_thread(void *arg) {
       myThread->runningOnKey=-1;
       mutexunlock(tp->incomingFifo.lockF);
     }
+    else
+      delNotifiedFIFO_elt(elt);
   } while (!myThread->terminate);
   return NULL;
 }
 
 void initNamedTpool(char *params,tpool_t *pool, bool performanceMeas, char *name) {
   memset(pool,0,sizeof(*pool));
-  char *measr=getenv("threadPoolMeasurements");
+  char *measr=getenv("OAI_THREADPOOLMEASUREMENTS");
   pool->measurePerf=performanceMeas;
   // force measurement if the output is defined
   pool->measurePerf |= measr!=NULL;
@@ -178,7 +180,13 @@ void initFloatingCoresTpool(int nbThreads,tpool_t *pool, bool performanceMeas, c
 #ifdef TEST_THREAD_POOL
 volatile int oai_exit=0;
 
-void exit_function(const char *file, const char *function, const int line, const char *s) {
+void exit_function(const char *file, const char *function, const int line, const char *s, const int assert)
+{
+  if (assert) {
+    abort();
+  } else {
+    exit(EXIT_SUCCESS);
+  }
 }
 
 struct testData {
@@ -212,13 +220,7 @@ int main() {
   tmp=pullNotifiedFIFO(&myFifo);
   printf("pulled: %lu\n", tmp->key);
   displayList(&myFifo);
-  abortNotifiedFIFOJob(&myFifo,1005);
-  printf("aborted 1005\n");
-  displayList(&myFifo);
   pushNotifiedFIFO(&myFifo,newNotifiedFIFO_elt(sizeof(struct testData), 12345678, NULL, NULL));
-  displayList(&myFifo);
-  abortNotifiedFIFOJob(&myFifo,12345678);
-  printf("aborted 12345678\n");
   displayList(&myFifo);
 
   do {

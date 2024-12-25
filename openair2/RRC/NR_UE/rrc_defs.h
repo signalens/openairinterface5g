@@ -38,9 +38,9 @@
 #include <string.h>
 
 #include "platform_types.h"
+#include "commonDef.h"
+#include "common/platform_constants.h"
 
-#include "NR_MAC_COMMON/nr_mac.h"
-#include "rrc_list.h"
 #include "NR_asn_constant.h"
 #include "NR_MeasConfig.h"
 #include "NR_CellGroupConfig.h"
@@ -48,17 +48,19 @@
 #include "NR_RLC-BearerConfig.h"
 #include "NR_TAG.h"
 #include "NR_asn_constant.h"
-#include "NR_SchedulingRequestToAddMod.h"
 #include "NR_MIB.h"
 #include "NR_SIB1.h"
 #include "NR_BCCH-BCH-Message.h"
 #include "NR_DL-DCCH-Message.h"
-#include "../NR/nr_rrc_defs.h"
+#include "NR_SystemInformation.h"
+#include "NR_UE-NR-Capability.h"
+
+#include "RRC/NR/nr_rrc_common.h"
+#include "as_message.h"
+#include "common/utils/nr/nr_common.h"
 
 #define NB_NR_UE_INST 1
 #define NB_CNX_UE 2//MAX_MANAGED_RG_PER_MOBILE
-#define NB_SIG_CNX_UE 2 //MAX_MANAGED_RG_PER_MOBILE
-
 #define MAX_MEAS_OBJ 7
 #define MAX_MEAS_CONFIG 7
 #define MAX_MEAS_ID 7
@@ -76,6 +78,15 @@ typedef struct OAI_NR_UECapability_s {
   uint16_t sdu_size;
   NR_UE_NR_Capability_t *UE_NR_Capability;
 } OAI_NR_UECapability_t;
+
+typedef enum Rrc_State_NR_e {
+  RRC_STATE_IDLE_NR = 0,
+  RRC_STATE_INACTIVE_NR,
+  RRC_STATE_CONNECTED_NR,
+
+  RRC_STATE_FIRST_NR = RRC_STATE_IDLE_NR,
+  RRC_STATE_LAST_NR = RRC_STATE_CONNECTED_NR,
+} Rrc_State_NR_t;
 
 typedef enum requested_SI_List_e {
   SIB2  = 1,
@@ -101,119 +112,129 @@ typedef enum RA_trigger_e {
   BEAM_FAILURE_RECOVERY,
 } RA_trigger_t;
 
+typedef struct UE_RRC_SI_INFO_NR_s {
+  uint32_t default_otherSI_map;
+  NR_SIB1_t *sib1;
+  int sib1_timer;
+  NR_SIB2_t *sib2;
+  int sib2_timer;
+  NR_SIB3_t *sib3;
+  int sib3_timer;
+  NR_SIB4_t *sib4;
+  int sib4_timer;
+  NR_SIB5_t *sib5;
+  int sib5_timer;
+  NR_SIB6_t *sib6;
+  int sib6_timer;
+  NR_SIB7_t *sib7;
+  int sib7_timer;
+  NR_SIB8_t *sib8;
+  int sib8_timer;
+  NR_SIB9_t *sib9;
+  int sib9_timer;
+  NR_SIB10_r16_t *sib10;
+  int sib10_timer;
+  NR_SIB11_r16_t *sib11;
+  int sib11_timer;
+  NR_SIB12_r16_t *sib12;
+  int sib12_timer;
+  NR_SIB13_r16_t *sib13;
+  int sib13_timer;
+  NR_SIB14_r16_t *sib14;
+  int sib14_timer;
+} __attribute__ ((__packed__)) NR_UE_RRC_SI_INFO;
+
+typedef struct NR_UE_Timers_Constants_s {
+  // timers status
+  bool T300_active;
+  bool T301_active;
+  bool T304_active;
+  bool T310_active;
+  bool T311_active;
+  bool T319_active;
+  // timers
+  uint32_t T300_cnt;
+  uint32_t T301_cnt;
+  uint32_t T304_cnt;
+  uint32_t T310_cnt;
+  uint32_t T311_cnt;
+  uint32_t T319_cnt;
+  // counters
+  uint32_t N310_cnt;
+  uint32_t N311_cnt;
+  // constants (limits configured by the network)
+  uint32_t N310_k;
+  uint32_t N311_k;
+  uint32_t T300_k;
+  uint32_t T301_k;
+  uint32_t T304_k;
+  uint32_t T310_k;
+  uint32_t T311_k;
+  uint32_t T319_k;
+} NR_UE_Timers_Constants_t;
+
+typedef enum {
+  OUT_OF_SYNC = 0,
+  IN_SYNC = 1
+} nr_sync_msg_t;
+
+typedef enum { RB_NOT_PRESENT, RB_ESTABLISHED, RB_SUSPENDED } NR_RB_status_t;
+
+typedef struct NR_UE_RRC_SRB_INFO_s {
+  NR_RB_status_t status;
+} NR_UE_RRC_SRB_INFO_t;
+
 typedef struct NR_UE_RRC_INST_s {
+  NR_MeasConfig_t        *meas_config;
+  NR_CellGroupConfig_t   *cell_group_config;
+  NR_ServingCellConfigCommonSIB_t *servingCellConfigCommonSIB;
+  NR_CellGroupConfig_t   *scell_group_config;
+  NR_RadioBearerConfig_t *radio_bearer_config;
 
-    NR_MeasConfig_t        *meas_config;
-    NR_CellGroupConfig_t   *cell_group_config;
-    NR_ServingCellConfigCommonSIB_t *servingCellConfigCommonSIB;
-    NR_CellGroupConfig_t   *scell_group_config;
-    NR_RadioBearerConfig_t *radio_bearer_config;
+  NR_MeasObjectToAddMod_t        *MeasObj[NB_CNX_UE][MAX_MEAS_OBJ];
+  NR_ReportConfigToAddMod_t      *ReportConfig[NB_CNX_UE][MAX_MEAS_CONFIG];
+  NR_QuantityConfig_t            *QuantityConfig[NB_CNX_UE];
+  NR_MeasIdToAddMod_t            *MeasId[NB_CNX_UE][MAX_MEAS_ID];
+  NR_MeasGapConfig_t             *measGapConfig[NB_CNX_UE];
+  NR_RSRP_Range_t                s_measure;
 
-    NR_MeasObjectToAddMod_t        *MeasObj[NB_CNX_UE][MAX_MEAS_OBJ];
-    NR_ReportConfigToAddMod_t      *ReportConfig[NB_CNX_UE][MAX_MEAS_CONFIG];
-    NR_QuantityConfig_t            *QuantityConfig[NB_CNX_UE];
-    NR_MeasIdToAddMod_t            *MeasId[NB_CNX_UE][MAX_MEAS_ID];
-    NR_MeasGapConfig_t             *measGapConfig[NB_CNX_UE];
-    NR_RSRP_Range_t                s_measure;
-    NR_SRB_ToAddMod_t              *SRB1_config[NB_CNX_UE];
-    NR_SRB_ToAddMod_t              *SRB2_config[NB_CNX_UE];
-    NR_DRB_ToAddMod_t              *DRB_config[NB_CNX_UE][8];
-    rb_id_t                        *defaultDRB; // remember the ID of the default DRB
+  char                           *uecap_file;
+  rnti_t                         rnti;
 
-    char                           *uecap_file;
+  NR_UE_RRC_SRB_INFO_t Srb[NB_CNX_UE][NR_NUM_SRB];
+  bool active_DRBs[NB_CNX_UE][MAX_DRBS_PER_UE];
+  bool active_RLC_entity[NB_CNX_UE][NR_MAX_NUM_LCID];
 
-    NR_SRB_INFO                    Srb0[NB_SIG_CNX_UE];
-    NR_SRB_INFO_TABLE_ENTRY        Srb1[NB_CNX_UE];
-    NR_SRB_INFO_TABLE_ENTRY        Srb2[NB_CNX_UE];
+  OAI_NR_UECapability_t          *UECap;
+  uint8_t                        *UECapability;
+  uint16_t                       UECapability_size;
 
-    uint8_t                        MBMS_flag;
-    OAI_NR_UECapability_t          *UECap;
-    uint8_t 			   *UECapability;
-    uint16_t                       UECapability_size;
+  NR_UE_Timers_Constants_t timers_and_constants;
 
-    RA_trigger_t                   ra_trigger;
-    BIT_STRING_t                   requested_SI_List;
+  RA_trigger_t                   ra_trigger;
 
-    NR_SystemInformation_t         *si[NB_CNX_UE];
-    NR_SIB1_t                      *sib1[NB_CNX_UE];
-    NR_SIB2_t                      *sib2[NB_CNX_UE];
-    NR_SIB3_t                      *sib3[NB_CNX_UE];
-    NR_SIB4_t                      *sib4[NB_CNX_UE];
-    NR_SIB5_t                      *sib5[NB_CNX_UE];
-    NR_SIB6_t                      *sib6[NB_CNX_UE];
-    NR_SIB7_t                      *sib7[NB_CNX_UE];
-    NR_SIB8_t                      *sib8[NB_CNX_UE];
-    NR_SIB9_t                      *sib9[NB_CNX_UE];
-    NR_SIB10_r16_t                 *sib10[NB_CNX_UE];
-    NR_SIB11_r16_t                 *sib11[NB_CNX_UE];
-    NR_SIB12_r16_t                 *sib12[NB_CNX_UE];
-    NR_SIB13_r16_t                 *sib13[NB_CNX_UE];
-    NR_SIB14_r16_t                 *sib14[NB_CNX_UE];
-    plmn_t                         plmnID;
+  plmn_t                         plmnID;
 
-    NR_UE_RRC_INFO                 Info[NB_SIG_CNX_UE];
+  NR_UE_RRC_SI_INFO SInfo[NB_CNX_UE];
 
-    NR_MIB_t *mib;
+  NR_MIB_t *mib;
 
-    /* KeNB as computed from parameters within USIM card */
-    uint8_t kgnb[32];
-    /* Used integrity/ciphering algorithms */
-    //RRC_LIST_TYPE(NR_SecurityAlgorithmConfig_t, NR_SecurityAlgorithmConfig) SecurityAlgorithmConfig_list;
-    NR_CipheringAlgorithm_t  cipheringAlgorithm;
-    e_NR_IntegrityProtAlgorithm  integrityProtAlgorithm;
-    
-    //  lists
-    //  CellGroupConfig.rlc-BearerToAddModList
-    RRC_LIST_TYPE(NR_RLC_BearerConfig_t, NR_maxLC_ID) RLC_Bearer_Config_list;
-    //  CellGroupConfig.mac-CellGroupConfig.schedulingrequest
-    RRC_LIST_TYPE(NR_SchedulingRequestToAddMod_t, NR_maxNrofSR_ConfigPerCellGroup) SchedulingRequest_list;
-    //  CellGroupConfig.mac-CellGroupConfig.TAG
-    RRC_LIST_TYPE(NR_TAG_t, NR_maxNrofTAGs) TAG_list;
-    //  CellGroupConfig.spCellConfig.spCellConfigDedicated.tdduldlslotconfig
-    RRC_LIST_TYPE(NR_TDD_UL_DL_SlotConfig_t, NR_maxNrofSlots) TDD_UL_DL_SlotConfig_list;
-   
-    //  CellGroupConfig.spCellConfig.spCellConfigDedicated.bwps 
-    RRC_LIST_TYPE(NR_BWP_Downlink_t, NR_maxNrofBWPs) BWP_Downlink_list;
-    //BWP-DownlinkDedicated 0=INIT-DL-BWP, 1..4 for DL-BWPs
-    //  CellGroupConfig.spCellConfig.spCellConfigDedicated.initialdlbwp.pdcchconfig.controlresourceset
-    RRC_LIST_TYPE(NR_ControlResourceSet_t, 3) ControlResourceSet_list[5];
-    //  CellGroupConfig.spCellConfig.spCellConfigDedicated.initialdlbwp.pdcchconfig.searchspace
-    RRC_LIST_TYPE(NR_SearchSpace_t, 10) SearchSpace_list[5];
-    //  CellGroupConfig.spCellConfig.spCellConfigDedicated.initialdlbwp.pdcchconfig.slotformatindicator
-    RRC_LIST_TYPE(NR_SlotFormatCombinationsPerCell_t, NR_maxNrofAggregatedCellsPerCellGroup) SlotFormatCombinationsPerCell_list[5];
-    //  CellGroupConfig.spCellConfig.spCellConfigDedicated.initialdlbwp.pdschconfig
-    RRC_LIST_TYPE(NR_TCI_State_t, NR_maxNrofTCI_States) TCI_State_list[5];
-    //  CellGroupConfig.spCellConfig.spCellConfigDedicated.initialdlbwp.pdschconfig
-    RRC_LIST_TYPE(NR_RateMatchPattern_t, NR_maxNrofRateMatchPatterns) RateMatchPattern_list[5];
-    //  CellGroupConfig.spCellConfig.spCellConfigDedicated.initialdlbwp.pdschconfig
-    RRC_LIST_TYPE(NR_ZP_CSI_RS_Resource_t, NR_maxNrofZP_CSI_RS_Resources) ZP_CSI_RS_Resource_list[5];
-    //  CellGroupConfig.spCellConfig.spCellConfigDedicated.initialdlbwp.pdschconfig
-    RRC_LIST_TYPE(NR_ZP_CSI_RS_ResourceSet_t, NR_maxNrofZP_CSI_RS_ResourceSets) Aperidic_ZP_CSI_RS_ResourceSet_list[5];
-    //  CellGroupConfig.spCellConfig.spCellConfigDedicated.initialdlbwp.pdschconfig
-    RRC_LIST_TYPE(NR_ZP_CSI_RS_ResourceSet_t, NR_maxNrofZP_CSI_RS_ResourceSets) SP_ZP_CSI_RS_ResourceSet_list[5];
+  // active BWPs
+  NR_BWP_DownlinkDedicated_t *bwpd;
+  NR_BWP_UplinkDedicated_t *ubwpd;
 
-    //  TODO check the way to implement mutiple list inside bwps
-    //  uplink bwp also
+  /* KeNB as computed from parameters within USIM card */
+  uint8_t kgnb[32];
+  /* Used integrity/ciphering algorithms */
+  //RRC_LIST_TYPE(NR_SecurityAlgorithmConfig_t, NR_SecurityAlgorithmConfig) SecurityAlgorithmConfig_list;
+  NR_CipheringAlgorithm_t  cipheringAlgorithm;
+  e_NR_IntegrityProtAlgorithm  integrityProtAlgorithm;
+  long keyToUse;
+  bool as_security_activated;
 
-    //  CellGroupConfig.spCellConfig.spCellConfigDedicated
-    RRC_LIST_TYPE(NR_NZP_CSI_RS_Resource_t, NR_maxNrofNZP_CSI_RS_Resources) NZP_CSI_RS_Resource_list;
-    //  CellGroupConfig.spCellConfig.spCellConfigDedicated
-    RRC_LIST_TYPE(NR_NZP_CSI_RS_ResourceSet_t, NR_maxNrofNZP_CSI_RS_ResourceSets) NZP_CSI_RS_ResourceSet_list;
-    //  CellGroupConfig.spCellConfig.spCellConfigDedicated
-    RRC_LIST_TYPE(NR_CSI_IM_Resource_t, NR_maxNrofCSI_IM_Resources) CSI_IM_Resource_list;
-    //  CellGroupConfig.spCellConfig.spCellConfigDedicated
-    RRC_LIST_TYPE(NR_CSI_IM_ResourceSet_t, NR_maxNrofCSI_IM_ResourceSets) CSI_IM_ResourceSet_list;
-    //  CellGroupConfig.spCellConfig.spCellConfigDedicated
-    RRC_LIST_TYPE(NR_CSI_SSB_ResourceSet_t, NR_maxNrofCSI_SSB_ResourceSets) CSI_SSB_ResourceSet_list;
-    //  CellGroupConfig.spCellConfig.spCellConfigDedicated
-    RRC_LIST_TYPE(NR_CSI_ResourceConfig_t, NR_maxNrofCSI_ResourceConfigurations) CSI_ResourceConfig_list;
-    //  CellGroupConfig.spCellConfig.spCellConfigDedicated
-    RRC_LIST_TYPE(NR_CSI_ReportConfig_t, NR_maxNrofCSI_ReportConfigurations) CSI_ReportConfig_list;
-
-    long               selected_plmn_identity;
-    Rrc_State_NR_t     nrRrcState;
-    Rrc_Sub_State_NR_t nrRrcSubState;
-    as_nas_info_t      initialNasMsg;
+  long               selected_plmn_identity;
+  Rrc_State_NR_t     nrRrcState;
+  as_nas_info_t      initialNasMsg;
 } NR_UE_RRC_INST_t;
 
 #endif

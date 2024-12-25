@@ -46,6 +46,7 @@ static softmodem_params_t softmodem_params;
 char *parallel_config=NULL;
 char *worker_config=NULL;
 int usrp_tx_thread = 0;
+char *nfapi_str=NULL;
 int ldpc_offload_flag=0;
 uint8_t nfapi_mode=0;
 
@@ -108,7 +109,7 @@ void get_common_options(uint32_t execmask) {
   config_set_checkfunctions(cmdline_params, cmdline_CheckParams, numparams);
   config_get(cmdline_params, sizeof(cmdline_params) / sizeof(paramdef_t), NULL);
   nfapi_index = config_paramidx_fromname(cmdline_params, sizeof(cmdline_params) / sizeof(paramdef_t),"nfapi");
-  AssertFatal(nfapi_index != -1,"Index for nfapi config option not found!");
+  AssertFatal(nfapi_index >= 0,"Index for nfapi config option not found!");
   nfapi_mode = config_get_processedint(&cmdline_params[nfapi_index]);
 
   paramdef_t cmdline_logparams[] =CMDLINE_LOGPARAMS_DESC ;
@@ -145,7 +146,6 @@ void get_common_options(uint32_t execmask) {
   }
 
   if (nokrnmod) {
-    printf("nokrnmod bit enabled \n");
     set_softmodem_optmask(SOFTMODEM_NOKRNMOD_BIT);
   }
 
@@ -219,7 +219,7 @@ void signal_handler(int sig) {
       softmodem_printresources(sig,(telnet_printfunc_t)printf);
     if (sig != SOFTMODEM_RTSIGNAL) {
       printf("Linux signal %s...\n",strsignal(sig));
-      exit_function(__FILE__, __FUNCTION__, __LINE__,"softmodem starting exit procedure\n");
+      exit_function(__FILE__, __FUNCTION__, __LINE__, "softmodem starting exit procedure\n", OAI_EXIT_NORMAL);
     }
   }
 }

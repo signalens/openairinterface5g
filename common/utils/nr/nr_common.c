@@ -33,24 +33,65 @@
 #include <stdint.h>
 #include "assertions.h"
 #include "nr_common.h"
+#include <complex.h>
 
 const char *duplex_mode[]={"FDD","TDD"};
 
-int tables_5_3_2[5][11] = {
-  {25, 52, 79, 106, 133, 160, 216, 270, -1, -1, -1}, // 15 FR1
-  {11, 24, 38, 51, 65, 78, 106, 133, 162, 217, 273}, // 30 FR1
-  {-1, 11, 18, 24, 31, 38, 51, 65, 79, 107, 135},    // 60 FR1
-  {66, 132, 264, -1 , -1, -1, -1, -1, -1, -1, -1},   // 60 FR2
-  {32, 66, 132, 264, -1, -1, -1, -1, -1, -1, -1}     // 120FR2
+static const uint8_t bit_reverse_table_256[] = {
+    0x00, 0x80, 0x40, 0xC0, 0x20, 0xA0, 0x60, 0xE0, 0x10, 0x90, 0x50, 0xD0, 0x30, 0xB0, 0x70, 0xF0, 0x08, 0x88, 0x48, 0xC8,
+    0x28, 0xA8, 0x68, 0xE8, 0x18, 0x98, 0x58, 0xD8, 0x38, 0xB8, 0x78, 0xF8, 0x04, 0x84, 0x44, 0xC4, 0x24, 0xA4, 0x64, 0xE4,
+    0x14, 0x94, 0x54, 0xD4, 0x34, 0xB4, 0x74, 0xF4, 0x0C, 0x8C, 0x4C, 0xCC, 0x2C, 0xAC, 0x6C, 0xEC, 0x1C, 0x9C, 0x5C, 0xDC,
+    0x3C, 0xBC, 0x7C, 0xFC, 0x02, 0x82, 0x42, 0xC2, 0x22, 0xA2, 0x62, 0xE2, 0x12, 0x92, 0x52, 0xD2, 0x32, 0xB2, 0x72, 0xF2,
+    0x0A, 0x8A, 0x4A, 0xCA, 0x2A, 0xAA, 0x6A, 0xEA, 0x1A, 0x9A, 0x5A, 0xDA, 0x3A, 0xBA, 0x7A, 0xFA, 0x06, 0x86, 0x46, 0xC6,
+    0x26, 0xA6, 0x66, 0xE6, 0x16, 0x96, 0x56, 0xD6, 0x36, 0xB6, 0x76, 0xF6, 0x0E, 0x8E, 0x4E, 0xCE, 0x2E, 0xAE, 0x6E, 0xEE,
+    0x1E, 0x9E, 0x5E, 0xDE, 0x3E, 0xBE, 0x7E, 0xFE, 0x01, 0x81, 0x41, 0xC1, 0x21, 0xA1, 0x61, 0xE1, 0x11, 0x91, 0x51, 0xD1,
+    0x31, 0xB1, 0x71, 0xF1, 0x09, 0x89, 0x49, 0xC9, 0x29, 0xA9, 0x69, 0xE9, 0x19, 0x99, 0x59, 0xD9, 0x39, 0xB9, 0x79, 0xF9,
+    0x05, 0x85, 0x45, 0xC5, 0x25, 0xA5, 0x65, 0xE5, 0x15, 0x95, 0x55, 0xD5, 0x35, 0xB5, 0x75, 0xF5, 0x0D, 0x8D, 0x4D, 0xCD,
+    0x2D, 0xAD, 0x6D, 0xED, 0x1D, 0x9D, 0x5D, 0xDD, 0x3D, 0xBD, 0x7D, 0xFD, 0x03, 0x83, 0x43, 0xC3, 0x23, 0xA3, 0x63, 0xE3,
+    0x13, 0x93, 0x53, 0xD3, 0x33, 0xB3, 0x73, 0xF3, 0x0B, 0x8B, 0x4B, 0xCB, 0x2B, 0xAB, 0x6B, 0xEB, 0x1B, 0x9B, 0x5B, 0xDB,
+    0x3B, 0xBB, 0x7B, 0xFB, 0x07, 0x87, 0x47, 0xC7, 0x27, 0xA7, 0x67, 0xE7, 0x17, 0x97, 0x57, 0xD7, 0x37, 0xB7, 0x77, 0xF7,
+    0x0F, 0x8F, 0x4F, 0xCF, 0x2F, 0xAF, 0x6F, 0xEF, 0x1F, 0x9F, 0x5F, 0xDF, 0x3F, 0xBF, 0x7F, 0xFF};
+
+// Reverse bits implementation based on http://graphics.stanford.edu/~seander/bithacks.html
+uint64_t reverse_bits(uint64_t in, int n_bits)
+{
+  // Reverse n_bits in uint64_t variable, example:
+  // n_bits: 10
+  // in:      10 0000 1111
+  // return:  11 1100 0001
+
+  AssertFatal(n_bits <= 64, "Maximum bits to reverse is 64, impossible to reverse %d bits!\n", n_bits);
+  uint64_t rev_bits = 0;
+  uint8_t *p = (uint8_t *)&in;
+  uint8_t *q = (uint8_t *)&rev_bits;
+  int n_bytes = n_bits >> 3;
+  for (int n = 0; n < n_bytes; n++) {
+    q[n_bytes - 1 - n] = bit_reverse_table_256[p[n]];
+  }
+
+  // Reverse remaining bits (not aligned with 8-bit)
+  rev_bits = rev_bits << (n_bits % 8);
+  for (int i = n_bytes * 8; i < n_bits; i++) {
+    rev_bits |= ((in >> i) & 0x1) << (n_bits - i - 1);
+  }
+  return rev_bits;
+}
+
+static const int tables_5_3_2[5][12] = {
+    {25, 52, 79, 106, 133, 160, 216, 270, -1, -1, -1, -1}, // 15 FR1
+    {11, 24, 38, 51, 65, 78, 106, 133, 162, 217, 245, 273}, // 30 FR1
+    {-1, 11, 18, 24, 31, 38, 51, 65, 79, 107, 121, 135}, // 60 FR1
+    {66, 132, 264, -1, -1, -1, -1, -1, -1, -1, -1, -1}, // 60 FR2
+    {32, 66, 132, 264, -1, -1, -1, -1, -1, -1, -1, -1} // 120FR2
 };
 
-int get_supported_band_index(int scs, int band, int n_rbs){
-
+int get_supported_band_index(int scs, int band, int n_rbs)
+{
   int scs_index = scs;
-  if (band>256)
+  if (band > 256)
     scs_index++;
-  for (int i=0; i<11; i++) {
-    if(n_rbs == tables_5_3_2[scs][i])
+  for (int i = 0; i < 12; i++) {
+    if(n_rbs == tables_5_3_2[scs_index][i])
       return i;
   }
   return (-1); // not found
@@ -130,9 +171,69 @@ const nr_bandentry_t nr_bandtable[] = {
   {261,27500040,28350000,27500040,28350000,  2,2070833, 120}
 };
 
+int get_supported_bw_mhz(frequency_range_t frequency_range, int bw_index)
+{
+  if (frequency_range == FR1) {
+    switch (bw_index) {
+      case 0 :
+        return 5; // 5MHz
+      case 1 :
+        return 10;
+      case 2 :
+        return 15;
+      case 3 :
+        return 20;
+      case 4 :
+        return 25;
+      case 5 :
+        return 30;
+      case 6 :
+        return 40;
+      case 7 :
+        return 50;
+      case 8 :
+        return 60;
+      case 9 :
+        return 80;
+      case 10 :
+        return 90;
+      case 11 :
+        return 100;
+      default :
+        AssertFatal(false, "Invalid band index for FR1 %d\n", bw_index);
+    }
+  }
+  else {
+    switch (bw_index) {
+      case 0 :
+        return 50; // 50MHz
+      case 1 :
+        return 100;
+      case 2 :
+        return 200;
+      case 3 :
+        return 400;
+      default :
+        AssertFatal(false, "Invalid band index for FR2 %d\n", bw_index);
+    }
+  }
+}
+
+bool compare_relative_ul_channel_bw(int nr_band, int scs, int nb_ul, frame_type_t frame_type)
+{
+  // 38.101-1 section 6.2.2
+  // Relative channel bandwidth <= 4% for TDD bands and <= 3% for FDD bands
+  int index = get_nr_table_idx(nr_band, scs);
+  int bw_index = get_supported_band_index(scs, nr_band, nb_ul);
+  int band_size_khz = get_supported_bw_mhz(nr_band > 256 ? FR2 : FR1, bw_index) * 1000;
+  float limit = frame_type == TDD ? 0.04 : 0.03;
+  float rel_bw = (float) (2 * band_size_khz) / (float) (nr_bandtable[index].ul_max + nr_bandtable[index].ul_min);
+  return rel_bw <= limit;
+}
+
 uint16_t get_band(uint64_t downlink_frequency, int32_t delta_duplex)
 {
-  const uint64_t dl_freq_khz = downlink_frequency / 1000;
+  const int64_t dl_freq_khz = downlink_frequency / 1000;
   const int32_t  delta_duplex_khz = delta_duplex / 1000;
 
   uint64_t center_freq_diff_khz = UINT64_MAX; // 2^64
@@ -148,11 +249,11 @@ uint16_t get_band(uint64_t downlink_frequency, int32_t delta_duplex)
     if (current_offset_khz != delta_duplex_khz)
       continue;
 
-    uint64_t center_frequency_khz = (nr_bandtable[ind].dl_max + nr_bandtable[ind].dl_min) / 2;
+    int64_t center_frequency_khz = (nr_bandtable[ind].dl_max + nr_bandtable[ind].dl_min) / 2;
 
-    if (abs(dl_freq_khz - center_frequency_khz) < center_freq_diff_khz){
+    if (labs(dl_freq_khz - center_frequency_khz) < center_freq_diff_khz){
       current_band = nr_bandtable[ind].band;
-      center_freq_diff_khz = abs(dl_freq_khz - center_frequency_khz);
+      center_freq_diff_khz = labs(dl_freq_khz - center_frequency_khz);
     }
   }
 
@@ -180,11 +281,16 @@ int NRRIV2PRBOFFSET(int locationAndBandwidth,int N_RB) {
 }
 
 /* TS 38.214 ch. 6.1.2.2.2 - Resource allocation type 1 for DL and UL */
-int PRBalloc_to_locationandbandwidth0(int NPRB,int RBstart,int BWPsize) {
-  AssertFatal(NPRB>0 && (NPRB + RBstart <= BWPsize),"Illegal NPRB/RBstart Configuration (%d,%d) for BWPsize %d\n",NPRB,RBstart,BWPsize);
+int PRBalloc_to_locationandbandwidth0(int NPRB, int RBstart, int BWPsize)
+{
+  AssertFatal(NPRB>0 && (NPRB + RBstart <= BWPsize),
+              "Illegal NPRB/RBstart Configuration (%d,%d) for BWPsize %d\n",
+              NPRB, RBstart, BWPsize);
 
-  if (NPRB <= 1+(BWPsize>>1)) return(BWPsize*(NPRB-1)+RBstart);
-  else                        return(BWPsize*(BWPsize+1-NPRB) + (BWPsize-1-RBstart));
+  if (NPRB <= 1 + (BWPsize >> 1))
+    return (BWPsize * (NPRB - 1) + RBstart);
+  else
+    return (BWPsize * (BWPsize + 1 - NPRB) + (BWPsize - 1 - RBstart));
 }
 
 int PRBalloc_to_locationandbandwidth(int NPRB,int RBstart) {
@@ -322,118 +428,6 @@ int32_t get_delta_duplex(int nr_bandP, uint8_t scs_index)
   return delta_duplex;
 }
 
-uint16_t config_bandwidth(int mu, int nb_rb, int nr_band)
-{
-
-  if (nr_band < 100)  { //FR1
-   switch(mu) {
-    case 0 :
-      if (nb_rb<=25)
-        return 5;
-      if (nb_rb<=52)
-        return 10;
-      if (nb_rb<=79)
-        return 15;
-      if (nb_rb<=106)
-        return 20;
-      if (nb_rb<=133)
-        return 25;
-      if (nb_rb<=160)
-        return 30;
-      if (nb_rb<=216)
-        return 40;
-      if (nb_rb<=270)
-        return 50;
-      AssertFatal(1==0,"Number of DL resource blocks %d undefined for mu %d and band %d\n", nb_rb, mu, nr_band);
-      break;
-    case 1 :
-      if (nb_rb<=11)
-        return 5;
-      if (nb_rb<=24)
-        return 10;
-      if (nb_rb<=38)
-        return 15;
-      if (nb_rb<=51)
-        return 20;
-      if (nb_rb<=65)
-        return 25;
-      if (nb_rb<=78)
-        return 30;
-      if (nb_rb<=106)
-        return 40;
-      if (nb_rb<=133)
-        return 50;
-      if (nb_rb<=162)
-        return 60;
-      if (nb_rb<=189)
-        return 70;
-      if (nb_rb<=217)
-        return 80;
-      if (nb_rb<=245)
-        return 90;
-      if (nb_rb<=273)
-        return 100;
-      AssertFatal(1==0,"Number of DL resource blocks %d undefined for mu %d and band %d\n", nb_rb, mu, nr_band);
-      break;
-    case 2 :
-      if (nb_rb<=11)
-        return 10;
-      if (nb_rb<=18)
-        return 15;
-      if (nb_rb<=24)
-        return 20;
-      if (nb_rb<=31)
-        return 25;
-      if (nb_rb<=38)
-        return 30;
-      if (nb_rb<=51)
-        return 40;
-      if (nb_rb<=65)
-        return 50;
-      if (nb_rb<=79)
-        return 60;
-      if (nb_rb<=93)
-        return 70;
-      if (nb_rb<=107)
-        return 80;
-      if (nb_rb<=121)
-        return 90;
-      if (nb_rb<=135)
-        return 100;
-      AssertFatal(1==0,"Number of DL resource blocks %d undefined for mu %d and band %d\n", nb_rb, mu, nr_band);
-      break;
-    default:
-      AssertFatal(1==0,"Numerology %d undefined for band %d in FR1\n", mu,nr_band);
-   }
-  }
-  else {
-   switch(mu) {
-    case 2 :
-      if (nb_rb<=66)
-        return 50;
-      if (nb_rb<=132)
-        return 100;
-      if (nb_rb<=264)
-        return 200;
-      AssertFatal(1==0,"Number of DL resource blocks %d undefined for mu %d and band %d\n", nb_rb, mu, nr_band);
-      break;
-    case 3 :
-      if (nb_rb<=32)
-        return 50;
-      if (nb_rb<=66)
-        return 100;
-      if (nb_rb<=132)
-        return 200;
-      if (nb_rb<=264)
-        return 400;
-      AssertFatal(1==0,"Number of DL resource blocks %d undefined for mu %d and band %d\n", nb_rb, mu, nr_band);
-      break;
-    default:
-      AssertFatal(1==0,"Numerology %d undefined for band %d in FR1\n", mu,nr_band);
-   }
-  }
-}
-
 // Returns the corresponding row index of the NR table
 int get_nr_table_idx(int nr_bandP, uint8_t scs_index) {
   int scs_khz = 15 << scs_index;
@@ -501,6 +495,7 @@ void get_samplerate_and_bw(int mu,
         *tx_bw = 50e6;
         *rx_bw = 50e6;
       }
+      break;
     case 216:
       if (threequarter_fs) {
         *sample_rate=46.08e6;
@@ -526,6 +521,7 @@ void get_samplerate_and_bw(int mu,
         *tx_bw = 20e6;
         *rx_bw = 20e6;
       }
+      break;
     case 106:
       if (threequarter_fs) {
         *sample_rate=23.04e6;
@@ -553,6 +549,7 @@ void get_samplerate_and_bw(int mu,
         *tx_bw = 10e6;
         *rx_bw = 10e6;
       }
+      break;
     case 25:
       if (threequarter_fs) {
         *sample_rate=5.76e6;
@@ -723,6 +720,18 @@ void get_samplerate_and_bw(int mu,
   }
 }
 
+void get_K1_K2(int N1, int N2, int *K1, int *K2)
+{
+  // num of allowed k1 and k2 according to 5.2.2.2.1-3 and -4 in 38.214
+  if(N2 == N1 || N1 == 2)
+    *K1 = 2;
+  else if (N2 == 1)
+    *K1 = 5;
+  else
+    *K1 = 3;
+  *K2 = N2 > 1 ? 2 : 1;
+}
+
 // from start symbol index and nb or symbols to symbol occupation bitmap in a slot
 uint16_t SL_to_bitmap(int startSymbolIndex, int nrOfSymbols) {
  return ((1<<nrOfSymbols)-1)<<startSymbolIndex;
@@ -746,3 +755,113 @@ void SLIV2SL(int SLIV,int *S,int *L) {
   }
 }
 
+int get_ssb_subcarrier_offset(uint32_t absoluteFrequencySSB, uint32_t absoluteFrequencyPointA)
+{
+  uint32_t absolute_diff = (absoluteFrequencySSB - absoluteFrequencyPointA);
+  const int scaling_5khz = absoluteFrequencyPointA < 600000 ? 3 : 1;
+  return ((absolute_diff / scaling_5khz) % 24);
+}
+
+uint32_t get_ssb_offset_to_pointA(uint32_t absoluteFrequencySSB,
+                                  uint32_t absoluteFrequencyPointA,
+                                  int ssbSubcarrierSpacing,
+                                  int frequency_range)
+{
+  uint32_t absolute_diff = (absoluteFrequencySSB - absoluteFrequencyPointA);
+  const int scaling_5khz = absoluteFrequencyPointA < 600000 ? 3 : 1;
+  int sco = get_ssb_subcarrier_offset(absoluteFrequencySSB, absoluteFrequencyPointA);
+  const int scs_scaling = frequency_range == FR2 ? 1 << (ssbSubcarrierSpacing - 2) : 1 << ssbSubcarrierSpacing;
+  const int scaled_abs_diff = absolute_diff / scaling_5khz;
+  const int ssb_offset_point_a =
+      (scaled_abs_diff - sco) / 12
+      - 10 * scs_scaling; // absoluteFrequencySSB is the central frequency of SSB which is made by 20RBs in total
+  AssertFatal(ssb_offset_point_a % scs_scaling == 0, "PRB offset %d can create frequency offset\n", ssb_offset_point_a);
+  AssertFatal(sco % scs_scaling == 0, "ssb offset %d can create frequency offset\n", sco);
+  return ssb_offset_point_a;
+}
+
+int get_delay_idx(int delay, int max_delay_comp)
+{
+  int delay_idx = max_delay_comp + delay;
+  // If the measured delay is less than -MAX_DELAY_COMP, a -MAX_DELAY_COMP delay is compensated.
+  delay_idx = max(delay_idx, 0);
+  // If the measured delay is greater than +MAX_DELAY_COMP, a +MAX_DELAY_COMP delay is compensated.
+  delay_idx = min(delay_idx, max_delay_comp << 1);
+  return delay_idx;
+}
+
+void init_delay_table(uint16_t ofdm_symbol_size,
+                      int max_delay_comp,
+                      int max_ofdm_symbol_size,
+                      c16_t delay_table[][max_ofdm_symbol_size])
+{
+  for (int delay = -max_delay_comp; delay <= max_delay_comp; delay++) {
+    for (int k = 0; k < ofdm_symbol_size; k++) {
+      double complex delay_cexp = cexp(I * (2.0 * M_PI * k * delay / ofdm_symbol_size));
+      delay_table[max_delay_comp + delay][k].r = (int16_t)round(256 * creal(delay_cexp));
+      delay_table[max_delay_comp + delay][k].i = (int16_t)round(256 * cimag(delay_cexp));
+    }
+  }
+}
+
+void freq2time(uint16_t ofdm_symbol_size,
+               int16_t *freq_signal,
+               int16_t *time_signal)
+{
+  switch (ofdm_symbol_size) {
+    case 128:
+      idft(IDFT_128, freq_signal, time_signal, 1);
+      break;
+    case 256:
+      idft(IDFT_256, freq_signal, time_signal, 1);
+      break;
+    case 512:
+      idft(IDFT_512, freq_signal, time_signal, 1);
+      break;
+    case 1024:
+      idft(IDFT_1024, freq_signal, time_signal, 1);
+      break;
+    case 1536:
+      idft(IDFT_1536, freq_signal, time_signal, 1);
+      break;
+    case 2048:
+      idft(IDFT_2048, freq_signal, time_signal, 1);
+      break;
+    case 4096:
+      idft(IDFT_4096, freq_signal, time_signal, 1);
+      break;
+    case 6144:
+      idft(IDFT_6144, freq_signal, time_signal, 1);
+      break;
+    case 8192:
+      idft(IDFT_8192, freq_signal, time_signal, 1);
+      break;
+    default:
+      AssertFatal (1 == 0, "Invalid ofdm_symbol_size %i\n", ofdm_symbol_size);
+      break;
+  }
+}
+
+void nr_est_delay(int ofdm_symbol_size, const c16_t *ls_est, c16_t *ch_estimates_time, delay_t *delay)
+{
+  freq2time(ofdm_symbol_size, (int16_t *)ls_est, (int16_t *)ch_estimates_time);
+
+  int max_pos = delay->delay_max_pos;
+  int max_val = delay->delay_max_val;
+  const int sync_pos = 0;
+
+  for (int i = 0; i < ofdm_symbol_size; i++) {
+    int temp = c16amp2(ch_estimates_time[i]) >> 1;
+    if (temp > max_val) {
+      max_pos = i;
+      max_val = temp;
+    }
+  }
+
+  if (max_pos > ofdm_symbol_size / 2)
+    max_pos = max_pos - ofdm_symbol_size;
+
+  delay->delay_max_pos = max_pos;
+  delay->delay_max_val = max_val;
+  delay->est_delay = max_pos - sync_pos;
+}

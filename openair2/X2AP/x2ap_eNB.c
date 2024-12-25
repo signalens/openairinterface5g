@@ -742,7 +742,7 @@ int is_x2ap_enabled(void)
 
   char *enable_x2 = NULL;
   paramdef_t p[] = {
-   { "enable_x2", "yes/no", 0, strptr:&enable_x2, defstrval:"", TYPE_STRING, 0 }
+   { "enable_x2", "yes/no", 0, .strptr=&enable_x2, .defstrval="", TYPE_STRING, 0 }
   };
 
   /* TODO: do it per module - we check only first eNB */
@@ -766,4 +766,10 @@ int is_x2ap_enabled(void)
 mutex_error:
   LOG_E(X2AP, "mutex error\n");
   exit(1);
+}
+
+void x2ap_trigger(void)
+{
+  MessageDef *msg = itti_alloc_new_message(TASK_X2AP, 0, X2AP_SUBFRAME_PROCESS);
+  itti_send_msg_to_task(TASK_X2AP, 0, msg);
 }

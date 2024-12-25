@@ -33,7 +33,7 @@ rx_func_implem[rx_func]
       handle_nr_slot_ind
       --> rnti_to_remove-mgmt
       --> L1_nr_prach_procedures
-      --> apply_nr_rotation_ul
+      --> apply_nr_rotation_RX
     end 
     subgraph phy_procedures_gNB_uespec_RX
       fill_ul_rb_mask
@@ -67,7 +67,7 @@ subgraph tx
        phy_procedures_gNB_TX
        --> dcitop[nr_generate dci top]
        --> nr_generate_csi_rs
-       --> apply_nr_rotation
+       --> apply_nr_rotation_TX
        -- send_msg --> end_tx_func((L1_tx_out))
     end
     subgraph tx_reorder_thread
@@ -211,7 +211,7 @@ The scheduler also calls "run_pdcp()", as this is not a autonomous thread, it ne
 After calling run_pdcp, it updates "rlc" time data but it doesn't actually process rlc 
 it sends a iiti message to activate the thread for RRC, the answer will be asynchronous in ????  
 
-Calls schedule_nr_mib() that calls mac_rrc_nr_data_req() to fill MIB,  
+Calls schedule_nr_mib() that fills MIB,
 
 Calls schedule_nr_prach() which schedules the (fixed) PRACH region one frame in
 advance.
@@ -315,7 +315,7 @@ Still on DL (gNB side), PDCP push incoming data into RLC by calling: rlc_data_re
 For UL, the low layer push data into rlc by: mac_rlc_data_ind()  
 Then, rlc push it to pdcp by calling pdcp_data_ind() from a complex rlc internal call back (deliver_sdu())  
 
-When adding a UE, external code have to call nr_rrc_rlc_config_asn1_req(), to remove it: rrc_rlc_remove_ue()  
+When adding a UE, external code have to call `add_rlc_srb()` and/or `add_rlc_drb()`, to remove it: `rrc_rlc_remove_ue()`
 Inside UE, channels called drd or srb can be created: ??? and deleted: rrc_rlc_config_req()
 
 nr_rlc_tick() must be called periodically to manage the internal timers 
@@ -327,25 +327,21 @@ successful_delivery() and max_retx_reached(): in ??? trigger, the RLC sends a it
 The PDCP implementation is also protected through a general mutex.  
 The design is very similar to rlc layer. The pdcp data is isolated and encapsulated.
 
-pdcp_layer_init(): same as rlc init  
+nr_pdcp_layer_init(): same as rlc init
 we have to call a second init function: pdcp_module_init() 
 
-At Tx side (DL in gNB), pdcp_data_req() is the entry function that the upper layer calls.  
+At Tx side (DL in gNB), `pdcp_data_req_drb()` and `pdcp_data_req_srb()` are the entry functions that the upper layer calls.
 The upper layer can be GTP or a PDCP internal thread enb_tun_read_thread() that read directly from Linux socket in case we skip 3GPP core implementation.
-PDCP internals for  pdcp_data_req() is thread safe: inside pdcp_data_req_drb(), the pdcp manager protects with the mutex the access to the SDU receiving function of PDCP (recv_sdu() callback, corresponding to nr_pdcp_entity_drb_am_recv_sdu() for DRBs). When it needs, the pdcp layer push this data to rlc by calling : rlc_data_req()  
-
-Also, incoming downlink sdu can comme from internal RRC: in this case, pdcp_run() reads a itti queue, for message RRC_DCCH_DATA_REQ, to0 only call 'pdcp_data_req()'
+PDCP internals for  nr_pdcp_data_req_srb()/nr_pdcp_data_req_drb() are thread safe: inside them, the pdcp manager protects with the mutex the access to the SDU receiving function of PDCP (recv_sdu() callback, corresponding to nr_pdcp_entity_drb_am_recv_sdu() for DRBs). When it needs, the pdcp layer push this data to rlc by calling : rlc_data_req()
 
 At Rx side, pdcp_data_ind() is the entry point that receives the data from RLC.
 - Inside pdcp_data_ind(), the pdcp manager mutex protects the access to the PDU receiving function of PDCP (recv_pdu() callback corresponding to nr_pdcp_entity_drb_am_recv_pdu() for DRBs)
 - Then deliver_sdu_drb() function sends the received data to GTP thread through an ITTI message (GTPV1U_TUNNEL_DATA_REQ).
 
-pdcp_config_set_security(): not yet developped
+nr_pdcp_config_set_security(): sets the keys for AS security of a UE
 
-nr_DRB_preconfiguration(): the mac layer calls this for ???
-
-nr_pdcp_add_srbs() adds UE SRBs in pdcp, pdcp_remove_UE() removes it
-nr_pdcp_add_drbs() adds UE DRBs in pdcp, pdcp_remove_UE() removes it
+nr_pdcp_add_srbs() adds UE SRBs in pdcp, nr_pdcp_remove_UE() removes it
+nr_pdcp_add_drbs() adds UE DRBs in pdcp, nr_pdcp_remove_UE() removes it
 
 # GTP
 Gtp + UDP are two twin threads performing the data plane interface to the core network
@@ -357,7 +353,7 @@ PDCP layer push to the GTP queue (outside UDP thread that do almost nothing and 
 
 
 ## GTP thread running code from other layers
-gtp thread calls directly pdcp_data_req(), so it runs inside it's context internal pdcp structures updates
+gtp thread calls directly nr_pdcp_data_req_drb(), so it runs inside it's context internal pdcp structures updates
 
 ## inside other threads
 gtpv1u_create_s1u_tunnel(), delete tunnel, ... functions are called inside the other threads, without mutex.

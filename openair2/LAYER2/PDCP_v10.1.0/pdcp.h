@@ -45,6 +45,7 @@
 #include "LTE_MBMS-SessionInfoList-r9.h"
 #include "LTE_PMCH-InfoList-r9.h"
 
+#include "openair3/SECU/secu_defs.h"
 
 typedef rlc_op_status_t  (*send_rlc_data_req_func_t)(const protocol_ctxt_t *const,
 						     const srb_flag_t, const MBMS_flag_t,
@@ -161,17 +162,17 @@ typedef struct pdcp_s {
   bool is_srb;
 
   /* Configured security algorithms */
-  uint8_t cipheringAlgorithm;
-  uint8_t integrityProtAlgorithm;
+  eea_alg_id_e cipheringAlgorithm;
+  eia_alg_id_e integrityProtAlgorithm;
 
   /* User-Plane encryption key
    * Control-Plane RRC encryption key
    * Control-Plane RRC integrity key
    * These keys are configured by RRC layer
    */
-  uint8_t *kUPenc;
-  uint8_t *kRRCint;
-  uint8_t *kRRCenc;
+  uint8_t kUPenc[32];
+  uint8_t kRRCint[32];
+  uint8_t kRRCenc[32];
 
   uint8_t security_activated;
 
@@ -321,42 +322,6 @@ bool rrc_pdcp_config_asn1_req(const protocol_ctxt_t *const  ctxt_pP,
                               LTE_PMCH_InfoList_r9_t  *pmch_InfoList_r9,
                               rb_id_t                 *const defaultDRB);
 
-/*! \fn bool pdcp_config_req_asn1 (const protocol_ctxt_t* const ctxt_pP, srb_flag_t srb_flagP, uint32_t  action, rb_id_t rb_id, uint8_t rb_sn, uint8_t rb_report, uint16_t header_compression_profile, uint8_t security_mode)
-* \brief  Function for RRC to configure a Radio Bearer.
-* \param[in]  ctxt_pP           Running context.
-* \param[in]  pdcp_pP            Pointer on PDCP structure.
-* \param[in]  enb_mod_idP        Virtualized enb module identifier, Not used if eNB_flagP = 0.
-* \param[in]  ue_mod_idP         Virtualized ue module identifier.
-* \param[in]  frame              Frame index.
-* \param[in]  eNB_flag           Flag to indicate eNB (1) or UE (0)
-* \param[in]  srb_flagP          Flag to indicate SRB (1) or DRB (0)
-* \param[in]  action             add, remove, modify a RB
-* \param[in]  rb_id              radio bearer id
-* \param[in]  rb_sn              sequence number for this radio bearer
-* \param[in]  drb_report         set a pdcp report for this drb
-* \param[in]  header_compression set the rohc profile
-* \param[in]  security_mode      set the integrity and ciphering algs
-* \param[in]  kRRCenc            RRC encryption key
-* \param[in]  kRRCint            RRC integrity key
-* \param[in]  kUPenc             User-Plane encryption key
-* \return     A status about the processing, OK or error code.
-*/
-bool pdcp_config_req_asn1(const protocol_ctxt_t *const  ctxt_pP,
-                          pdcp_t         *const pdcp_pP,
-                          const srb_flag_t       srb_flagP,
-                          const rlc_mode_t       rlc_mode,
-                          const uint32_t         action,
-                          const uint16_t         lc_id,
-                          const uint16_t         mch_id,
-                          const rb_id_t          rb_id,
-                          const uint8_t          rb_sn,
-                          const uint8_t          rb_report,
-                          const uint16_t         header_compression_profile,
-                          const uint8_t          security_mode,
-                          uint8_t         *const kRRCenc,
-                          uint8_t         *const kRRCint,
-                          uint8_t         *const kUPenc);
-
 /*! \fn void pdcp_add_UE(const protocol_ctxt_t* const  ctxt_pP)
 * \brief  Function (for RRC) to add a new UE in PDCP module
 * \param[in]  ctxt_pP           Running context.
@@ -402,9 +367,7 @@ void pdcp_mbms_run            (
 void pdcp_run            (
   const protocol_ctxt_t *const  ctxt_pP);
 uint64_t pdcp_module_init (uint64_t pdcp_optmask, int ue_id);
-uint64_t nr_pdcp_module_init(uint64_t _pdcp_optmask, int id);
 void pdcp_module_cleanup (void);
-void nr_ip_over_LTE_DRB_preconfiguration (void);
 void pdcp_layer_init     (void);
 void pdcp_layer_cleanup  (void);
 #define PDCP2NW_DRIVER_FIFO 21

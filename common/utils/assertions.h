@@ -29,8 +29,11 @@
 #include <unistd.h>
 #include <platform_types.h>
 
+#define OAI_EXIT_NORMAL 0
+#define OAI_EXIT_ASSERT 1
+
 #define _Assert_Exit_							\
-  if (getenv("gdbStacks")) {						\
+  if (getenv("OAI_GDBSTACKS")) {						\
     char tmp [1000];							\
     sprintf(tmp,"gdb -ex='set confirm off' -ex 'thread apply all bt' -ex q -p %d < /dev/null", getpid());  \
     __attribute__((unused)) int dummy=system(tmp);						\
@@ -38,7 +41,8 @@
   fprintf(stderr, "\nExiting execution\n");				\
   fflush(stdout);							\
   fflush(stderr);							\
-  abort();
+  exit_function(__FILE__, __FUNCTION__, __LINE__, "_Assert_Exit_", OAI_EXIT_ASSERT); \
+  abort(); // to avoid gcc warnings - never executed unless app-specific exit_function() does not exit() nor abort()
 
 #define _Assert_(cOND, aCTION, fORMAT, aRGS...)             \
 do {                                                        \

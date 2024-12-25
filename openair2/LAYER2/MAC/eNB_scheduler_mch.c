@@ -37,8 +37,6 @@
 #include "nfapi/oai_integration/vendor_ext.h"
 #include "common/utils/LOG/vcd_signal_dumper.h"
 #include "UTIL/OPT/opt.h"
-#include "OCG.h"
-#include "OCG_extern.h"
 #include "PHY/LTE_TRANSPORT/transport_common_proto.h"
 
 #include "RRC/LTE/rrc_extern.h"
@@ -136,7 +134,7 @@ schedule_MBMS_NFAPI(module_id_t module_idP, uint8_t CC_id, frame_t frameP,
     int ii = 0, msi_pos = -1;
     int mcch_mcs = -1;
     int shifted_sf = 0;
-    uint16_t TBS, j = -1, padding = 0, post_padding = 0;
+    uint16_t TBS, padding = 0, post_padding = 0;
     mac_rlc_status_resp_t rlc_status;
     int num_mtch=0;
     int msi_length=0, i, k;
@@ -144,6 +142,7 @@ schedule_MBMS_NFAPI(module_id_t module_idP, uint8_t CC_id, frame_t frameP,
     unsigned char sdu_lcids[11], num_sdus = 0, offset = 0;
     uint16_t sdu_lengths[11], sdu_length_total = 0;
     unsigned char mch_buffer[MAX_DLSCH_PAYLOAD_BYTES];	// check the max value, this is for dlsch only
+    int16_t j = -1;
 
     COMMON_channels_t *cc = &RC.mac[module_idP]->common_channels[CC_id];
 
@@ -213,7 +212,7 @@ schedule_MBMS_NFAPI(module_id_t module_idP, uint8_t CC_id, frame_t frameP,
 			msi_pos++;
 		   mbms_mch_i=0;
 
-		   if((subframeP==0)){
+		   if (subframeP==0) {
 		   	x=0;
 		   	mbms_mch_i=0;
 		   }
@@ -459,7 +458,7 @@ schedule_MBMS_NFAPI(module_id_t module_idP, uint8_t CC_id, frame_t frameP,
             	     	  module_idP, CC_id, frameP, subframeP, i, j,
             	     	  cc->mbsfn_SubframeConfig[j]->subframeAllocation.choice.oneFrame.buf[0],
             	     	  msi_pos);
-	 	         if((subframeP==1)){
+	 	         if (subframeP==1) {
 		        	x=0;
 		        	mbms_mch_i=0;
 	      	     	LOG_D(MAC,"MSP, frameP %d subframeP %d msi_pos(%d) mbms_mch_i %d\n",frameP, subframeP, msi_pos,mbms_mch_i);
@@ -708,7 +707,7 @@ schedule_MBMS_NFAPI(module_id_t module_idP, uint8_t CC_id, frame_t frameP,
     uint16_t msi_control_element[29], *msi_ptr;
     // MSI buffer pointer
     char *buffer_pointer=NULL;
-    if (msi_flag == 1 && cc->mbms_SessionList) {
+    if (msi_flag == 1 && cc->mbms_SessionList[mbms_mch_i]) {
       // Create MSI here
       msi_ptr = &msi_control_element[0];
 
@@ -868,7 +867,7 @@ schedule_MBMS_NFAPI(module_id_t module_idP, uint8_t CC_id, frame_t frameP,
 
     // there is MTCHs, loop if there are more than 1
     // BAd race condition: all this struct is filled by another thread, no mutex or any code to make it coherent
-    if (mtch_flag == 1 && cc->mbms_SessionList && cc->mbms_SessionList[0] && cc->mbms_SessionList[0]->list.array[0]) {
+    if (mtch_flag == 1 && cc->mbms_SessionList[0] && cc->mbms_SessionList[0]->list.array[0]) {
       // Calculate TBS
       // get MTCH data from RLC (like for DTCH)
       LOG_D(MAC, "[eNB %d] CC_id %d Frame %d subframeP %d: Schedule MTCH (area %d, sfAlloc %d)\n", module_idP, CC_id, frameP, subframeP, i, j);
@@ -1116,7 +1115,7 @@ schedule_MBMS(module_id_t module_idP, uint8_t CC_id, frame_t frameP,
 	0, header_len_mcch_temp = 0, header_len_msi_temp = 0;
     int ii = 0, msi_pos = 0;
     int mcch_mcs = -1;
-    uint16_t TBS, j = -1, padding = 0, post_padding = 0;
+    uint16_t TBS, padding = 0, post_padding = 0;
     mac_rlc_status_resp_t rlc_status;
     int num_mtch;
     int msi_length, i, k;
@@ -1124,6 +1123,7 @@ schedule_MBMS(module_id_t module_idP, uint8_t CC_id, frame_t frameP,
     unsigned char sdu_lcids[11], num_sdus = 0, offset = 0;
     uint16_t sdu_lengths[11], sdu_length_total = 0;
     unsigned char mch_buffer[MAX_DLSCH_PAYLOAD_BYTES];	// check the max value, this is for dlsch only
+    int16_t j = -1;
 
     COMMON_channels_t *cc = &RC.mac[module_idP]->common_channels[CC_id];
 

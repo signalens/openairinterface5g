@@ -22,6 +22,8 @@
 
 #define _GNU_SOURCE             /* See feature_test_macros(7) */
 #include <sched.h>
+#include <stdbool.h>
+#include <signal.h>
 
 #include "T.h"
 #include "assertions.h"
@@ -36,7 +38,7 @@
 #include "common/utils/nr/nr_common.h"
 
 #include "radio/COMMON/common_lib.h"
-#include "radio/ETHERNET/USERSPACE/LIB/if_defs.h"
+#include "radio/ETHERNET/if_defs.h"
 
 //#undef FRAME_LENGTH_COMPLEX_SAMPLES //there are two conflicting definitions, so we better make sure we don't use it at all
 #include "openair1/PHY/MODULATION/nr_modulation.h"
@@ -59,10 +61,11 @@ unsigned short config_frames[4] = {2,9,11,13};
 
 #include "UTIL/OPT/opt.h"
 #include "enb_config.h"
+#include "LAYER2/nr_pdcp/nr_pdcp_oai_api.h"
 
 #include "intertask_interface.h"
 
-#include "PHY/INIT/phy_init.h"
+#include "PHY/INIT/nr_phy_init.h"
 #include "system.h"
 #include <openair2/RRC/NR_UE/rrc_proto.h>
 #include <openair2/LAYER2/NR_MAC_UE/mac_defs.h>
@@ -132,11 +135,14 @@ char             *usrp_args = NULL;
 char             *tx_subdev = NULL;
 char             *rx_subdev = NULL;
 char       *rrc_config_path = NULL;
+char *reconfig_file = NULL;
+char *rbconfig_file = NULL;
 char            *uecap_file = NULL;
 int               dumpframe = 0;
 
 uint64_t        downlink_frequency[MAX_NUM_CCs][4];
 int32_t         uplink_frequency_offset[MAX_NUM_CCs][4];
+uint64_t        sidelink_frequency[MAX_NUM_CCs][4];
 int             rx_input_level_dBm;
 
 #if MAX_NUM_CCs == 1
@@ -160,7 +166,6 @@ double            cpuf;
 int          chain_offset = 0;
 int           card_offset = 0;
 uint64_t num_missed_slots = 0; // counter for the number of missed slots
-int     transmission_mode = 1;
 int            numerology = 0;
 int           oaisim_flag = 0;
 int            emulate_rf = 0;
@@ -222,10 +227,12 @@ int create_tasks_nrue(uint32_t ue_nb) {
   }
 
   itti_wait_ready(0);
+
   return 0;
 }
 
-void exit_function(const char *file, const char *function, const int line, const char *s) {
+void exit_function(const char *file, const char *function, const int line, const char *s, const int assert)
+{
   int CC_id;
 
   if (s != NULL) {
@@ -241,8 +248,12 @@ void exit_function(const char *file, const char *function, const int line, const
     }
   }
 
-  sleep(1); //allow lte-softmodem threads to exit first
-  exit(1);
+  if (assert) {
+    abort();
+  } else {
+    sleep(1); // allow lte-softmodem threads to exit first
+    exit(EXIT_SUCCESS);
+  }
 }
 
 uint64_t get_nrUE_optmask(void) {
@@ -263,7 +274,8 @@ static void get_options(void) {
   paramdef_t cmdline_params[] =CMDLINE_NRUEPARAMS_DESC ;
   int numparams = sizeof(cmdline_params)/sizeof(paramdef_t);
   config_get(cmdline_params,numparams,NULL);
-  config_process_cmdline( cmdline_params,numparams,NULL);
+
+  AssertFatal(rrc_config_path == NULL, "the option \"rrc_config_path\" is deprecated. Please use --reconfig-file and --rbconfig-file separately to point to files reconfig.raw and rbconfig.raw\n");
 
   if (vcdflag > 0)
     ouput_vcd = 1;
@@ -271,38 +283,7 @@ static void get_options(void) {
 
 // set PHY vars from command line
 void set_options(int CC_id, PHY_VARS_NR_UE *UE){
-  NR_DL_FRAME_PARMS *fp       = &UE->frame_parms;
-  paramdef_t cmdline_params[] = CMDLINE_NRUE_PHYPARAMS_DESC ;
-  int numparams               = sizeof(cmdline_params)/sizeof(paramdef_t);
-
-  UE->mode = normal_txrx;
-
-  config_get(cmdline_params,numparams,NULL);
-
-  int pindex = config_paramidx_fromname(cmdline_params,numparams, CALIBRX_OPT);
-  if ( (cmdline_params[pindex].paramflags &  PARAMFLAG_PARAMSET) != 0) UE->mode = rx_calib_ue;
-  
-  pindex = config_paramidx_fromname(cmdline_params,numparams, CALIBRXMED_OPT);
-  if ( (cmdline_params[pindex].paramflags &  PARAMFLAG_PARAMSET) != 0) UE->mode = rx_calib_ue_med;
-
-  pindex = config_paramidx_fromname(cmdline_params,numparams, CALIBRXBYP_OPT);              
-  if ( (cmdline_params[pindex].paramflags &  PARAMFLAG_PARAMSET) != 0) UE->mode = rx_calib_ue_byp;
-
-  pindex = config_paramidx_fromname(cmdline_params,numparams, DBGPRACH_OPT); 
-  if (cmdline_params[pindex].uptr)
-    if ( *(cmdline_params[pindex].uptr) > 0) UE->mode = debug_prach;
-
-  pindex = config_paramidx_fromname(cmdline_params,numparams,NOL2CONNECT_OPT ); 
-  if (cmdline_params[pindex].uptr)
-    if ( *(cmdline_params[pindex].uptr) > 0)  UE->mode = no_L2_connect;
-
-  pindex = config_paramidx_fromname(cmdline_params,numparams,CALIBPRACH_OPT );
-  if (cmdline_params[pindex].uptr)
-    if ( *(cmdline_params[pindex].uptr) > 0) UE->mode = calib_prach_tx;
-
-  pindex = config_paramidx_fromname(cmdline_params,numparams,DUMPFRAME_OPT );
-  if ((cmdline_params[pindex].paramflags & PARAMFLAG_PARAMSET) != 0)
-    UE->mode = rx_dump_frame;
+  NR_DL_FRAME_PARMS *fp = &UE->frame_parms;
 
   // Init power variables
   tx_max_power[CC_id] = tx_max_power[0];
@@ -315,9 +296,18 @@ void set_options(int CC_id, PHY_VARS_NR_UE *UE){
   UE->tx_power_max_dBm     = tx_max_power[CC_id];
   UE->rf_map.card          = card_offset;
   UE->rf_map.chain         = CC_id + chain_offset;
+  UE->max_ldpc_iterations  = nrUE_params.max_ldpc_iterations;
+  UE->UE_scan_carrier      = nrUE_params.UE_scan_carrier;
+  UE->UE_fo_compensation   = nrUE_params.UE_fo_compensation;
+  UE->if_freq              = nrUE_params.if_freq;
+  UE->if_freq_off          = nrUE_params.if_freq_off;
+  UE->chest_freq           = nrUE_params.chest_freq;
+  UE->chest_time           = nrUE_params.chest_time;
+  UE->no_timing_correction = nrUE_params.no_timing_correction;
+  UE->timing_advance       = nrUE_params.timing_advance;
 
-  LOG_I(PHY,"Set UE mode %d, UE_fo_compensation %d, UE_scan_carrier %d, UE_no_timing_correction %d \n, chest-freq %d\n",
-  	   UE->mode, UE->UE_fo_compensation, UE->UE_scan_carrier, UE->no_timing_correction, UE->chest_freq);
+  LOG_I(PHY,"Set UE_fo_compensation %d, UE_scan_carrier %d, UE_no_timing_correction %d \n, chest-freq %d, chest-time %d\n",
+        UE->UE_fo_compensation, UE->UE_scan_carrier, UE->no_timing_correction, UE->chest_freq, UE->chest_time);
 
   // Set FP variables
 
@@ -326,10 +316,14 @@ void set_options(int CC_id, PHY_VARS_NR_UE *UE){
     LOG_I(PHY, "Set UE frame_type %d\n", fp->frame_type);
   }
 
-  LOG_I(PHY, "Set UE nb_rx_antenna %d, nb_tx_antenna %d, threequarter_fs %d, ssb_start_subcarrier %d\n", fp->nb_antennas_rx, fp->nb_antennas_tx, fp->threequarter_fs, fp->ssb_start_subcarrier);
+  fp->nb_antennas_rx       = nrUE_params.nb_antennas_rx;
+  fp->nb_antennas_tx       = nrUE_params.nb_antennas_tx;
+  fp->threequarter_fs      = nrUE_params.threequarter_fs;
+  fp->N_RB_DL              = nrUE_params.N_RB_DL;
+  fp->ssb_start_subcarrier = nrUE_params.ssb_start_subcarrier;
+  fp->ofdm_offset_divisor  = nrUE_params.ofdm_offset_divisor;
 
-  fp->ofdm_offset_divisor = nrUE_params.ofdm_offset_divisor;
-  UE->max_ldpc_iterations = nrUE_params.max_ldpc_iterations;
+  LOG_I(PHY, "Set UE nb_rx_antenna %d, nb_tx_antenna %d, threequarter_fs %d, ssb_start_subcarrier %d\n", fp->nb_antennas_rx, fp->nb_antennas_tx, fp->threequarter_fs, fp->ssb_start_subcarrier);
 
 }
 
@@ -339,7 +333,7 @@ void init_openair0(void) {
   NR_DL_FRAME_PARMS *frame_parms = &PHY_vars_UE_g[0][0]->frame_parms;
 
   for (card=0; card<MAX_CARDS; card++) {
-    uint64_t dl_carrier, ul_carrier;
+    uint64_t dl_carrier, ul_carrier, sl_carrier;
     openair0_cfg[card].configFilename    = NULL;
     openair0_cfg[card].threequarter_fs   = frame_parms->threequarter_fs;
     openair0_cfg[card].sample_rate       = frame_parms->samples_per_subframe * 1e3;
@@ -368,6 +362,12 @@ void init_openair0(void) {
     nr_get_carrier_frequencies(PHY_vars_UE_g[0][0], &dl_carrier, &ul_carrier);
 
     nr_rf_card_config_freq(&openair0_cfg[card], ul_carrier, dl_carrier, freq_off);
+
+    if (get_softmodem_params()->sl_mode == 2) {
+      nr_get_carrier_frequencies_sl(PHY_vars_UE_g[0][0], &sl_carrier);
+      nr_rf_card_config_freq(&openair0_cfg[card], sl_carrier, sl_carrier, freq_off);
+    }
+
     nr_rf_card_config_gain(&openair0_cfg[card], rx_gain_off);
 
     openair0_cfg[card].configFilename = get_softmodem_params()->rf_config_file;
@@ -392,7 +392,7 @@ static void init_pdcp(int ue_id) {
   if (get_softmodem_params()->nsa && rlc_module_init(0) != 0) {
     LOG_I(RLC, "Problem at RLC initiation \n");
   }
-  pdcp_layer_init();
+  nr_pdcp_layer_init();
   nr_pdcp_module_init(pdcp_initmask, ue_id);
   pdcp_set_rlc_data_req_func((send_rlc_data_req_func_t) rlc_data_req);
   pdcp_set_pdcp_data_ind_func((pdcp_data_ind_func_t) pdcp_data_ind);
@@ -401,6 +401,27 @@ static void init_pdcp(int ue_id) {
 // Stupid function addition because UE itti messages queues definition is common with eNB
 void *rrc_enb_process_msg(void *notUsed) {
   return NULL;
+}
+
+static bool stop_immediately = false;
+static void trigger_stop(int sig)
+{
+  if (!oai_exit)
+    itti_wait_tasks_unblock();
+}
+static void trigger_deregistration(int sig)
+{
+  if (!stop_immediately) {
+    MessageDef *msg = itti_alloc_new_message(TASK_RRC_UE_SIM, 0, NAS_DEREGISTRATION_REQ);
+    itti_send_msg_to_task(TASK_NAS_NRUE, 0, msg);
+    stop_immediately = true;
+    static const char m[] = "Press ^C again to trigger immediate shutdown\n";
+    __attribute__((unused)) int unused = write(STDOUT_FILENO, m, sizeof(m) - 1);
+    signal(SIGALRM, trigger_stop);
+    alarm(5);
+  } else {
+    itti_wait_tasks_unblock();
+  }
 }
 
 static void get_channel_model_mode() {
@@ -535,7 +556,7 @@ int main( int argc, char **argv ) {
   if ( load_configmodule(argc,argv,CONFIG_ENABLECMDLINEONLY) == NULL) {
     exit_fun("[SOFTMODEM] Error, configuration module init failed\n");
   }
-  set_softmodem_sighandler();
+  //set_softmodem_sighandler();
   CONFIG_SETRTFLAG(CONFIG_NOEXITONHELP);
   memset(openair0_cfg,0,sizeof(openair0_config_t)*MAX_CARDS);
   memset(tx_max_power,0,sizeof(int)*MAX_NUM_CCs);
@@ -586,7 +607,7 @@ int main( int argc, char **argv ) {
 #endif
   LOG_I(HW, "Version: %s\n", PACKAGE_VERSION);
 
-  init_NR_UE(1,uecap_file,rrc_config_path);
+  init_NR_UE(1, uecap_file, reconfig_file, rbconfig_file);
 
   int mode_offset = get_softmodem_params()->nsa ? NUMBER_OF_UE_MAX : 1;
   uint16_t node_number = get_softmodem_params()->node_number;
@@ -627,8 +648,9 @@ int main( int argc, char **argv ) {
       NR_UE_MAC_INST_t *mac = get_mac_inst(0);
 
       if (get_softmodem_params()->sa) { // set frame config to initial values from command line and assume that the SSB is centered on the grid
-        uint16_t nr_band = get_band(downlink_frequency[CC_id][0],uplink_frequency_offset[CC_id][0]);
+        uint16_t nr_band = get_softmodem_params()->band;
         mac->nr_band = nr_band;
+        mac->ssb_start_subcarrier = UE[CC_id]->frame_parms.ssb_start_subcarrier;
         nr_init_frame_parms_ue_sa(&UE[CC_id]->frame_parms,
                                   downlink_frequency[CC_id][0],
                                   uplink_frequency_offset[CC_id][0],
@@ -636,13 +658,12 @@ int main( int argc, char **argv ) {
                                   nr_band);
       }
       else{
-        if(mac->if_module != NULL && mac->if_module->phy_config_request != NULL)
-          mac->if_module->phy_config_request(&mac->phy_config);
-
+        DevAssert(mac->if_module != NULL && mac->if_module->phy_config_request != NULL);
+        mac->if_module->phy_config_request(&mac->phy_config);
+        mac->phy_config_request_sent = true;
         fapi_nr_config_request_t *nrUE_config = &UE[CC_id]->nrUE_config;
 
-        nr_init_frame_parms_ue(&UE[CC_id]->frame_parms, nrUE_config,
-            *mac->scc->downlinkConfigCommon->frequencyInfoDL->frequencyBandList.list.array[0]);
+        nr_init_frame_parms_ue(&UE[CC_id]->frame_parms, nrUE_config, mac->nr_band);
       }
 
       init_nr_ue_vars(UE[CC_id], 0, abstraction_flag);
@@ -676,14 +697,27 @@ int main( int argc, char **argv ) {
 
   // Sleep a while before checking all parameters have been used
   // Some are used directly in external threads, asynchronously
-  sleep(20);
+  sleep(2);
   config_check_unknown_cmdlineopt(CONFIG_CHECKALLSECTIONS);
 
-  while(true)
-    sleep(3600);
+  // wait for end of program
+  printf("Entering ITTI signals handler\n");
+  printf("TYPE <CTRL-C> TO TERMINATE\n");
+  itti_wait_tasks_end(trigger_deregistration);
+  printf("Returned from ITTI signal handler\n");
+  oai_exit=1;
+  printf("oai_exit=%d\n",oai_exit);
 
   if (ouput_vcd)
     vcd_signal_dumper_close();
+
+  if (PHY_vars_UE_g && PHY_vars_UE_g[0]) {
+    for (int CC_id = 0; CC_id < MAX_NUM_CCs; CC_id++) {
+      PHY_VARS_NR_UE *phy_vars = PHY_vars_UE_g[0][CC_id];
+      if (phy_vars && phy_vars->rfdevice.trx_end_func)
+        phy_vars->rfdevice.trx_end_func(&phy_vars->rfdevice);
+    }
+  }
 
   return 0;
 }
@@ -700,7 +734,7 @@ static void init_bler_table(char *env_string) {
 
   for (unsigned int i = 0; i < NR_NUM_MCS; i++) {
     char fName[1024];
-    snprintf(fName, sizeof(fName), "%s/mcs%d_awgn_5G.csv", awgn_results_dir, i);
+    snprintf(fName, sizeof(fName), "%s/mcs%u_awgn_5G.csv", awgn_results_dir, i);
     FILE *pFile = fopen(fName, "r");
     if (!pFile) {
       LOG_E(NR_MAC, "%s: open %s: %s\n", __func__, fName, strerror(errno));

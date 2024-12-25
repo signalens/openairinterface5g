@@ -43,19 +43,8 @@
 //#include "targets/RT/USER/lte-softmodem.h"
 #include "executables/softmodem-common.h"
 
-const char* devtype_names[MAX_RF_DEV_TYPE] = {
-  "",
-  "USRP B200",
-  "USRP X300",
-  "USRP N300",
-  "USRP X400",
-  "BLADERF",
-  "LMSSDR",
-  "IRIS",
-  "No HW",
-  "UEDv2",
-  "RFSIMULATOR"
-};
+const char *const devtype_names[MAX_RF_DEV_TYPE] =
+    {"", "USRP B200", "USRP X300", "USRP N300", "USRP X400", "BLADERF", "LMSSDR", "IRIS", "No HW", "UEDv2", "RFSIMULATOR"};
 
 const char *get_devname(int devtype) {
   if (devtype < MAX_RF_DEV_TYPE && devtype !=MIN_RF_DEV_TYPE )
@@ -110,7 +99,10 @@ int load_lib(openair0_device *device,
   
   openair0_cfg->recplay_mode = read_recplayconfig(&(openair0_cfg->recplay_conf),&(device->recplay_state));
 
-  if ( openair0_cfg->recplay_mode == RECPLAY_REPLAYMODE ) {
+  if (openair0_cfg->recplay_mode == RECPLAY_RECORDMODE) {
+  	  set_softmodem_optmask(SOFTMODEM_RECRECORD_BIT);  // softmodem has to know we use the iqrecorder to workaround randomized algorithms
+  }
+  if (openair0_cfg->recplay_mode == RECPLAY_REPLAYMODE) {
   	  deflibname=OAI_IQPLAYER_LIBNAME;
   	  shlib_fdesc[0].fname="device_init";
   	  set_softmodem_optmask(SOFTMODEM_RECPLAY_BIT);  // softmodem has to know we use the iqplayer to workaround randomized algorithms

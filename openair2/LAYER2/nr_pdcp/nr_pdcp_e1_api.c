@@ -32,8 +32,7 @@ void e1_add_drb(int is_gnb,
                 unsigned char *ciphering_key,
                 unsigned char *integrity_key)
 {
-  add_drb_am(is_gnb, ue_id, 0, s, ciphering_algorithm, integrity_algorithm,
-             ciphering_key, integrity_key);
+  add_drb(is_gnb, ue_id, s, ciphering_algorithm, integrity_algorithm, ciphering_key, integrity_key);
   LOG_I(PDCP, "%s:%s:%d: added DRB for UE ID %ld\n", __FILE__, __FUNCTION__, __LINE__, ue_id);
 }
 
@@ -52,8 +51,4 @@ void nr_pdcp_e1_add_drbs(eNB_flag_t enb_flag,
     }
   } else
     LOG_W(PDCP, "%s with void list\n", __FUNCTION__);
-  if (kUPenc)
-    free(kUPenc);
-  if (kUPint)
-    free(kUPint);
 }

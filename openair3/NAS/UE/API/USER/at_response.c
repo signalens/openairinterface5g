@@ -89,28 +89,28 @@ typedef int (*_at_response_encode_function_t) (char* buffer, const at_response_t
 
 static _at_response_encode_function_t _at_response_encode_function[AT_RESPONSE_ID_MAX] = {
     NULL,
-    _at_response_encode_cgsn,   /* CGSN    */
-    _at_response_encode_cgmi,   /* CGMI    */
-    _at_response_encode_cgmm,   /* CGMM    */
-    _at_response_encode_cgmr,   /* CGMR    */
-    _at_response_encode_cimi,   /* CIMI    */
-    _at_response_encode_cfun,   /* CFUN    */
-    _at_response_encode_cpin,   /* CPIN    */
-    _at_response_encode_csq,    /* CSQ     */
-    _at_response_encode_cesq,   /* CESQ    */
-    _at_response_encode_clac,   /* CLAC    */
-    _at_response_encode_cmee,   /* CMEE    */
-    _at_response_encode_cnum,   /* CNUM    */
-    _at_response_encode_clck,   /* CLCK    */
-    _at_response_encode_cops,   /* COPS    */
-    _at_response_encode_creg,   /* CREG    */
-    _at_response_encode_cgatt,    /* CGATT   */
-    _at_response_encode_cgreg,    /* CGREG   */
-    _at_response_encode_cereg,    /* CEREG   */
-    _at_response_encode_cgdcont,  /* CGDCONT */
-    _at_response_encode_cgact,    /* CGACT   */
-    _at_response_encode_cgpaddr,  /* CGPADDR */
-    _at_response_encode_cgev,   /* CGEV: unsolicited result */
+    _at_response_encode_cgsn, /* CGSN    */
+    _at_response_encode_cgmi, /* CGMI    */
+    _at_response_encode_cgmm, /* CGMM    */
+    _at_response_encode_cgmr, /* CGMR    */
+    _at_response_encode_cimi, /* CIMI    */
+    _at_response_encode_cfun, /* CFUN    */
+    _at_response_encode_cpin, /* CPIN    */
+    _at_response_encode_csq, /* CSQ     */
+    _at_response_encode_cesq, /* CESQ    */
+    _at_response_encode_clac, /* CLAC    */
+    _at_response_encode_cmee, /* CMEE    */
+    _at_response_encode_cnum, /* CNUM    */
+    _at_response_encode_clck, /* CLCK    */
+    _at_response_encode_cops, /* COPS    */
+    _at_response_encode_creg, /* CREG    */
+    _at_response_encode_cgatt, /* CGATT   */
+    _at_response_encode_cgreg, /* CGREG   */
+    _at_response_encode_cereg, /* CEREG   */
+    _at_response_encode_cgdcont, /* CGDCONT */
+    _at_response_encode_cgact, /* CGACT   */
+    _at_response_encode_cgpaddr, /* CGPADDR */
+    _at_response_encode_cgev, /* CGEV: unsolicited result */
 };
 
 /* String representation of Packet Domain events (cf. network_pdn_state_t) */
@@ -1067,32 +1067,32 @@ static int _at_response_encode_cgpaddr(char* buffer, const at_response_t* data)
 
             if (cgpaddr->PDP_addr_1[i] != NULL) {
                 /* IPv4 address */
-                offset += sprintf(buffer+offset, ",%hhu.%hhu.%hhu.%hhu",
-                                  (unsigned int)cgpaddr->PDP_addr_1[i][0],
-                                  (unsigned int)cgpaddr->PDP_addr_1[i][1],
-                                  (unsigned int)cgpaddr->PDP_addr_1[i][2],
-                                  (unsigned int)cgpaddr->PDP_addr_1[i][3]);
+                offset += sprintf(buffer+offset, ",%c.%c.%c.%c",
+                                  cgpaddr->PDP_addr_1[i][0],
+                                  cgpaddr->PDP_addr_1[i][1],
+                                  cgpaddr->PDP_addr_1[i][2],
+                                  cgpaddr->PDP_addr_1[i][3]);
             }
 
             if (cgpaddr->PDP_addr_2[i] != NULL) {
                 /* IPv6 Link-local address prefixe */
                 offset += sprintf(buffer+offset,
-                                  ",%hhu.%hhu.%hhu.%hhu.%hhu.%hhu.%hhu.%hhu",
-                                  (unsigned int)0xfe, (unsigned int)0x80,
-                                  (unsigned int)0, (unsigned int)0,
-                                  (unsigned int)0, (unsigned int)0,
-                                  (unsigned int)0, (unsigned int)0);
+                                  ",%u.%u.%u.%u.%u.%u.%u.%u",
+                                  0xfeU, 0x80U,
+                                  0U, 0U,
+                                  0U, 0U,
+                                  0U, 0U);
                 /* IPv6 Link-local address */
                 offset += sprintf(buffer+offset,
-                                  ".%hhu.%hhu.%hhu.%hhu.%hhu.%hhu.%hhu.%hhu",
-                                  (unsigned int)cgpaddr->PDP_addr_2[i][0],
-                                  (unsigned int)cgpaddr->PDP_addr_2[i][1],
-                                  (unsigned int)cgpaddr->PDP_addr_2[i][2],
-                                  (unsigned int)cgpaddr->PDP_addr_2[i][3],
-                                  (unsigned int)cgpaddr->PDP_addr_2[i][4],
-                                  (unsigned int)cgpaddr->PDP_addr_2[i][5],
-                                  (unsigned int)cgpaddr->PDP_addr_2[i][6],
-                                  (unsigned int)cgpaddr->PDP_addr_2[i][7]);
+                                  ".%c.%c.%c.%c.%c.%c.%c.%c",
+                                  cgpaddr->PDP_addr_2[i][0],
+                                  cgpaddr->PDP_addr_2[i][1],
+                                  cgpaddr->PDP_addr_2[i][2],
+                                  cgpaddr->PDP_addr_2[i][3],
+                                  cgpaddr->PDP_addr_2[i][4],
+                                  cgpaddr->PDP_addr_2[i][5],
+                                  cgpaddr->PDP_addr_2[i][6],
+                                  cgpaddr->PDP_addr_2[i][7]);
             }
 
             offset += sprintf(buffer+offset, "\r\n");

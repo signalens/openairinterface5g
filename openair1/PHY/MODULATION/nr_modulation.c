@@ -21,100 +21,93 @@
 
 #include "nr_modulation.h"
 #include "PHY/NR_REFSIG/nr_mod_table.h"
+#include "executables/softmodem-common.h"
 
 //Table 6.3.1.5-1 Precoding Matrix W 1 layer 2 antenna ports 'n' = -1 and 'o' = -j
-char nr_W_1l_2p[6][2][1] = {
-  {{'1'}, {'0'}},//pmi 0
-  {{'0'}, {'1'}},
-  {{'1'}, {'1'}},
-  {{'1'}, {'n'}},
-  {{'1'}, {'j'}},
-  {{'1'}, {'o'}}//pmi 5
+const char nr_W_1l_2p[6][2][1] = {
+    {{'1'}, {'0'}}, // pmi 0
+    {{'0'}, {'1'}},
+    {{'1'}, {'1'}},
+    {{'1'}, {'n'}},
+    {{'1'}, {'j'}},
+    {{'1'}, {'o'}} // pmi 5
 };
 
 //Table 6.3.1.5-3 Precoding Matrix W 1 layer 4 antenna ports 'n' = -1 and 'o' = -j
-char nr_W_1l_4p[28][4][1] = {
-  {{'1'}, {'0'}, {'0'}, {'0'}},//pmi 0
-  {{'0'}, {'1'}, {'0'}, {'0'}},
-  {{'0'}, {'0'}, {'1'}, {'0'}},
-  {{'0'}, {'0'}, {'0'}, {'1'}},
-  {{'1'}, {'0'}, {'1'}, {'0'}},
-  {{'1'}, {'0'}, {'n'}, {'0'}},
-  {{'1'}, {'0'}, {'j'}, {'0'}},
-  {{'1'}, {'0'}, {'o'}, {'0'}},//pmi 7
-  {{'0'}, {'1'}, {'0'}, {'1'}},//pmi 8
-  {{'0'}, {'1'}, {'0'}, {'n'}},
-  {{'0'}, {'1'}, {'0'}, {'j'}},
-  {{'0'}, {'1'}, {'0'}, {'o'}},
-  {{'1'}, {'1'}, {'1'}, {'1'}},
-  {{'1'}, {'1'}, {'j'}, {'j'}},
-  {{'1'}, {'1'}, {'n'}, {'n'}},
-  {{'1'}, {'1'}, {'o'}, {'o'}},
-  {{'1'}, {'j'}, {'1'}, {'j'}},//pmi 16
-  {{'1'}, {'j'}, {'j'}, {'n'}},
-  {{'1'}, {'j'}, {'n'}, {'o'}},
-  {{'1'}, {'j'}, {'o'}, {'1'}},
-  {{'1'}, {'n'}, {'1'}, {'n'}},
-  {{'1'}, {'n'}, {'j'}, {'o'}},
-  {{'1'}, {'n'}, {'n'}, {'1'}},
-  {{'1'}, {'n'}, {'o'}, {'j'}},//pmi 23
-  {{'1'}, {'o'}, {'1'}, {'o'}},//pmi 24
-  {{'1'}, {'o'}, {'j'}, {'1'}},
-  {{'1'}, {'o'}, {'n'}, {'j'}},
-  {{'1'}, {'o'}, {'o'}, {'n'}}//pmi 27
+const char nr_W_1l_4p[28][4][1] = {
+    {{'1'}, {'0'}, {'0'}, {'0'}}, // pmi 0
+    {{'0'}, {'1'}, {'0'}, {'0'}},
+    {{'0'}, {'0'}, {'1'}, {'0'}},
+    {{'0'}, {'0'}, {'0'}, {'1'}},
+    {{'1'}, {'0'}, {'1'}, {'0'}},
+    {{'1'}, {'0'}, {'n'}, {'0'}},
+    {{'1'}, {'0'}, {'j'}, {'0'}},
+    {{'1'}, {'0'}, {'o'}, {'0'}}, // pmi 7
+    {{'0'}, {'1'}, {'0'}, {'1'}}, // pmi 8
+    {{'0'}, {'1'}, {'0'}, {'n'}},
+    {{'0'}, {'1'}, {'0'}, {'j'}},
+    {{'0'}, {'1'}, {'0'}, {'o'}},
+    {{'1'}, {'1'}, {'1'}, {'1'}},
+    {{'1'}, {'1'}, {'j'}, {'j'}},
+    {{'1'}, {'1'}, {'n'}, {'n'}},
+    {{'1'}, {'1'}, {'o'}, {'o'}},
+    {{'1'}, {'j'}, {'1'}, {'j'}}, // pmi
+                                  // 16
+    {{'1'}, {'j'}, {'j'}, {'n'}},
+    {{'1'}, {'j'}, {'n'}, {'o'}},
+    {{'1'}, {'j'}, {'o'}, {'1'}},
+    {{'1'}, {'n'}, {'1'}, {'n'}},
+    {{'1'}, {'n'}, {'j'}, {'o'}},
+    {{'1'}, {'n'}, {'n'}, {'1'}},
+    {{'1'}, {'n'}, {'o'}, {'j'}}, // pmi 23
+    {{'1'}, {'o'}, {'1'}, {'o'}}, // pmi 24
+    {{'1'}, {'o'}, {'j'}, {'1'}},
+    {{'1'}, {'o'}, {'n'}, {'j'}},
+    {{'1'}, {'o'}, {'o'}, {'n'}} // pmi 27
 };
 
 //Table 6.3.1.5-4 Precoding Matrix W 2 antenna ports layers 2  'n' = -1 and 'o' = -j
-char nr_W_2l_2p[3][2][2] = {
-  {{'1', '0'}, {'0', '1'}},//pmi 0
-  {{'1', '1'}, {'1', 'n'}},
-  {{'1', '1'}, {'j', 'o'}} //pmi 2
+const char nr_W_2l_2p[3][2][2] = {
+    {{'1', '0'}, {'0', '1'}}, // pmi 0
+    {{'1', '1'}, {'1', 'n'}},
+    {{'1', '1'}, {'j', 'o'}} // pmi 2
 };
 
 //Table 6.3.1.5-5 Precoding Matrix W 2 layers 4 antenna ports 'n' = -1 and 'o' = -j
-char nr_W_2l_4p[22][4][2] = {
-  {{'1', '0'}, {'0', '1'}, {'0', '0'}, {'0', '0'}},//pmi 0
-  {{'1', '0'}, {'0', '0'}, {'0', '1'}, {'0', '0'}},
-  {{'1', '0'}, {'0', '0'}, {'0', '0'}, {'0', '1'}},
-  {{'0', '0'}, {'1', '0'}, {'0', '1'}, {'0', '0'}},//pmi 3
-  {{'0', '0'}, {'1', '0'}, {'0', '0'}, {'0', '1'}},//pmi 4
-  {{'0', '0'}, {'0', '0'}, {'1', '0'}, {'0', '1'}},
-  {{'1', '0'}, {'0', '1'}, {'1', '0'}, {'0', 'o'}},
-  {{'1', '0'}, {'0', '1'}, {'1', '0'}, {'0', 'j'}},
-  {{'1', '0'}, {'0', '1'}, {'o', '0'}, {'0', '1'}},//pmi 8
-  {{'1', '0'}, {'0', '1'}, {'o', '0'}, {'0', 'n'}},
-  {{'1', '0'}, {'0', '1'}, {'n', '0'}, {'0', 'o'}},
-  {{'1', '0'}, {'0', '1'}, {'n', '0'}, {'0', 'j'}},//pmi 11
-  {{'1', '0'}, {'0', '1'}, {'j', '0'}, {'0', '1'}},//pmi 12
-  {{'1', '0'}, {'0', '1'}, {'j', '0'}, {'0', 'n'}},
-  {{'1', '1'}, {'1', '1'}, {'1', 'n'}, {'1', 'n'}},
-  {{'1', '1'}, {'1', '1'}, {'j', 'o'}, {'j', 'o'}},//pmi 15
-  {{'1', '1'}, {'j', 'j'}, {'1', 'n'}, {'j', 'o'}},//pmi 16
-  {{'1', '1'}, {'j', 'j'}, {'j', 'o'}, {'n', '1'}},
-  {{'1', '1'}, {'n', 'n'}, {'1', 'n'}, {'n', '1'}},
-  {{'1', '1'}, {'n', 'n'}, {'j', 'o'}, {'o', 'j'}},//pmi 19
-  {{'1', '1'}, {'o', 'o'}, {'1', 'n'}, {'o', 'j'}},
-  {{'1', '1'}, {'o', 'o'}, {'j', 'o'}, {'1', 'n'}}//pmi 21
+const char nr_W_2l_4p[22][4][2] = {
+    {{'1', '0'}, {'0', '1'}, {'0', '0'}, {'0', '0'}}, // pmi 0
+    {{'1', '0'}, {'0', '0'}, {'0', '1'}, {'0', '0'}}, {{'1', '0'}, {'0', '0'}, {'0', '0'}, {'0', '1'}},
+    {{'0', '0'}, {'1', '0'}, {'0', '1'}, {'0', '0'}}, // pmi 3
+    {{'0', '0'}, {'1', '0'}, {'0', '0'}, {'0', '1'}}, // pmi 4
+    {{'0', '0'}, {'0', '0'}, {'1', '0'}, {'0', '1'}}, {{'1', '0'}, {'0', '1'}, {'1', '0'}, {'0', 'o'}},
+    {{'1', '0'}, {'0', '1'}, {'1', '0'}, {'0', 'j'}}, {{'1', '0'}, {'0', '1'}, {'o', '0'}, {'0', '1'}}, // pmi 8
+    {{'1', '0'}, {'0', '1'}, {'o', '0'}, {'0', 'n'}}, {{'1', '0'}, {'0', '1'}, {'n', '0'}, {'0', 'o'}},
+    {{'1', '0'}, {'0', '1'}, {'n', '0'}, {'0', 'j'}}, // pmi 11
+    {{'1', '0'}, {'0', '1'}, {'j', '0'}, {'0', '1'}}, // pmi 12
+    {{'1', '0'}, {'0', '1'}, {'j', '0'}, {'0', 'n'}}, {{'1', '1'}, {'1', '1'}, {'1', 'n'}, {'1', 'n'}},
+    {{'1', '1'}, {'1', '1'}, {'j', 'o'}, {'j', 'o'}}, // pmi 15
+    {{'1', '1'}, {'j', 'j'}, {'1', 'n'}, {'j', 'o'}}, // pmi 16
+    {{'1', '1'}, {'j', 'j'}, {'j', 'o'}, {'n', '1'}}, {{'1', '1'}, {'n', 'n'}, {'1', 'n'}, {'n', '1'}},
+    {{'1', '1'}, {'n', 'n'}, {'j', 'o'}, {'o', 'j'}}, // pmi 19
+    {{'1', '1'}, {'o', 'o'}, {'1', 'n'}, {'o', 'j'}}, {{'1', '1'}, {'o', 'o'}, {'j', 'o'}, {'1', 'n'}} // pmi 21
 };
 
 //Table 6.3.1.5-6 Precoding Matrix W 3 layers 4 antenna ports 'n' = -1 and 'o' = -j
-char nr_W_3l_4p[7][4][3] = {
-  {{'1', '0', '0'}, {'0', '1', '0'}, {'0', '0', '1'},{'0', '0', '0'}},//pmi 0
-  {{'1', '0', '0'}, {'0', '1', '0'}, {'1', '0', '0'},{'0', '0', '1'}},
-  {{'1', '0', '0'}, {'0', '1', '0'}, {'n', '0', '0'},{'0', '0', '1'}},
-  {{'1', '1', '1'}, {'1', 'n', '1'}, {'1', '1', 'n'},{'1', 'n', 'n'}},//pmi 3
-  {{'1', '1', '1'}, {'1', 'n', '1'}, {'j', 'j', 'o'},{'j', 'o', 'o'}},//pmi 4
-  {{'1', '1', '1'}, {'n', '1', 'n'}, {'1', '1', 'n'},{'n', '1', '1'}},
-  {{'1', '1', '1'}, {'n', '1', 'n'}, {'j', 'j', 'o'},{'o', 'j', 'j'}}
-};
+const char nr_W_3l_4p[7][4][3] = {{{'1', '0', '0'}, {'0', '1', '0'}, {'0', '0', '1'}, {'0', '0', '0'}}, // pmi 0
+                                  {{'1', '0', '0'}, {'0', '1', '0'}, {'1', '0', '0'}, {'0', '0', '1'}},
+                                  {{'1', '0', '0'}, {'0', '1', '0'}, {'n', '0', '0'}, {'0', '0', '1'}},
+                                  {{'1', '1', '1'}, {'1', 'n', '1'}, {'1', '1', 'n'}, {'1', 'n', 'n'}}, // pmi 3
+                                  {{'1', '1', '1'}, {'1', 'n', '1'}, {'j', 'j', 'o'}, {'j', 'o', 'o'}}, // pmi 4
+                                  {{'1', '1', '1'}, {'n', '1', 'n'}, {'1', '1', 'n'}, {'n', '1', '1'}},
+                                  {{'1', '1', '1'}, {'n', '1', 'n'}, {'j', 'j', 'o'}, {'o', 'j', 'j'}}};
 
 //Table 6.3.1.5-7 Precoding Matrix W 4 layers 4 antenna ports 'n' = -1 and 'o' = -j
-char nr_W_4l_4p[5][4][4] = {
-  {{'1', '0', '0', '0'}, {'0', '1', '0', '0'}, {'0', '0', '1', '0'}, {'0', '0', '0', '1'}},//pmi 0
-  {{'1', '1', '0', '0'}, {'0', '0', '1', '1'}, {'1', 'n', '0', '0'}, {'0', '0', '1', 'n'}},
-  {{'1', '1', '0', '0'}, {'0', '0', '1', '1'}, {'j', 'o', '0', '0'}, {'0', '0', 'j', 'o'}},
-  {{'1', '1', '1', '1'}, {'1', 'n', '1', 'n'}, {'1', '1', 'n', 'n'}, {'1', 'n', 'n', '1'}},//pmi 3
-  {{'1', '1', '1', '1'}, {'1', 'n', '1', 'n'}, {'j', 'j', 'o', 'o'}, {'j', 'o', 'o', 'j'}}//pmi 4
+const char nr_W_4l_4p[5][4][4] = {
+    {{'1', '0', '0', '0'}, {'0', '1', '0', '0'}, {'0', '0', '1', '0'}, {'0', '0', '0', '1'}}, // pmi 0
+    {{'1', '1', '0', '0'}, {'0', '0', '1', '1'}, {'1', 'n', '0', '0'}, {'0', '0', '1', 'n'}},
+    {{'1', '1', '0', '0'}, {'0', '0', '1', '1'}, {'j', 'o', '0', '0'}, {'0', '0', 'j', 'o'}},
+    {{'1', '1', '1', '1'}, {'1', 'n', '1', 'n'}, {'1', '1', 'n', 'n'}, {'1', 'n', 'n', '1'}}, // pmi 3
+    {{'1', '1', '1', '1'}, {'1', 'n', '1', 'n'}, {'j', 'j', 'o', 'o'}, {'j', 'o', 'o', 'j'}} // pmi 4
 };
 
 void nr_modulation(uint32_t *in,
@@ -128,14 +121,11 @@ void nr_modulation(uint32_t *in,
   uint8_t* in_bytes = (uint8_t*) in;
   uint64_t* in64 = (uint64_t*) in;
   int64_t* out64 = (int64_t*) out;
-  uint8_t idx;
-  uint32_t i,j;
-  uint32_t bit_cnt;
-  uint64_t x,x1,x2;
+  uint32_t i;
 
 #if defined(__SSE2__)
-  __m128i *nr_mod_table128;
-  __m128i *out128;
+  simde__m128i *nr_mod_table128;
+  simde__m128i *out128;
 #endif
 
   LOG_D(PHY,"nr_modulation: length %d, mod_order %d\n",length,mod_order);
@@ -144,15 +134,15 @@ void nr_modulation(uint32_t *in,
 
 #if defined(__SSE2__)
   case 2:
-    nr_mod_table128 = (__m128i*) nr_qpsk_byte_mod_table;
-    out128 = (__m128i*) out;
+    nr_mod_table128 = (simde__m128i *)nr_qpsk_byte_mod_table;
+    out128 = (simde__m128i *)out;
     for (i=0; i<length/8; i++)
       out128[i] = nr_mod_table128[in_bytes[i]];
     // the bits that are left out
     i = i*8/2;
     nr_mod_table32 = (int32_t*) nr_qpsk_mod_table;
     while (i<length/2) {
-      idx = ((in_bytes[(i*2)/8]>>((i*2)&0x7)) & mask);
+      const int idx = ((in_bytes[(i * 2) / 8] >> ((i * 2) & 0x7)) & mask);
       out32[i] = nr_mod_table32[idx];
       i++;
     }
@@ -161,7 +151,7 @@ void nr_modulation(uint32_t *in,
   case 2:
     nr_mod_table32 = (int32_t*) nr_qpsk_mod_table;
     for (i=0; i<length/mod_order; i++) {
-      idx = ((in[i*2/32]>>((i*2)&0x1f)) & mask);
+      const int idx = ((in[i * 2 / 32] >> ((i * 2) & 0x1f)) & mask);
       out32[i] = nr_mod_table32[idx];
     }
     return;
@@ -174,66 +164,68 @@ void nr_modulation(uint32_t *in,
     // the bits that are left out
     i = i*8/4;
     while (i<length/4) {
-      idx = ((in_bytes[(i*4)/8]>>((i*4)&0x7)) & mask);
+      const int idx = ((in_bytes[(i * 4) / 8] >> ((i * 4) & 0x7)) & mask);
       out32[i] = nr_16qam_mod_table[idx];
       i++;
     }
     return;
 
   case 6:
-    j = 0;
-    for (i=0; i<length/192; i++) {
-      x = in64[i*3];
-      x1 = x&4095;
-      out64[j++] = nr_64qam_mod_table[x1];
-      x1 = (x>>12)&4095;
-      out64[j++] = nr_64qam_mod_table[x1];
-      x1 = (x>>24)&4095;
-      out64[j++] = nr_64qam_mod_table[x1];
-      x1 = (x>>36)&4095;
-      out64[j++] = nr_64qam_mod_table[x1];
-      x1 = (x>>48)&4095;
-      out64[j++] = nr_64qam_mod_table[x1];
-      x2 = (x>>60);
-      x = in64[i*3+1];
+    for (i = 0; i < length - 3 * 64; i += 3 * 64) {
+      uint64_t x = *in64++;
+      uint64_t x1 = x & 0xfff;
+      *out64++ = nr_64qam_mod_table[x1];
+      x1 = (x >> 12) & 0xfff;
+      *out64++ = nr_64qam_mod_table[x1];
+      x1 = (x >> 24) & 0xfff;
+      *out64++ = nr_64qam_mod_table[x1];
+      x1 = (x >> 36) & 0xfff;
+      *out64++ = nr_64qam_mod_table[x1];
+      x1 = (x >> 48) & 0xfff;
+      *out64++ = nr_64qam_mod_table[x1];
+      uint64_t x2 = (x >> 60);
+      x = *in64++;
       x2 |= x<<4;
-      x1 = x2&4095;
-      out64[j++] = nr_64qam_mod_table[x1];
-      x1 = (x2>>12)&4095;
-      out64[j++] = nr_64qam_mod_table[x1];
-      x1 = (x2>>24)&4095;
-      out64[j++] = nr_64qam_mod_table[x1];
-      x1 = (x2>>36)&4095;
-      out64[j++] = nr_64qam_mod_table[x1];
-      x1 = (x2>>48)&4095;
-      out64[j++] = nr_64qam_mod_table[x1];
+      x1 = x2 & 0xfff;
+      *out64++ = nr_64qam_mod_table[x1];
+      x1 = (x2 >> 12) & 0xfff;
+      *out64++ = nr_64qam_mod_table[x1];
+      x1 = (x2 >> 24) & 0xfff;
+      *out64++ = nr_64qam_mod_table[x1];
+      x1 = (x2 >> 36) & 0xfff;
+      *out64++ = nr_64qam_mod_table[x1];
+      x1 = (x2 >> 48) & 0xfff;
+      *out64++ = nr_64qam_mod_table[x1];
       x2 = ((x>>56)&0xf0) | (x2>>60);
-      x = in64[i*3+2];
+      x = *in64++;
       x2 |= x<<8;
-      x1 = x2&4095;
-      out64[j++] = nr_64qam_mod_table[x1];
-      x1 = (x2>>12)&4095;
-      out64[j++] = nr_64qam_mod_table[x1];
-      x1 = (x2>>24)&4095;
-      out64[j++] = nr_64qam_mod_table[x1];
-      x1 = (x2>>36)&4095;
-      out64[j++] = nr_64qam_mod_table[x1];
-      x1 = (x2>>48)&4095;
-      out64[j++] = nr_64qam_mod_table[x1];
+      x1 = x2 & 0xfff;
+      *out64++ = nr_64qam_mod_table[x1];
+      x1 = (x2 >> 12) & 0xfff;
+      *out64++ = nr_64qam_mod_table[x1];
+      x1 = (x2 >> 24) & 0xfff;
+      *out64++ = nr_64qam_mod_table[x1];
+      x1 = (x2 >> 36) & 0xfff;
+      *out64++ = nr_64qam_mod_table[x1];
+      x1 = (x2 >> 48) & 0xfff;
+      *out64++ = nr_64qam_mod_table[x1];
       x2 = ((x>>52)&0xff0) | (x2>>60);
-      out64[j++] = nr_64qam_mod_table[x2];
+      *out64++ = nr_64qam_mod_table[x2];
     }
-    i *= 24;
-    bit_cnt = i * 8;
-    while (bit_cnt < length) {
-      uint32_t xx;
-      memcpy(&xx, in_bytes+i, sizeof(xx));
-      x1 = xx & 4095;
-      out64[j++] = nr_64qam_mod_table[x1];
-      x1 = (xx >> 12) & 4095;
-      out64[j++] = nr_64qam_mod_table[x1];
-      i += 3;
-      bit_cnt += 24;
+    while (i + 24 <= length) {
+      uint32_t xx = 0;
+      memcpy(&xx, in_bytes + i / 8, 3);
+      uint64_t x1 = xx & 0xfff;
+      *out64++ = nr_64qam_mod_table[x1];
+      x1 = (xx >> 12) & 0xfff;
+      *out64++ = nr_64qam_mod_table[x1];
+      i += 24;
+    }
+    if (i != length) {
+      uint32_t xx = 0;
+      memcpy(&xx, in_bytes + i / 8, 2);
+      uint64_t x1 = xx & 0xfff;
+      *out64++ = nr_64qam_mod_table[x1];
     }
     return;
 
@@ -337,20 +329,12 @@ void nr_ue_layer_mapping(int16_t *mod_symbs,
 
 void nr_dft(int32_t *z, int32_t *d, uint32_t Msc_PUSCH)
 {
-#if defined(__x86_64__) || +defined(__i386__)
-  __m128i dft_in128[1][3240], dft_out128[1][3240];
-#elif defined(__arm__) || defined(__aarch64__)
-  int16x8_t dft_in128[1][3240], dft_out128[1][3240];
-#endif
+  simde__m128i dft_in128[1][3240], dft_out128[1][3240];
   uint32_t *dft_in0 = (uint32_t*)dft_in128[0], *dft_out0 = (uint32_t*)dft_out128[0];
 
   uint32_t i, ip;
 
-#if defined(__x86_64__) || defined(__i386__)
-  __m128i norm128;
-#elif defined(__arm__) || defined(__aarch64__)
-  int16x8_t norm128;
-#endif
+  simde__m128i norm128;
 
   if ((Msc_PUSCH % 1536) > 0) {
     for (i = 0, ip = 0; i < Msc_PUSCH; i++, ip+=4) {
@@ -362,17 +346,9 @@ void nr_dft(int32_t *z, int32_t *d, uint32_t Msc_PUSCH)
     case 12:
       dft(DFT_12,(int16_t *)dft_in0, (int16_t *)dft_out0,0);
 
-#if defined(__x86_64__) || defined(__i386__)
-      norm128 = _mm_set1_epi16(9459);
-#elif defined(__arm__) || defined(__aarch64__)
-      norm128 = vdupq_n_s16(9459);
-#endif
+      norm128 = simde_mm_set1_epi16(9459);
       for (i=0; i<12; i++) {
-#if defined(__x86_64__) || defined(__i386__)
-        ((__m128i*)dft_out0)[i] = _mm_slli_epi16(_mm_mulhi_epi16(((__m128i*)dft_out0)[i], norm128), 1);
-#elif defined(__arm__) || defined(__aarch64__)
-        ((int16x8_t*)dft_out0)[i] = vqdmulhq_s16(((int16x8_t*)dft_out0)[i], norm128);
-#endif
+        ((simde__m128i*)dft_out0)[i] = simde_mm_slli_epi16(simde_mm_mulhi_epi16(((simde__m128i*)dft_out0)[i], norm128), 1);
       }
 
       break;
@@ -607,6 +583,7 @@ void init_symbol_rotation(NR_DL_FRAME_PARMS *fp) {
 
   uint64_t dl_CarrierFreq = fp->dl_CarrierFreq;
   uint64_t ul_CarrierFreq = fp->ul_CarrierFreq;
+  uint64_t sl_CarrierFreq = fp->sl_CarrierFreq;
   double f[2] = {(double)dl_CarrierFreq, (double)ul_CarrierFreq};
 
   const int nsymb = fp->symbols_per_slot * fp->slots_per_frame/10;
@@ -618,8 +595,12 @@ void init_symbol_rotation(NR_DL_FRAME_PARMS *fp) {
   for (uint8_t ll = 0; ll < 2; ll++){
 
     double f0 = f[ll];
-    LOG_I(PHY, "Doing symbol rotation calculation for gNB TX/RX, f0 %f Hz, Nsymb %d\n", f0, nsymb);
+    LOG_D(PHY, "Doing symbol rotation calculation for gNB TX/RX, f0 %f Hz, Nsymb %d\n", f0, nsymb);
     c16_t *symbol_rotation = fp->symbol_rotation[ll];
+    if (get_softmodem_params()->sl_mode == 2) {
+      f0 = (double)sl_CarrierFreq;
+      symbol_rotation = fp->symbol_rotation[link_type_sl];
+    }
 
     double tl = 0.0;
     double poff = 0.0;
@@ -641,7 +622,7 @@ void init_symbol_rotation(NR_DL_FRAME_PARMS *fp) {
       symbol_rotation[l].r = (int16_t)floor(exp_re * 32767);
       symbol_rotation[l].i = (int16_t)floor(exp_im * 32767);
 
-      LOG_I(PHY, "Symbol rotation %d/%d => tl %f (%d,%d) (%f)\n",
+      LOG_D(PHY, "Symbol rotation %d/%d => tl %f (%d,%d) (%f)\n",
         l,
         nsymb,
         tl,
@@ -666,14 +647,14 @@ void init_timeshift_rotation(NR_DL_FRAME_PARMS *fp)
     fp->timeshift_symbol_rotation[i].i = (int16_t)round(exp_im * 32767);
 
     if (i < 10)
-      LOG_I(PHY,"Timeshift symbol rotation %d => (%d,%d) %f\n",i,
+      LOG_D(PHY,"Timeshift symbol rotation %d => (%d,%d) %f\n",i,
             fp->timeshift_symbol_rotation[i].r,
             fp->timeshift_symbol_rotation[i].i,
             poff);
   }
 }
 
-int nr_layer_precoder(int16_t **datatx_F_precoding, char *prec_matrix, uint8_t n_layers, int32_t re_offset)
+int nr_layer_precoder(int16_t **datatx_F_precoding, const char *prec_matrix, uint8_t n_layers, int32_t re_offset)
 {
   int32_t precodatatx_F = 0;
 

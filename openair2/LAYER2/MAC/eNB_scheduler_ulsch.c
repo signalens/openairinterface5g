@@ -38,9 +38,8 @@
 #include "common/utils/LOG/vcd_signal_dumper.h"
 #include "nfapi/oai_integration/vendor_ext.h"
 #include "UTIL/OPT/opt.h"
-#include "OCG.h"
-#include "OCG_extern.h"
 #include "PHY/LTE_TRANSPORT/transport_common_proto.h"
+#include "PHY/defs_eNB.h"
 
 #include "RRC/LTE/rrc_extern.h"
 #include "RRC/LTE/rrc_eNB_UE_context.h"
@@ -70,14 +69,14 @@ extern int oai_nfapi_ul_config_req(nfapi_ul_config_request_t *ul_config_req);
 
 
 // This table holds the allowable PRB sizes for ULSCH transmissions
-uint8_t rb_table[34] = {
-  1, 2, 3, 4, 5,      // 0-4
-  6, 8, 9, 10, 12,    // 5-9
-  15, 16, 18, 20, 24, // 10-14
-  25, 27, 30, 32, 36, // 15-19
-  40, 45, 48, 50, 54, // 20-24
-  60, 64, 72, 75, 80, // 25-29
-  81, 90, 96, 100     // 30-33
+const uint8_t rb_table[34] = {
+    1,  2,  3,  4,  5, // 0-4
+    6,  8,  9,  10, 12, // 5-9
+    15, 16, 18, 20, 24, // 10-14
+    25, 27, 30, 32, 36, // 15-19
+    40, 45, 48, 50, 54, // 20-24
+    60, 64, 72, 75, 80, // 25-29
+    81, 90, 96, 100 // 30-33
 };
 
 // This table hold the possible number of MTC repetition for CE ModeA

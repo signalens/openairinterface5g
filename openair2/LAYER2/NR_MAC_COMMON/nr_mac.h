@@ -113,11 +113,11 @@ typedef struct {
 } __attribute__ ((__packed__)) NR_MAC_SUBHEADER_FIXED;
 
 static inline int get_mac_len(uint8_t* pdu, int pdu_len, uint16_t *mac_ce_len, uint16_t *mac_subheader_len) {
-  if ( pdu_len < sizeof(NR_MAC_SUBHEADER_SHORT))
+  if ( pdu_len < (int)sizeof(NR_MAC_SUBHEADER_SHORT))
     return false;
   NR_MAC_SUBHEADER_SHORT *s = (NR_MAC_SUBHEADER_SHORT*) pdu;
   NR_MAC_SUBHEADER_LONG *l = (NR_MAC_SUBHEADER_LONG*) pdu;
-  if (s->F && pdu_len < sizeof(NR_MAC_SUBHEADER_LONG))
+  if (s->F && pdu_len < (int)sizeof(NR_MAC_SUBHEADER_LONG))
     return false;
   if (s->F) {
     *mac_subheader_len = sizeof(*l);
@@ -402,7 +402,6 @@ typedef struct {
 #define UL_SCH_LCID_L_BSR                          0x3E
 #define UL_SCH_LCID_PADDING                        0x3F
 
-#define NR_MAX_NUM_LCID                32
 #define NR_MAX_NUM_LCGID              8
 #define MAX_RLC_SDU_SUBHEADER_SIZE          3
 
@@ -448,7 +447,8 @@ typedef enum {
   NR_DL_DCI_FORMAT_2_2,
   NR_DL_DCI_FORMAT_2_3,
   NR_UL_DCI_FORMAT_0_0,
-  NR_UL_DCI_FORMAT_0_1
+  NR_UL_DCI_FORMAT_0_1,
+  NR_DCI_NONE
 } nr_dci_format_t;
 
 typedef enum {
@@ -483,22 +483,15 @@ typedef enum nr_ssb_and_cset_mux_pattern_type_e {
   NR_SSB_AND_CSET_MUX_PATTERN_TYPE3
 } nr_ssb_and_cset_mux_pattern_type_t;
 
-typedef enum {
-  SFN_C_MOD_2_EQ_0,
-  SFN_C_MOD_2_EQ_1,
-  SFN_C_IMPOSSIBLE
-} SFN_C_TYPE;
-
 typedef struct Type0_PDCCH_CSS_config_s {
   int32_t num_rbs;
   int32_t num_symbols;
   int32_t rb_offset; // Offset from SSB RB0
   uint32_t type0_pdcch_ss_mux_pattern;
   uint16_t frame;
-  SFN_C_TYPE sfn_c;
+  int sfn_c;
   uint32_t n_c;
   uint32_t n_0;
-  uint32_t number_of_search_space_per_slot;
   uint32_t first_symbol_index;
   uint32_t search_space_duration;
   uint32_t search_space_frame_period;  // in slots
@@ -602,7 +595,7 @@ typedef struct NR_UE_UL_BWP {
   NR_CSI_MeasConfig_t *csi_MeasConfig;
   NR_SRS_Config_t *srs_Config;
   long *msg3_DeltaPreamble;
-  uint8_t transform_precoding;
+  long transform_precoding;
   uint8_t mcs_table;
   nr_dci_format_t dci_format;
   int max_fb_time;

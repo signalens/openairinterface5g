@@ -38,36 +38,6 @@
 
 extern openair0_config_t openair0_cfg[MAX_CARDS];
 
-int nr_est_timing_advance_pusch(PHY_VARS_gNB* gNB, int UE_id)
-{
-  int max_pos = 0, max_val = 0;
-
-  NR_DL_FRAME_PARMS *frame_parms = &gNB->frame_parms;
-  NR_gNB_PUSCH *gNB_pusch_vars   = gNB->pusch_vars[UE_id];
-  int32_t **ul_ch_estimates_time = gNB_pusch_vars->ul_ch_estimates_time;
-
-  const int sync_pos = 0;
-
-  for (int i = 0; i < frame_parms->ofdm_symbol_size; i++) {
-    int temp = 0;
-
-    for (int aa = 0; aa < frame_parms->nb_antennas_rx; aa++) {
-      int Re = ((int16_t*)ul_ch_estimates_time[aa])[(i<<1)];
-      int Im = ((int16_t*)ul_ch_estimates_time[aa])[1+(i<<1)];
-      temp += (Re*Re/2) + (Im*Im/2);      
-    }
-    if (temp > max_val) {
-      max_pos = i;
-      max_val = temp;
-    }
-  }
-
-  if (max_pos > frame_parms->ofdm_symbol_size/2)
-    max_pos = max_pos - frame_parms->ofdm_symbol_size;
-
-  return max_pos - sync_pos;
-}
-
 int nr_est_timing_advance_srs(const NR_DL_FRAME_PARMS *frame_parms, 
                               const int32_t srs_estimated_channel_time[][frame_parms->ofdm_symbol_size]) {
   int timing_advance = 0;
@@ -153,7 +123,19 @@ void gNB_I0_measurements(PHY_VARS_gNB *gNB,int slot, int first_symb,int num_symb
   PHY_MEASUREMENTS_gNB *measurements = &gNB->measurements;
   int rb, nb_symb[275]={0};
 
-  memset(measurements->n0_subband_power, 0, sizeof(measurements->n0_subband_power));
+  allocCast2D(n0_subband_power,
+              unsigned int,
+              gNB->measurements.n0_subband_power,
+              frame_parms->nb_antennas_rx,
+              frame_parms->N_RB_UL,
+              false);
+  clearArray(gNB->measurements.n0_subband_power, unsigned int);
+  allocCast2D(n0_subband_power_dB,
+              unsigned int,
+              gNB->measurements.n0_subband_power_dB,
+              frame_parms->nb_antennas_rx,
+              frame_parms->N_RB_UL,
+              false);
 
   for (int s=first_symb;s<(first_symb+num_symb);s++) {
     int offset0 = ((slot&3)*frame_parms->symbols_per_slot + s) * frame_parms->ofdm_symbol_size;
@@ -163,17 +145,17 @@ void gNB_I0_measurements(PHY_VARS_gNB *gNB,int slot, int first_symb,int num_symb
         int offset = offset0 + (frame_parms->first_carrier_offset + (rb*12))%frame_parms->ofdm_symbol_size;
         nb_symb[rb]++;
         for (int aarx=0; aarx<frame_parms->nb_antennas_rx; aarx++) {
-          int32_t *ul_ch = &common_vars->rxdataF[aarx][offset];
+          int32_t *ul_ch = (int32_t *)&common_vars->rxdataF[aarx][offset];
           int32_t signal_energy;
           if (((frame_parms->N_RB_UL&1) == 1) &&
               (rb==(frame_parms->N_RB_UL>>1))) {
             signal_energy = signal_energy_nodc(ul_ch, 6);
-            ul_ch = &common_vars->rxdataF[aarx][offset0];
+            ul_ch = (int32_t *)&common_vars->rxdataF[aarx][offset0];
             signal_energy += signal_energy_nodc(ul_ch, 6);
           } else {
             signal_energy = signal_energy_nodc(ul_ch, 12);
           }
-          measurements->n0_subband_power[aarx][rb] += signal_energy;
+          n0_subband_power[aarx][rb] += signal_energy;
           LOG_D(PHY,"slot %d symbol %d RB %d aarx %d n0_subband_power %d\n", slot, s, rb, aarx, signal_energy);
         } //antenna
       }
@@ -189,10 +171,10 @@ void gNB_I0_measurements(PHY_VARS_gNB *gNB,int slot, int first_symb,int num_symb
     int32_t n0_subband_tot_perPRB=0;
     if (nb_symb[rb] > 0) {
       for (int aarx=0;aarx<frame_parms->nb_antennas_rx;aarx++) {
-        measurements->n0_subband_power[aarx][rb]/=nb_symb[rb];
-        measurements->n0_subband_power_dB[aarx][rb] = dB_fixed(measurements->n0_subband_power[aarx][rb]);
-        n0_subband_tot_perPRB+=measurements->n0_subband_power[aarx][rb];
-        n0_subband_tot_perANT[aarx]+=measurements->n0_subband_power[aarx][rb];
+        n0_subband_power[aarx][rb] /= nb_symb[rb];
+        n0_subband_power_dB[aarx][rb] = dB_fixed(n0_subband_power[aarx][rb]);
+        n0_subband_tot_perPRB += n0_subband_power[aarx][rb];
+        n0_subband_tot_perANT[aarx] += n0_subband_power[aarx][rb];
       }
       n0_subband_tot_perPRB/=frame_parms->nb_antennas_rx;
       measurements->n0_subband_power_tot_dB[rb] = dB_fixed(n0_subband_tot_perPRB);
@@ -215,57 +197,59 @@ void gNB_I0_measurements(PHY_VARS_gNB *gNB,int slot, int first_symb,int num_symb
 //
 // Todo:
 // - averaging IIR filter for RX power and noise
-void nr_gnb_measurements(PHY_VARS_gNB *gNB, uint8_t ulsch_id, unsigned char harq_pid, unsigned char symbol, uint8_t nrOfLayers){
-
-  int rx_power_tot[NUMBER_OF_NR_ULSCH_MAX];
-  int rx_power[NUMBER_OF_NR_ULSCH_MAX][NB_ANTENNAS_RX];
-  unsigned short rx_power_avg_dB[NUMBER_OF_NR_ULSCH_MAX];
-  unsigned short rx_power_tot_dB[NUMBER_OF_NR_ULSCH_MAX];
+void nr_gnb_measurements(PHY_VARS_gNB *gNB,
+                         NR_gNB_ULSCH_t *ulsch,
+                         NR_gNB_PUSCH *pusch_vars,
+                         unsigned char symbol,
+                         uint8_t nrOfLayers)
+{
+  int rx_power_tot = 0;
+  unsigned short rx_power_avg_dB;
+  unsigned short rx_power_tot_dB;
 
   double             rx_gain = openair0_cfg[0].rx_gain[0];
   double      rx_gain_offset = openair0_cfg[0].rx_gain_offset[0];
   PHY_MEASUREMENTS_gNB *meas = &gNB->measurements;
   NR_DL_FRAME_PARMS      *fp = &gNB->frame_parms;
   int              ch_offset = fp->ofdm_symbol_size * symbol;
-  int                N_RB_UL = gNB->ulsch[ulsch_id]->harq_processes[harq_pid]->ulsch_pdu.rb_size;
+  int N_RB_UL = ulsch->harq_process->ulsch_pdu.rb_size;
+  ulsch_measurements_gNB *ulsch_measurements = &ulsch->ulsch_measurements;
 
-  rx_power_tot[ulsch_id] = 0;
-
+  int rx_power[fp->nb_antennas_rx];
+  int rx_spatial_power[nrOfLayers][fp->nb_antennas_rx];
   for (int aarx = 0; aarx < fp->nb_antennas_rx; aarx++){
-
-    rx_power[ulsch_id][aarx] = 0;
+    rx_power[aarx] = 0;
 
     for (int aatx = 0; aatx < nrOfLayers; aatx++){
+      rx_spatial_power[aatx][aarx] =
+          (signal_energy_nodc(&pusch_vars->ul_ch_estimates[aatx * fp->nb_antennas_rx + aarx][ch_offset],
+                              N_RB_UL * NR_NB_SC_PER_RB));
 
-      meas->rx_spatial_power[ulsch_id][aatx][aarx] = (signal_energy_nodc(&gNB->pusch_vars[ulsch_id]->ul_ch_estimates[aatx*fp->nb_antennas_rx+aarx][ch_offset], N_RB_UL * NR_NB_SC_PER_RB));
-
-      if (meas->rx_spatial_power[ulsch_id][aatx][aarx] < 0) {
-        meas->rx_spatial_power[ulsch_id][aatx][aarx] = 0;
+      if (rx_spatial_power[aatx][aarx] < 0) {
+        rx_spatial_power[aatx][aarx] = 0;
       }
 
-      meas->rx_spatial_power_dB[ulsch_id][aatx][aarx] = (unsigned short) dB_fixed(meas->rx_spatial_power[ulsch_id][aatx][aarx]);
-      rx_power[ulsch_id][aarx] += meas->rx_spatial_power[ulsch_id][aatx][aarx];
-
+      rx_power[aarx] += rx_spatial_power[aatx][aarx];
     }
-    LOG_D(PHY, "[ULSCH ID %d] RX power in antenna %d = %d\n", ulsch_id, aarx, rx_power[ulsch_id][aarx]);
+    LOG_D(PHY, "[RNTI %04x] RX power in antenna %d = %d\n", ulsch->rnti, aarx, rx_power[aarx]);
 
-    rx_power_tot[ulsch_id] += rx_power[ulsch_id][aarx];
-
+    rx_power_tot += rx_power[aarx];
   }
 
-  rx_power_tot_dB[ulsch_id] = (unsigned short) dB_fixed(rx_power_tot[ulsch_id]);
-  rx_power_avg_dB[ulsch_id] = rx_power_tot_dB[ulsch_id];
+  rx_power_tot_dB = (unsigned short)dB_fixed(rx_power_tot);
+  rx_power_avg_dB = rx_power_tot_dB;
 
-  meas->wideband_cqi_tot[ulsch_id] = dB_fixed2(rx_power_tot[ulsch_id], meas->n0_power_tot);
-  meas->rx_rssi_dBm[ulsch_id] = rx_power_avg_dB[ulsch_id] + 30 - 10 * log10(pow(2, 30)) - (rx_gain - rx_gain_offset) - dB_fixed(fp->ofdm_symbol_size);
+  ulsch_measurements->wideband_cqi_tot = dB_fixed2(rx_power_tot, meas->n0_power_tot);
+  ulsch_measurements->rx_rssi_dBm =
+      rx_power_avg_dB + 30 - 10 * log10(pow(2, 30)) - (rx_gain - rx_gain_offset) - dB_fixed(fp->ofdm_symbol_size);
 
-  LOG_D(PHY, "[ULSCH %d] RSSI %d dBm/RE, RSSI (digital) %d dB (N_RB_UL %d), WBand CQI tot %d dB, N0 Power tot %d, RX Power tot %d\n",
-    ulsch_id,
-    meas->rx_rssi_dBm[ulsch_id],
-    rx_power_avg_dB[ulsch_id],
-    N_RB_UL,
-    meas->wideband_cqi_tot[ulsch_id],
-    meas->n0_power_tot,
-    rx_power_tot[ulsch_id]);
-
+  LOG_D(PHY,
+        "[RNTI %04x] RSSI %d dBm/RE, RSSI (digital) %d dB (N_RB_UL %d), WBand CQI tot %d dB, N0 Power tot %d, RX Power tot %d\n",
+        ulsch->rnti,
+        ulsch_measurements->rx_rssi_dBm,
+        rx_power_avg_dB,
+        N_RB_UL,
+        ulsch_measurements->wideband_cqi_tot,
+        meas->n0_power_tot,
+        rx_power_tot);
 }

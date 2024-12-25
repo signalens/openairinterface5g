@@ -19,7 +19,7 @@
  *      contact@openairinterface.org
  */
 
-#include "phy_init.h"
+#include "nr_phy_init.h"
 #include "PHY/phy_extern_nr_ue.h"
 #include "openair1/PHY/defs_RU.h"
 #include "openair1/PHY/impl_defs_nr.h"
@@ -36,14 +36,11 @@
 #include "openair2/COMMON/prs_nr_paramdef.h"
 #include "SCHED_NR_UE/harq_nr.h"
 
-
-extern uint16_t beta_cqi[16];
-
 void RCconfig_nrUE_prs(void *cfg)
 {
   int j = 0, k = 0, gNB_id = 0;
   char aprefix[MAX_OPTNAME_SIZE*2 + 8];
-  char str[7][100] = {'\0'}; int16_t n[7] = {0};
+  char str[7][100] = {{'\0'}}; int16_t n[7] = {0};
   PHY_VARS_NR_UE *ue  = (PHY_VARS_NR_UE *)cfg;
   prs_config_t *prs_config = NULL;
 
@@ -53,10 +50,8 @@ void RCconfig_nrUE_prs(void *cfg)
   if (gParamList.numelt > 0)
   {
     ue->prs_active_gNBs = *(gParamList.paramarray[j][PRS_ACTIVE_GNBS_IDX].uptr);
-  }
-  else
-  {
-    LOG_E(PHY,"%s configuration NOT found..!! Skipped configuring UE for the PRS reception\n", CONFIG_STRING_PRS_CONFIG);
+  } else {
+    LOG_I(PHY,"%s configuration NOT found..!! Skipped configuring UE for the PRS reception\n", CONFIG_STRING_PRS_CONFIG);
   }
 
   paramlist_def_t PRS_ParamList = {{0},NULL,0};
@@ -136,10 +131,8 @@ void RCconfig_nrUE_prs(void *cfg)
         LOG_I(PHY, "MutingPattern2 \t\t[%s\b\b]\n", str[6]);
         LOG_I(PHY, "-----------------------------------------\n");
       }
-    }
-    else
-    {
-      LOG_E(PHY,"No %s configuration found..!!\n", PRS_ParamList.listname);
+    } else {
+      LOG_I(PHY,"No %s configuration found..!!\n", PRS_ParamList.listname);
     }
   }
 }
@@ -152,16 +145,16 @@ void init_nr_prs_ue_vars(PHY_VARS_NR_UE *ue)
   // PRS vars init
   for(int idx = 0; idx < NR_MAX_PRS_COMB_SIZE; idx++)
   {
-    prs_vars[idx]   = (NR_UE_PRS *)malloc16_clear(sizeof(NR_UE_PRS));
+    prs_vars[idx] = malloc16_clear(sizeof(NR_UE_PRS));
     // PRS channel estimates
 
     for(int k = 0; k < NR_MAX_PRS_RESOURCES_PER_SET; k++)
     {
-      prs_vars[idx]->prs_resource[k].prs_meas = (prs_meas_t **)malloc16_clear( fp->nb_antennas_rx*sizeof(prs_meas_t *) );
+      prs_vars[idx]->prs_resource[k].prs_meas = malloc16_clear(fp->nb_antennas_rx * sizeof(prs_meas_t *));
       AssertFatal((prs_vars[idx]->prs_resource[k].prs_meas!=NULL), "%s: PRS measurements malloc failed for gNB_id %d\n", __FUNCTION__, idx);
 
       for (int j=0; j<fp->nb_antennas_rx; j++) {
-        prs_vars[idx]->prs_resource[k].prs_meas[j] = (prs_meas_t *)malloc16_clear(sizeof(prs_meas_t) );
+        prs_vars[idx]->prs_resource[k].prs_meas[j] = malloc16_clear(sizeof(prs_meas_t));
         AssertFatal((prs_vars[idx]->prs_resource[k].prs_meas[j]!=NULL), "%s: PRS measurements malloc failed for gNB_id %d, rx_ant %d\n", __FUNCTION__, idx, j);
       }
     }
@@ -171,23 +164,23 @@ void init_nr_prs_ue_vars(PHY_VARS_NR_UE *ue)
   RCconfig_nrUE_prs(ue);
 
   //PRS sequence init
-  ue->nr_gold_prs = (uint32_t *****)malloc16(ue->prs_active_gNBs*sizeof(uint32_t ****));
+  ue->nr_gold_prs = malloc16(ue->prs_active_gNBs * sizeof(uint32_t ****));
   uint32_t *****prs = ue->nr_gold_prs;
   AssertFatal(prs!=NULL, "%s: positioning reference signal malloc failed\n", __FUNCTION__);
   for (int gnb = 0; gnb < ue->prs_active_gNBs; gnb++) {
-    prs[gnb] = (uint32_t ****)malloc16(ue->prs_vars[gnb]->NumPRSResources*sizeof(uint32_t ***));
+    prs[gnb] = malloc16(ue->prs_vars[gnb]->NumPRSResources * sizeof(uint32_t ***));
     AssertFatal(prs[gnb]!=NULL, "%s: positioning reference signal for gnb %d - malloc failed\n", __FUNCTION__, gnb);
 
     for (int rsc = 0; rsc < ue->prs_vars[gnb]->NumPRSResources; rsc++) {
-      prs[gnb][rsc] = (uint32_t ***)malloc16(fp->slots_per_frame*sizeof(uint32_t **));
+      prs[gnb][rsc] = malloc16(fp->slots_per_frame * sizeof(uint32_t **));
       AssertFatal(prs[gnb][rsc]!=NULL, "%s: positioning reference signal for gnb %d rsc %d- malloc failed\n", __FUNCTION__, gnb, rsc);
 
       for (int slot=0; slot<fp->slots_per_frame; slot++) {
-        prs[gnb][rsc][slot] = (uint32_t **)malloc16(fp->symbols_per_slot*sizeof(uint32_t *));
+        prs[gnb][rsc][slot] = malloc16(fp->symbols_per_slot * sizeof(uint32_t *));
         AssertFatal(prs[gnb][rsc][slot]!=NULL, "%s: positioning reference signal for gnb %d rsc %d slot %d - malloc failed\n", __FUNCTION__, gnb, rsc, slot);
 
         for (int symb=0; symb<fp->symbols_per_slot; symb++) {
-          prs[gnb][rsc][slot][symb] = (uint32_t *)malloc16(NR_MAX_PRS_INIT_LENGTH_DWORD*sizeof(uint32_t));
+          prs[gnb][rsc][slot][symb] = malloc16(NR_MAX_PRS_INIT_LENGTH_DWORD * sizeof(uint32_t));
           AssertFatal(prs[gnb][rsc][slot][symb]!=NULL, "%s: positioning reference signal for gnb %d rsc %d slot %d symbol %d - malloc failed\n", __FUNCTION__, gnb, rsc, slot, symb);
         } // for symb
       } // for slot
@@ -202,7 +195,6 @@ int init_nr_ue_signal(PHY_VARS_NR_UE *ue, int nb_connected_gNB)
   // create shortcuts
   NR_DL_FRAME_PARMS *const fp            = &ue->frame_parms;
   NR_UE_COMMON *const common_vars        = &ue->common_vars;
-  NR_UE_PBCH  **const pbch_vars          = ue->pbch_vars;
   NR_UE_PRACH **const prach_vars         = ue->prach_vars;
   NR_UE_CSI_IM **const csiim_vars        = ue->csiim_vars;
   NR_UE_CSI_RS **const csirs_vars        = ue->csirs_vars;
@@ -235,9 +227,6 @@ int init_nr_ue_signal(PHY_VARS_NR_UE *ue, int nb_connected_gNB)
     ue->bitrate[gNB_id] = 0;
     ue->total_received_bits[gNB_id] = 0;
 
-    ue->ul_time_alignment[gNB_id].apply_ta = 0;
-    ue->ul_time_alignment[gNB_id].ta_frame = -1;
-    ue->ul_time_alignment[gNB_id].ta_slot  = -1;
   }
   // init NR modulation lookup tables
   nr_generate_modulation_table();
@@ -258,19 +247,19 @@ int init_nr_ue_signal(PHY_VARS_NR_UE *ue, int nb_connected_gNB)
 
   // ceil(((NB_RB*6(k)*2(QPSK)/32) // 3 RE *2(QPSK)
   int pusch_dmrs_init_length =  ((fp->N_RB_UL*12)>>5)+1;
-  ue->nr_gold_pusch_dmrs = (uint32_t ****)malloc16(fp->slots_per_frame*sizeof(uint32_t ***));
+  ue->nr_gold_pusch_dmrs = malloc16(fp->slots_per_frame * sizeof(uint32_t ***));
   uint32_t ****pusch_dmrs = ue->nr_gold_pusch_dmrs;
 
   for (slot=0; slot<fp->slots_per_frame; slot++) {
-    pusch_dmrs[slot] = (uint32_t ***)malloc16(fp->symbols_per_slot*sizeof(uint32_t **));
+    pusch_dmrs[slot] = malloc16(fp->symbols_per_slot * sizeof(uint32_t **));
     AssertFatal(pusch_dmrs[slot]!=NULL, "init_nr_ue_signal: pusch_dmrs for slot %d - malloc failed\n", slot);
 
     for (symb=0; symb<fp->symbols_per_slot; symb++) {
-      pusch_dmrs[slot][symb] = (uint32_t **)malloc16(NR_NB_NSCID*sizeof(uint32_t *));
+      pusch_dmrs[slot][symb] = malloc16(NR_NB_NSCID * sizeof(uint32_t *));
       AssertFatal(pusch_dmrs[slot][symb]!=NULL, "init_nr_ue_signal: pusch_dmrs for slot %d symbol %d - malloc failed\n", slot, symb);
 
       for (int q=0; q<NR_NB_NSCID; q++) {
-        pusch_dmrs[slot][symb][q] = (uint32_t *)malloc16(pusch_dmrs_init_length*sizeof(uint32_t));
+        pusch_dmrs[slot][symb][q] = malloc16(pusch_dmrs_init_length * sizeof(uint32_t));
         AssertFatal(pusch_dmrs[slot][symb][q]!=NULL, "init_nr_ue_signal: pusch_dmrs for slot %d symbol %d nscid %d - malloc failed\n", slot, symb, q);
       }
     }
@@ -298,34 +287,32 @@ int init_nr_ue_signal(PHY_VARS_NR_UE *ue, int nb_connected_gNB)
     ue->tx_power_dBm[i]=-127;
 
   // init TX buffers
-  common_vars->txdata  = (int32_t **)malloc16( fp->nb_antennas_tx*sizeof(int32_t *) );
-  common_vars->txdataF = (int32_t **)malloc16( fp->nb_antennas_tx*sizeof(int32_t *) );
+  common_vars->txData = malloc16(fp->nb_antennas_tx * sizeof(c16_t *));
 
   for (i=0; i<fp->nb_antennas_tx; i++) {
-    common_vars->txdata[i]  = (int32_t *)malloc16_clear( fp->samples_per_subframe*10*sizeof(int32_t) );
-    common_vars->txdataF[i] = (int32_t *)malloc16_clear( fp->samples_per_slot_wCP*sizeof(int32_t) );
+    common_vars->txData[i] = malloc16_clear((fp->samples_per_frame) * sizeof(c16_t));
   }
 
   // init RX buffers
-  common_vars->rxdata   = (int32_t **)malloc16( fp->nb_antennas_rx*sizeof(int32_t *) );
+  common_vars->rxdata = malloc16(fp->nb_antennas_rx * sizeof(c16_t *));
 
   for (i=0; i<fp->nb_antennas_rx; i++) {
-    common_vars->rxdata[i] = (int32_t *) malloc16_clear( (2*(fp->samples_per_frame)+fp->ofdm_symbol_size)*sizeof(int32_t) );
+    common_vars->rxdata[i] = malloc16_clear((2 * (fp->samples_per_frame) + fp->ofdm_symbol_size) * sizeof(c16_t));
   }
 
   // ceil(((NB_RB<<1)*3)/32) // 3 RE *2(QPSK)
   int pdcch_dmrs_init_length =  (((fp->N_RB_DL<<1)*3)>>5)+1;
   //PDCCH DMRS init (gNB offset = 0)
-  ue->nr_gold_pdcch[0] = (uint32_t ***)malloc16(fp->slots_per_frame*sizeof(uint32_t **));
+  ue->nr_gold_pdcch[0] = malloc16(fp->slots_per_frame * sizeof(uint32_t **));
   uint32_t ***pdcch_dmrs = ue->nr_gold_pdcch[0];
   AssertFatal(pdcch_dmrs!=NULL, "NR init: pdcch_dmrs malloc failed\n");
 
   for (int slot=0; slot<fp->slots_per_frame; slot++) {
-    pdcch_dmrs[slot] = (uint32_t **)malloc16(fp->symbols_per_slot*sizeof(uint32_t *));
+    pdcch_dmrs[slot] = malloc16(fp->symbols_per_slot * sizeof(uint32_t *));
     AssertFatal(pdcch_dmrs[slot]!=NULL, "NR init: pdcch_dmrs for slot %d - malloc failed\n", slot);
 
     for (int symb=0; symb<fp->symbols_per_slot; symb++) {
-      pdcch_dmrs[slot][symb] = (uint32_t *)malloc16(pdcch_dmrs_init_length*sizeof(uint32_t));
+      pdcch_dmrs[slot][symb] = malloc16(pdcch_dmrs_init_length * sizeof(uint32_t));
       AssertFatal(pdcch_dmrs[slot][symb]!=NULL, "NR init: pdcch_dmrs for slot %d symbol %d - malloc failed\n", slot, symb);
     }
   }
@@ -334,19 +321,19 @@ int init_nr_ue_signal(PHY_VARS_NR_UE *ue, int nb_connected_gNB)
   int pdsch_dmrs_init_length =  ((fp->N_RB_DL*12)>>5)+1;
 
   //PDSCH DMRS init (eNB offset = 0)
-  ue->nr_gold_pdsch[0] = (uint32_t ****)malloc16(fp->slots_per_frame*sizeof(uint32_t ***));
+  ue->nr_gold_pdsch[0] = malloc16(fp->slots_per_frame * sizeof(uint32_t ***));
   uint32_t ****pdsch_dmrs = ue->nr_gold_pdsch[0];
 
   for (int slot=0; slot<fp->slots_per_frame; slot++) {
-    pdsch_dmrs[slot] = (uint32_t ***)malloc16(fp->symbols_per_slot*sizeof(uint32_t **));
+    pdsch_dmrs[slot] = malloc16(fp->symbols_per_slot * sizeof(uint32_t **));
     AssertFatal(pdsch_dmrs[slot]!=NULL, "NR init: pdsch_dmrs for slot %d - malloc failed\n", slot);
 
     for (int symb=0; symb<fp->symbols_per_slot; symb++) {
-      pdsch_dmrs[slot][symb] = (uint32_t **)malloc16(NR_NB_NSCID*sizeof(uint32_t *));
+      pdsch_dmrs[slot][symb] = malloc16(NR_NB_NSCID * sizeof(uint32_t *));
       AssertFatal(pdsch_dmrs[slot][symb]!=NULL, "NR init: pdsch_dmrs for slot %d symbol %d - malloc failed\n", slot, symb);
 
       for (int q=0; q<NR_NB_NSCID; q++) {
-        pdsch_dmrs[slot][symb][q] = (uint32_t *)malloc16(pdsch_dmrs_init_length*sizeof(uint32_t));
+        pdsch_dmrs[slot][symb][q] = malloc16(pdsch_dmrs_init_length * sizeof(uint32_t));
         AssertFatal(pdsch_dmrs[slot][symb][q]!=NULL, "NR init: pdsch_dmrs for slot %d symbol %d nscid %d - malloc failed\n", slot, symb, q);
       }
     }
@@ -354,11 +341,10 @@ int init_nr_ue_signal(PHY_VARS_NR_UE *ue, int nb_connected_gNB)
 
   // DLSCH
   for (gNB_id = 0; gNB_id < ue->n_connected_gNB; gNB_id++) {
-    prach_vars[gNB_id] = (NR_UE_PRACH *)malloc16_clear(sizeof(NR_UE_PRACH));
-    pbch_vars[gNB_id] = (NR_UE_PBCH *)malloc16_clear(sizeof(NR_UE_PBCH));
-    csiim_vars[gNB_id] = (NR_UE_CSI_IM *)malloc16_clear(sizeof(NR_UE_CSI_IM));
-    csirs_vars[gNB_id] = (NR_UE_CSI_RS *)malloc16_clear(sizeof(NR_UE_CSI_RS));
-    srs_vars[gNB_id] = (NR_UE_SRS *)malloc16_clear(sizeof(NR_UE_SRS));
+    prach_vars[gNB_id] = malloc16_clear(sizeof(NR_UE_PRACH));
+    csiim_vars[gNB_id] = malloc16_clear(sizeof(NR_UE_CSI_IM));
+    csirs_vars[gNB_id] = malloc16_clear(sizeof(NR_UE_CSI_RS));
+    srs_vars[gNB_id] = malloc16_clear(sizeof(NR_UE_SRS));
 
     csiim_vars[gNB_id]->active = false;
     csirs_vars[gNB_id]->active = false;
@@ -366,24 +352,23 @@ int init_nr_ue_signal(PHY_VARS_NR_UE *ue, int nb_connected_gNB)
 
     // ceil((NB_RB*8(max allocation per RB)*2(QPSK))/32)
     int csi_dmrs_init_length =  ((fp->N_RB_DL<<4)>>5)+1;
-    ue->nr_csi_info = (nr_csi_info_t *)malloc16_clear(sizeof(nr_csi_info_t));
-    ue->nr_csi_info->nr_gold_csi_rs = (uint32_t ***)malloc16(fp->slots_per_frame * sizeof(uint32_t **));
+    ue->nr_csi_info = malloc16_clear(sizeof(nr_csi_info_t));
+    ue->nr_csi_info->nr_gold_csi_rs = malloc16(fp->slots_per_frame * sizeof(uint32_t **));
     AssertFatal(ue->nr_csi_info->nr_gold_csi_rs != NULL, "NR init: csi reference signal malloc failed\n");
     for (int slot=0; slot<fp->slots_per_frame; slot++) {
-      ue->nr_csi_info->nr_gold_csi_rs[slot] = (uint32_t **)malloc16(fp->symbols_per_slot * sizeof(uint32_t *));
+      ue->nr_csi_info->nr_gold_csi_rs[slot] = malloc16(fp->symbols_per_slot * sizeof(uint32_t *));
       AssertFatal(ue->nr_csi_info->nr_gold_csi_rs[slot] != NULL, "NR init: csi reference signal for slot %d - malloc failed\n", slot);
       for (int symb=0; symb<fp->symbols_per_slot; symb++) {
-        ue->nr_csi_info->nr_gold_csi_rs[slot][symb] = (uint32_t *)malloc16(csi_dmrs_init_length * sizeof(uint32_t));
+        ue->nr_csi_info->nr_gold_csi_rs[slot][symb] = malloc16(csi_dmrs_init_length * sizeof(uint32_t));
         AssertFatal(ue->nr_csi_info->nr_gold_csi_rs[slot][symb] != NULL, "NR init: csi reference signal for slot %d symbol %d - malloc failed\n", slot, symb);
       }
     }
-    ue->nr_csi_info->csi_rs_generated_signal = (int32_t **)malloc16(NR_MAX_NB_PORTS * sizeof(int32_t *) );
+    ue->nr_csi_info->csi_rs_generated_signal = malloc16(NR_MAX_NB_PORTS * sizeof(int32_t *));
     for (i=0; i<NR_MAX_NB_PORTS; i++) {
-      ue->nr_csi_info->csi_rs_generated_signal[i] = (int32_t *) malloc16_clear(fp->samples_per_frame_wCP * sizeof(int32_t));
+      ue->nr_csi_info->csi_rs_generated_signal[i] = malloc16_clear(fp->samples_per_frame_wCP * sizeof(int32_t));
     }
 
-    ue->nr_srs_info = (nr_srs_info_t *)malloc16_clear(sizeof(nr_srs_info_t));
-
+    ue->nr_srs_info = malloc16_clear(sizeof(nr_srs_info_t));
   }
 
   ue->init_averaging = 1;
@@ -417,12 +402,10 @@ void term_nr_ue_signal(PHY_VARS_NR_UE *ue, int nb_connected_gNB)
   NR_UE_COMMON* common_vars = &ue->common_vars;
 
   for (int i = 0; i < fp->nb_antennas_tx; i++) {
-    free_and_zero(common_vars->txdata[i]);
-    free_and_zero(common_vars->txdataF[i]);
+    free_and_zero(common_vars->txData[i]);
   }
 
-  free_and_zero(common_vars->txdata);
-  free_and_zero(common_vars->txdataF);
+  free_and_zero(common_vars->txData);
 
   for (int i = 0; i < fp->nb_antennas_rx; i++) {
     free_and_zero(common_vars->rxdata[i]);
@@ -472,7 +455,6 @@ void term_nr_ue_signal(PHY_VARS_NR_UE *ue, int nb_connected_gNB)
     free_and_zero(ue->csirs_vars[gNB_id]);
     free_and_zero(ue->srs_vars[gNB_id]);
 
-    free_and_zero(ue->pbch_vars[gNB_id]);
     free_and_zero(ue->prach_vars[gNB_id]);
   }
 
@@ -519,7 +501,6 @@ void free_nr_ue_dl_harq(NR_DL_UE_HARQ_t harq_list[2][NR_MAX_DLSCH_HARQ_PROCESSES
 
   for (int j=0; j < 2; j++) {
     for (int i=0; i<number_of_processes; i++) {
-      free_and_zero(harq_list[j][i].b);
 
       for (int r=0; r<a_segments; r++) {
         free_and_zero(harq_list[j][i].c[r]);
@@ -571,33 +552,18 @@ void nr_init_dl_harq_processes(NR_DL_UE_HARQ_t harq_list[2][NR_MAX_DLSCH_HARQ_PR
     a_segments = (a_segments/273)+1;
   }
 
-  uint32_t dlsch_bytes = a_segments*1056;  // allocated bytes per segment
-
   for (int j=0; j<2; j++) {
     for (int i=0; i<number_of_processes; i++) {
       memset(harq_list[j] + i, 0, sizeof(NR_DL_UE_HARQ_t));
       init_downlink_harq_status(harq_list[j] + i);
-      harq_list[j][i].b = malloc16(dlsch_bytes);
-
-      if (harq_list[j][i].b)
-        memset(harq_list[j][i].b, 0, dlsch_bytes);
-      else
-        AssertFatal(true, "Unable to reset harq memory \"b\"\n");
 
       harq_list[j][i].c = malloc16(a_segments*sizeof(uint8_t *));
       harq_list[j][i].d = malloc16(a_segments*sizeof(int16_t *));
+      const int sz=5*8448*sizeof(int16_t);
+      init_abort(&harq_list[j][i].abort_decode);
       for (int r=0; r<a_segments; r++) {
-        harq_list[j][i].c[r] = malloc16(1056);
-        harq_list[j][i].d[r] = malloc16(5*8448*sizeof(int16_t));
-        if (harq_list[j][i].c[r])
-          memset(harq_list[j][i].c[r],0,1056);
-        else
-          AssertFatal(true, "Unable to reset harq memory \"c\"\n");
-
-        if (harq_list[j][i].d[r])
-          memset(harq_list[j][i].d[r],0,5*8448);
-        else
-          AssertFatal(true, "Unable to reset harq memory \"d\"\n");
+        harq_list[j][i].c[r] = malloc16_clear(1056);
+        harq_list[j][i].d[r] = malloc16_clear(sz);
       }
       harq_list[j][i].status  = 0;
       harq_list[j][i].DLround = 0;
@@ -699,6 +665,8 @@ void init_N_TA_offset(PHY_VARS_NR_UE *ue){
     }
 
     ue->N_TA_offset = (int)(N_TA_offset * factor);
+    ue->ta_frame = -1;
+    ue->ta_slot = -1;
 
     LOG_I(PHY,"UE %d Setting N_TA_offset to %d samples (factor %f, UL Freq %lu, N_RB %d, mu %d)\n", ue->Mod_id, ue->N_TA_offset, factor, fp->ul_CarrierFreq, fp->N_RB_DL, fp->numerology_index);
   }
@@ -706,6 +674,7 @@ void init_N_TA_offset(PHY_VARS_NR_UE *ue){
 
 void phy_init_nr_top(PHY_VARS_NR_UE *ue) {
   NR_DL_FRAME_PARMS *frame_parms = &ue->frame_parms;
+  init_delay_table(frame_parms->ofdm_symbol_size, MAX_DELAY_COMP, NR_MAX_OFDM_SYMBOL_SIZE, frame_parms->delay_table);
   crcTableInit();
   init_scrambling_luts();
   load_dftslib();

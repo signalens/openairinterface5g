@@ -32,6 +32,8 @@
 #include "tree.h"
 
 #include "sctp_eNB_defs.h"
+#include "s1ap_messages_types.h"
+#include "x2ap_messages_types.h"
 
 #include "x2ap_ids.h"
 #include "x2ap_timers.h"
@@ -114,7 +116,7 @@ typedef struct x2ap_eNB_data_s {
   uint16_t cnx_id;
 
   /* SCTP association id */
-  int32_t  assoc_id;
+  sctp_assoc_t assoc_id;
 
   /* Nid cells */
   uint32_t                Nid_cell[MAX_NUM_CCs];

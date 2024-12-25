@@ -48,7 +48,7 @@ const uint8_t nr_pbch_payload_interleaving_pattern[32] = {16, 23, 18, 17, 8, 30,
                                                    };
 
 int nr_generate_pbch_dmrs(uint32_t *gold_pbch_dmrs,
-                          int32_t *txdataF,
+                          c16_t *txdataF,
                           int16_t amp,
                           uint8_t ssb_start_symbol,
                           nfapi_nr_config_request_scf_t *config,
@@ -66,7 +66,7 @@ int nr_generate_pbch_dmrs(uint32_t *gold_pbch_dmrs,
     mod_dmrs[m<<1] = nr_qpsk_mod_table[idx<<1];
     mod_dmrs[(m<<1)+1] = nr_qpsk_mod_table[(idx<<1) + 1];
 #ifdef DEBUG_PBCH_DMRS
-    printf("m %d idx %d gold seq %d b0-b1 %d-%d mod_dmrs %d %d\n", m, idx, gold_pbch_dmrs[(m<<1)>>5], (((gold_pbch_dmrs[(m<<1)>>5])>>((m<<1)&0x1f))&1),
+    printf("m %d idx %d gold seq %u b0-b1 %d-%d mod_dmrs %d %d\n", m, idx, gold_pbch_dmrs[(m<<1)>>5], (((gold_pbch_dmrs[(m<<1)>>5])>>((m<<1)&0x1f))&1),
            (((gold_pbch_dmrs[((m<<1)+1)>>5])>>(((m<<1)+1)&0x1f))&1), mod_dmrs[(m<<1)], mod_dmrs[(m<<1)+1]);
 #endif
   }
@@ -222,7 +222,7 @@ void nr_init_pbch_interleaver(uint8_t *interleaver) {
 
 int nr_generate_pbch(nfapi_nr_dl_tti_ssb_pdu *ssb_pdu,
                      uint8_t *interleaver,
-                     int32_t *txdataF,
+                     c16_t *txdataF,
                      int16_t amp,
                      uint8_t ssb_start_symbol,
                      uint8_t n_hf,
@@ -236,7 +236,6 @@ int nr_generate_pbch(nfapi_nr_dl_tti_ssb_pdu *ssb_pdu,
   uint16_t M;
   uint8_t nushift;
   uint32_t unscrambling_mask;
-  uint64_t a_reversed=0;
   LOG_D(PHY, "PBCH generation started\n");
   ///Payload generation
   NR_gNB_PBCH m_pbch;
@@ -298,8 +297,7 @@ int nr_generate_pbch(nfapi_nr_dl_tti_ssb_pdu *ssb_pdu,
 #endif
 
   // Encoder reversal
-  for (int i=0; i<NR_POLAR_PBCH_PAYLOAD_BITS; i++)
-    a_reversed |= (((uint64_t)pbch->pbch_a_prime>>i)&1)<<(31-i);
+  uint64_t a_reversed = reverse_bits((uint64_t)pbch->pbch_a_prime, NR_POLAR_PBCH_PAYLOAD_BITS);
 
   /// CRC, coding and rate matching
   polar_encoder_fast (&a_reversed, (void*)pbch->pbch_e, 0, 0,

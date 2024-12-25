@@ -39,8 +39,6 @@
 #include "nfapi/oai_integration/vendor_ext.h"
 #include "common/utils/LOG/vcd_signal_dumper.h"
 #include "UTIL/OPT/opt.h"
-#include "OCG.h"
-#include "OCG_extern.h"
 
 #include "RRC/LTE/rrc_extern.h"
 #include "RRC/L2_INTERFACE/openair_rrc_L2_interface.h"
@@ -60,8 +58,7 @@
 
 extern RAN_CONTEXT_t RC;
 
-
-uint16_t pdcch_order_table[6] = { 31, 31, 511, 2047, 2047, 8191 };
+static const uint16_t pdcch_order_table[6] = {31, 31, 511, 2047, 2047, 8191};
 
 //-----------------------------------------------------------------------------
 /*

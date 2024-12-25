@@ -30,7 +30,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 
-#include "PHY/INIT/phy_init.h"
+#include "PHY/INIT/nr_phy_init.h"
 #include "PHY/impl_defs_nr.h"
 #include "PHY/defs_nr_common.h"
 #include "PHY/defs_gNB.h"
@@ -44,55 +44,21 @@
 
 //#define SRS_DEBUG
 
-NR_gNB_SRS_t *new_gNB_srs(void){
-  NR_gNB_SRS_t *srs;
-  srs = (NR_gNB_SRS_t *)malloc16(sizeof(NR_gNB_SRS_t));
-  srs->active = 0;
-  return (srs);
-}
-
-void free_gNB_srs(NR_gNB_SRS_t *srs)
+void nr_fill_srs(PHY_VARS_gNB *gNB, frame_t frame, slot_t slot, nfapi_nr_srs_pdu_t *srs_pdu)
 {
-  free_and_zero(srs);
-}
-
-int nr_find_srs(rnti_t rnti,
-                frame_t frame,
-                slot_t slot,
-                PHY_VARS_gNB *gNB) {
-
-  AssertFatal(gNB!=NULL,"gNB is null\n");
-  int index = -1;
-
+  bool found = false;
   for (int i = 0; i < gNB->max_nb_srs; i++) {
-    AssertFatal(gNB->srs[i]!=NULL,"gNB->srs[%d] is null\n",i);
-    if ((gNB->srs[i]->active>0) &&
-        (gNB->srs[i]->srs_pdu.rnti==rnti) &&
-        (gNB->srs[i]->frame==frame) &&
-        (gNB->srs[i]->slot==slot)) return(i);
-    else if ((gNB->srs[i]->active == 0) && (index==-1)) index=i;
+    NR_gNB_SRS_t *srs = &gNB->srs[i];
+    if (srs->active == 0) {
+      found = true;
+      srs->frame = frame;
+      srs->slot = slot;
+      srs->active = 1;
+      memcpy((void *)&srs->srs_pdu, (void *)srs_pdu, sizeof(nfapi_nr_srs_pdu_t));
+      break;
+    }
   }
-
-  if (index==-1)
-    LOG_E(PHY,"SRS list is full\n");
-
-  return(index);
-}
-
-void nr_fill_srs(PHY_VARS_gNB *gNB,
-                 frame_t frame,
-                 slot_t slot,
-                 nfapi_nr_srs_pdu_t *srs_pdu) {
-
-  int id = nr_find_srs(srs_pdu->rnti,frame,slot,gNB);
-  AssertFatal((id >= 0) && (id < gNB->max_nb_srs),
-              "invalid id found for srs !!! rnti %04x id %d\n",srs_pdu->rnti,id);
-
-  NR_gNB_SRS_t  *srs = gNB->srs[id];
-  srs->frame = frame;
-  srs->slot = slot;
-  srs->active = 1;
-  memcpy((void*)&srs->srs_pdu, (void*)srs_pdu, sizeof(nfapi_nr_srs_pdu_t));
+  AssertFatal(found, "SRS list is full\n");
 }
 
 int nr_get_srs_signal(PHY_VARS_gNB *gNB,
@@ -106,7 +72,7 @@ int nr_get_srs_signal(PHY_VARS_gNB *gNB,
   LOG_I(NR_PHY,"Calling %s function\n", __FUNCTION__);
 #endif
 
-  int32_t **rxdataF = gNB->common_vars.rxdataF;
+  c16_t **rxdataF = gNB->common_vars.rxdataF;
   const NR_DL_FRAME_PARMS *frame_parms = &gNB->frame_parms;
 
   const uint16_t n_symbols = (slot&3)*frame_parms->symbols_per_slot;                    // number of symbols until this slot
@@ -124,7 +90,7 @@ int nr_get_srs_signal(PHY_VARS_gNB *gNB,
   for (int ant = 0; ant < frame_parms->nb_antennas_rx; ant++) {
 
     memset(srs_received_signal[ant], 0, frame_parms->ofdm_symbol_size*sizeof(int32_t));
-    rx_signal = &rxdataF[ant][symbol_offset];
+    rx_signal = (int32_t *)&rxdataF[ant][symbol_offset];
 
     for (int p_index = 0; p_index < N_ap; p_index++) {
 

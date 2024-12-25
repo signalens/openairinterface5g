@@ -73,9 +73,11 @@ typedef struct nr_pdcp_entity_t {
 
   /* functions provided by the PDCP module */
   void (*recv_pdu)(struct nr_pdcp_entity_t *entity, char *buffer, int size);
-  void (*recv_sdu)(struct nr_pdcp_entity_t *entity, char *buffer, int size,
-                   int sdu_id);
+  int (*process_sdu)(struct nr_pdcp_entity_t *entity, char *buffer, int size,
+                     int sdu_id, char *pdu_buffer, int pdu_max_size);
   void (*delete_entity)(struct nr_pdcp_entity_t *entity);
+  void (*release_entity)(struct nr_pdcp_entity_t *entity);
+  void (*suspend_entity)(struct nr_pdcp_entity_t *entity);
   void (*get_stats)(struct nr_pdcp_entity_t *entity, nr_pdcp_statistics_t *out);
 
   /* set_security: pass -1 to integrity_algorithm / ciphering_algorithm
@@ -95,7 +97,7 @@ typedef struct nr_pdcp_entity_t {
   void (*deliver_sdu)(void *deliver_sdu_data, struct nr_pdcp_entity_t *entity,
                       char *buf, int size);
   void *deliver_sdu_data;
-  void (*deliver_pdu)(void *deliver_pdu_data, struct nr_pdcp_entity_t *entity,
+  void (*deliver_pdu)(void *deliver_pdu_data, ue_id_t ue_id, int rb_id,
                       char *buf, int size, int sdu_id);
   void *deliver_pdu_data;
 
@@ -176,7 +178,7 @@ nr_pdcp_entity_t *new_nr_pdcp_entity(
     void (*deliver_sdu)(void *deliver_sdu_data, struct nr_pdcp_entity_t *entity,
                         char *buf, int size),
     void *deliver_sdu_data,
-    void (*deliver_pdu)(void *deliver_pdu_data, struct nr_pdcp_entity_t *entity,
+    void (*deliver_pdu)(void *deliver_pdu_data, ue_id_t ue_id, int rb_id,
                         char *buf, int size, int sdu_id),
     void *deliver_pdu_data,
     int sn_size,
@@ -186,7 +188,5 @@ nr_pdcp_entity_t *new_nr_pdcp_entity(
     int integrity_algorithm,
     unsigned char *ciphering_key,
     unsigned char *integrity_key);
-
-void nr_DRB_preconfiguration(ue_id_t crntiMaybeUEid);
 
 #endif /* _NR_PDCP_ENTITY_H_ */

@@ -162,6 +162,8 @@
 
 #define U_PLANE_INACTIVITY_VALUE 0   /* defined 10ms order (zero means infinity) */
 
+static const int cqi_to_mcs[16]= {0, 0, 1, 2, 4, 6, 8, 11, 13, 16, 18, 20, 23, 25, 27, 28};
+
 /*
  * eNB part
  */
@@ -1296,8 +1298,6 @@ typedef struct {
 /*! \brief top level eNB MAC structure */
 
 typedef struct eNB_MAC_INST_s {
-  /// Ethernet parameters for northbound midhaul interface
-  eth_params_t eth_params_n;
   /// Ethernet parameters for fronthaul interface
   eth_params_t eth_params_s;
   ///
@@ -1659,8 +1659,6 @@ typedef struct {
   uint8_t SI_Decoded;
   int ra_frame;   // This variable keeps the frame in which the RA started for the specific UE. It is used in order
   // to make sure that different UEs RA starts within a number of frames difference.
-
-  eth_params_t         eth_params_n;
 
 } UE_MAC_INST;
 

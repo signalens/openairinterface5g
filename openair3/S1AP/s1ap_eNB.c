@@ -32,7 +32,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
-#include <crypt.h>
+#include "openair3/SECU/kdf.h"
 
 #include "tree.h"
 #include "queue.h"
@@ -108,17 +108,20 @@ int s1ap_timer_remove(long timer_id)
   return ret;
 }
 
-uint32_t s1ap_generate_eNB_id(void) {
-  char    *out;
-  char     hostname[50];
-  int      ret;
-  uint32_t eNB_id;
+uint32_t s1ap_generate_eNB_id(void)
+{
   /* Retrieve the host name */
-  ret = gethostname(hostname, sizeof(hostname));
+  char hostname[32] = {0};
+  int const ret = gethostname(hostname, sizeof(hostname));
   DevAssert(ret == 0);
-  out = crypt(hostname, "eurecom");
-  DevAssert(out != NULL);
-  eNB_id = ((out[0] << 24) | (out[1] << 16) | (out[2] << 8) | out[3]);
+
+  uint8_t key[32] = {"eurecom"};
+  byte_array_t data = {.len = 32, .buf = (uint8_t *)hostname};
+
+  uint8_t out[32] = {0};
+  kdf(key, data, 32, out);
+
+  uint32_t const eNB_id = ((out[0] << 24) | (out[1] << 16) | (out[2] << 8) | out[3]);
   return eNB_id;
 }
 
@@ -373,7 +376,7 @@ void s1ap_eNB_handle_sctp_association_resp(instance_t instance, sctp_new_associa
         timer_kind = timer_kind | SCTP_REQ_WAIT;
         
         if( s1ap_timer_setup( instance_p->sctp_req_timer, 0, TASK_S1AP, instance_p->instance,
-          timer_kind, S1AP_TIMER_ONE_SHOT, NULL, &s1ap_mme_data_p->timer_id) < 0 ) {
+          timer_kind, TIMER_ONE_SHOT, NULL, &s1ap_mme_data_p->timer_id) < 0 ) {
           S1AP_ERROR("Timer Start NG(SCTP retransmission wait timer) : MME=%d\n",s1ap_mme_data_p->cnx_id);
           s1ap_sctp_req( instance_p, s1ap_mme_data_p );
         }
@@ -694,7 +697,7 @@ static int s1ap_eNB_generate_s1_setup_request(
   ie->value.choice.Global_ENB_ID.eNB_ID.present = S1AP_ENB_ID_PR_macroENB_ID;
   MACRO_ENB_ID_TO_BIT_STRING(instance_p->eNB_id,
                              &ie->value.choice.Global_ENB_ID.eNB_ID.choice.macroENB_ID);
-  S1AP_INFO("%d -> %02x%02x%02x\n", instance_p->eNB_id,
+  S1AP_INFO("%u -> %02x%02x%02x\n", instance_p->eNB_id,
             ie->value.choice.Global_ENB_ID.eNB_ID.choice.macroENB_ID.buf[0],
             ie->value.choice.Global_ENB_ID.eNB_ID.choice.macroENB_ID.buf[1],
             ie->value.choice.Global_ENB_ID.eNB_ID.choice.macroENB_ID.buf[2]);
@@ -750,7 +753,7 @@ static int s1ap_eNB_generate_s1_setup_request(
   timer_kind = timer_kind | S1AP_MMEIND;
   timer_kind = timer_kind | S1_SETRSP_WAIT;
   
-  if( s1ap_timer_setup(instance_p->s1_setuprsp_wait_timer, 0, TASK_S1AP, instance_p->instance, timer_kind, S1AP_TIMER_ONE_SHOT,
+  if( s1ap_timer_setup(instance_p->s1_setuprsp_wait_timer, 0, TASK_S1AP, instance_p->instance, timer_kind, TIMER_ONE_SHOT,
     NULL, &s1ap_mme_data_p->timer_id) < 0 )
   {
     S1AP_ERROR("Timer Start NG(S1 Setup Response) : MME=%d\n",s1ap_mme_data_p->cnx_id);

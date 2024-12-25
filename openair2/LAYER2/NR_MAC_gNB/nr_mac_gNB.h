@@ -41,6 +41,25 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <pthread.h>
+
+#define NR_SCHED_LOCK(lock)                                        \
+  do {                                                             \
+    int rc = pthread_mutex_lock(lock);                             \
+    AssertFatal(rc == 0, "error while locking scheduler mutex, pthread_mutex_lock() returned %d\n", rc); \
+  } while (0)
+
+#define NR_SCHED_UNLOCK(lock)                                      \
+  do {                                                             \
+    int rc = pthread_mutex_unlock(lock);                           \
+    AssertFatal(rc == 0, "error while locking scheduler mutex, pthread_mutex_unlock() returned %d\n", rc); \
+  } while (0)
+
+#define NR_SCHED_ENSURE_LOCKED(lock)\
+  do {\
+    int rc = pthread_mutex_trylock(lock); \
+    AssertFatal(rc == EBUSY, "this function should be called with the scheduler mutex locked, pthread_mutex_trylock() returned %d\n", rc);\
+  } while (0)
 
 /* Commmon */
 #include "radio/COMMON/common_lib.h"
@@ -51,6 +70,8 @@
 /* RRC */
 #include "NR_BCCH-BCH-Message.h"
 #include "NR_CellGroupConfig.h"
+#include "NR_BCCH-DL-SCH-Message.h"
+#include "openair2/RRC/NR/nr_rrc_config.h"
 
 /* PHY */
 #include "time_meas.h"
@@ -63,6 +84,7 @@
 /* MAC */
 #include "LAYER2/NR_MAC_COMMON/nr_mac_extern.h"
 #include "LAYER2/NR_MAC_COMMON/nr_mac_common.h"
+#include "LAYER2/MAC/mac.h"
 #include "NR_TAG.h"
 
 #include <openair3/UICC/usim_interface.h>
@@ -94,9 +116,28 @@ typedef enum {
   Msg2 = 1,
   WAIT_Msg3 = 2,
   Msg3_retransmission = 3,
-  Msg4 = 4,
-  WAIT_Msg4_ACK = 5
+  Msg3_dcch_dtch = 4,
+  Msg4 = 5,
+  WAIT_Msg4_ACK = 6
 } RA_gNB_state_t;
+
+typedef struct nr_pdsch_AntennaPorts_t {
+  int N1;
+  int N2;
+  int XP;
+} nr_pdsch_AntennaPorts_t;
+
+typedef struct nr_mac_config_t {
+  int sib1_tda;
+  nr_pdsch_AntennaPorts_t pdsch_AntennaPorts;
+  int pusch_AntennaPorts;
+  int minRXTXTIME;
+  int do_CSIRS;
+  int do_SRS;
+  bool force_256qam_off;
+  //int pusch_TargetSNRx10;
+  //int pucch_TargetSNRx10;
+} nr_mac_config_t;
 
 typedef struct NR_preamble_ue {
   uint8_t num_preambles;
@@ -163,8 +204,6 @@ typedef struct {
   uint8_t msg3_cqireq;
   /// Round of Msg3 HARQ
   uint8_t msg3_round;
-  /// Flag to indicate if Msg3 carries a DCCH or DTCH message
-  bool msg3_dcch_dtch;
   int msg3_startsymb;
   int msg3_nrsymb;
   /// TBS used for Msg4
@@ -184,8 +223,6 @@ typedef struct {
   NR_CellGroupConfig_t *CellGroup;
   /// Preambles for contention-free access
   NR_preamble_ue_t preambles;
-  /// NSA: the UEs C-RNTI to use
-  rnti_t crnti;
   /// CFRA flag
   bool cfra;
   // BWP for RA
@@ -195,8 +232,6 @@ typedef struct {
 
 /*! \brief gNB common channels */
 typedef struct {
-  int physCellId;
-  int p_gNB;
   int Ncp;
   int nr_band;
   frame_type_t frame_type;
@@ -204,12 +239,15 @@ typedef struct {
   NR_BCCH_BCH_Message_t *mib;
   NR_BCCH_DL_SCH_Message_t *sib1;
   NR_ServingCellConfigCommon_t *ServingCellConfigCommon;
+  /// pre-configured ServingCellConfig that is default for every UE
+  NR_ServingCellConfig_t *pre_ServingCellConfig;
   NR_ARFCN_ValueEUTRA_t ul_CarrierFreq;
   long ul_Bandwidth;
   /// Outgoing MIB PDU for PHY
-  MIB_PDU MIB_pdu;
+  uint8_t MIB_pdu[3];
   /// Outgoing BCCH pdu for PHY
-  BCCH_PDU BCCH_pdu;
+  uint8_t sib1_bcch_pdu[NR_MAX_SIB_LENGTH / 8];
+  int sib1_bcch_length;
   /// Outgoing BCCH DCI allocation
   uint32_t BCCH_alloc_pdu;
   /// Outgoing CCCH pdu for PHY
@@ -449,10 +487,6 @@ typedef struct NR_bler_stats {
 */
 #define MAX_NR_OF_REPORTED_RS 4
 
-typedef enum NR_CSI_Report_Config {
-  CSI_Report_PR_cri_ri_li_pmi_cqi_report,
-  CSI_Report_PR_ssb_cri_report
-} NR_CSI_Report_Config_PR;
 struct CRI_RI_LI_PMI_CQI {
   uint8_t cri;
   uint8_t ri;
@@ -463,6 +497,7 @@ struct CRI_RI_LI_PMI_CQI {
   uint8_t wb_cqi_2tb;
   uint8_t cqi_table;
   uint8_t csi_report_id;
+  bool print_report;
 };
 
 typedef struct CRI_SSB_RSRP {
@@ -573,7 +608,9 @@ typedef struct {
   uint8_t current_harq_pid;
   int pusch_consecutive_dtx_cnt;
   int pucch_consecutive_dtx_cnt;
-  int ul_failure;
+  bool ul_failure;
+  int ul_failure_timer;
+  int release_timer;
   struct CSI_Report CSI_report;
   bool SR;
   /// information about every HARQ process
@@ -615,6 +652,7 @@ typedef struct NR_mac_dir_stats {
   uint64_t errors;
   uint64_t total_bytes;
   uint32_t current_bytes;
+  uint64_t total_sdu_bytes;
   uint32_t total_rbs;
   uint32_t total_rbs_retx;
   uint32_t num_mac_sdu;
@@ -640,7 +678,12 @@ typedef struct NR_bler_options {
 } NR_bler_options_t;
 
 typedef struct nr_mac_rrc_ul_if_s {
-  /* TODO add other message types as necessary */
+  f1_setup_request_func_t f1_setup_request;
+  ue_context_setup_response_func_t ue_context_setup_response;
+  ue_context_modification_response_func_t ue_context_modification_response;
+  ue_context_modification_required_func_t ue_context_modification_required;
+  ue_context_release_request_func_t ue_context_release_request;
+  ue_context_release_complete_func_t ue_context_release_complete;
   initial_ul_rrc_message_transfer_func_t initial_ul_rrc_message_transfer;
 } nr_mac_rrc_ul_if_t;
 
@@ -654,12 +697,15 @@ typedef struct {
   NR_UE_DL_BWP_t current_DL_BWP;
   NR_UE_UL_BWP_t current_UL_BWP;
   NR_mac_stats_t mac_stats;
+  /// currently active CellGroupConfig
   NR_CellGroupConfig_t *CellGroup;
-  char cg_buf[32768]; /* arbitrary size */
-  asn_enc_rval_t enc_rval;
+  /// CellGroupConfig that is to be activated after the next reconfiguration
+  bool expect_reconfiguration;
+  NR_CellGroupConfig_t *reconfigCellGroup;
+  bool apply_cellgroup;
+  NR_UE_NR_Capability_t *capability;
   // UE selected beam index
   uint8_t UE_beam_index;
-  bool Msg3_dcch_dtch;
   bool Msg4_ACKed;
   uint32_t ra_timer;
   float ul_thr_ue;
@@ -671,7 +717,8 @@ typedef struct {
   // last element always NULL
   pthread_mutex_t mutex;
   NR_UE_info_t *list[MAX_MOBILES_PER_GNB+1];
-  bool sched_csirs;
+  // bitmap of CSI-RS already scheduled in current slot
+  int sched_csirs;
   uid_allocator_t uid_allocator;
 } NR_UEs_t;
 
@@ -683,6 +730,11 @@ typedef void (*nr_pp_impl_dl)(module_id_t mod_id,
 typedef bool (*nr_pp_impl_ul)(module_id_t mod_id,
                               frame_t frame,
                               sub_frame_t slot);
+
+typedef struct f1_config_t {
+  f1ap_setup_req_t *setup_req;
+  f1ap_setup_resp_t *setup_resp;
+} f1_config_t;
 
 /*! \brief top level eNB MAC structure */
 typedef struct gNB_MAC_INST_s {
@@ -710,9 +762,7 @@ typedef struct gNB_MAC_INST_s {
   /// Subcarrier Offset
   int                             ssb_SubcarrierOffset;
   int                             ssb_OffsetPointA;
-  /// SIB1 Time domain allocation
-  int                             sib1_tda;
-  int                             minRXTXTIMEpdsch;
+
   /// Common cell resources
   NR_COMMON_channels_t common_channels[NFAPI_CC_MAX];
   /// current PDU index (BCH,DLSCH)
@@ -721,24 +771,15 @@ typedef struct gNB_MAC_INST_s {
   uint16_t ulprbbl[MAX_BWP_SIZE];
   /// NFAPI Config Request Structure
   nfapi_nr_config_request_scf_t     config[NFAPI_CC_MAX];
-  /// NFAPI DL Config Request Structure
-  nfapi_nr_dl_tti_request_t         DL_req[NFAPI_CC_MAX];
   /// a PDCCH PDU groups DCIs per BWP and CORESET. The following structure
   /// keeps pointers to PDCCH PDUs within DL_req so that we can easily track
   /// PDCCH PDUs per CC/BWP/CORESET
   nfapi_nr_dl_tti_pdcch_pdu_rel15_t *pdcch_pdu_idx[NFAPI_CC_MAX][MAX_NUM_CORESET];
-  /// NFAPI UL TTI Request Structure, simple pointer into structure
-  /// UL_tti_req_ahead for current frame/slot
-  nfapi_nr_ul_tti_request_t        *UL_tti_req[NFAPI_CC_MAX];
   /// NFAPI UL TTI Request Structure for future TTIs, dynamically allocated
   /// because length depends on number of slots
   nfapi_nr_ul_tti_request_t        *UL_tti_req_ahead[NFAPI_CC_MAX];
   int UL_tti_req_ahead_size;
   int vrb_map_UL_size;
-  /// NFAPI HI/DCI0 Config Request Structure
-  nfapi_nr_ul_dci_request_t         UL_dci_req[NFAPI_CC_MAX];
-  /// NFAPI DL PDU structure
-  nfapi_nr_tx_data_request_t        TX_req[NFAPI_CC_MAX];
 
   NR_UEs_t UE_info;
 
@@ -765,6 +806,10 @@ typedef struct gNB_MAC_INST_s {
   time_stats_t rlc_data_req;
   /// processing time of rlc_status_ind
   time_stats_t rlc_status_ind;
+  /// processing time of nr_srs_ri_computation
+  time_stats_t nr_srs_ri_computation_timer;
+  /// processing time of nr_srs_tpmi_estimation
+  time_stats_t nr_srs_tpmi_computation_timer;
   /// processing time of eNB MCH scheduler
   time_stats_t schedule_mch;
   /// processing time of eNB ULSCH reception
@@ -787,23 +832,27 @@ typedef struct gNB_MAC_INST_s {
   /// UL preprocessor for differentiated scheduling
   nr_pp_impl_ul pre_processor_ul;
 
+  nr_mac_config_t radio_config;
+
   NR_UE_sched_ctrl_t *sched_ctrlCommon;
   uint16_t cset0_bwp_start;
   uint16_t cset0_bwp_size;
   NR_Type0_PDCCH_CSS_config_t type0_PDCCH_CSS_config[64];
-
-  int xp_pdsch_antenna_ports;
 
   bool first_MIB;
   NR_bler_options_t dl_bler;
   NR_bler_options_t ul_bler;
   uint8_t min_grant_prb;
   uint8_t min_grant_mcs;
+  bool identity_pm;
 
   nr_mac_rrc_ul_if_t mac_rrc;
+  f1_config_t f1_config;
 
   int16_t frame;
   int16_t slot;
+
+  pthread_mutex_t sched_lock;
 
 } gNB_MAC_INST;
 

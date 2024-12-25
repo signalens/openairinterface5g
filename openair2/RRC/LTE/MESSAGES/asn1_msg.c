@@ -76,6 +76,7 @@
 
 #include "LTE_SystemInformationBlockType1.h"
 #include "LTE_SystemInformationBlockType1-BR-r13.h"
+#include "LTE_SystemInformationBlockType1-v8h0-IEs.h"
 
 
 #include "LTE_SIB-Type.h"
@@ -103,7 +104,7 @@
 
 
 #include "common/ran_context.h"
-#include "secu_defs.h"
+#include "key_nas_deriver.h"
 
 #if !defined (msg)
   #define msg printf
@@ -118,15 +119,14 @@ typedef struct xer_sprint_string_s {
 
 extern RAN_CONTEXT_t RC;
 
-uint16_t two_tier_hexagonal_cellIds[7] = {0,1,2,4,5,7,8};
-uint16_t two_tier_hexagonal_adjacent_cellIds[7][6] = {{1,2,4,5,7,8},    // CellId 0
-  {11,18,2,0,8,15}, // CellId 1
-  {18,13,3,4,0,1},  // CellId 2
-  {2,3,14,6,5,0},   // CellId 4
-  {0,4,6,16,9,7},   // CellId 5
-  {8,0,5,9,17,12},  // CellId 7
-  {15,1,0,7,12,10}
-};// CellId 8
+static const uint16_t two_tier_hexagonal_cellIds[7] = {0, 1, 2, 4, 5, 7, 8};
+static const uint16_t two_tier_hexagonal_adjacent_cellIds[7][6] = {{1, 2, 4, 5, 7, 8}, // CellId 0
+                                                                   {11, 18, 2, 0, 8, 15}, // CellId 1
+                                                                   {18, 13, 3, 4, 0, 1}, // CellId 2
+                                                                   {2, 3, 14, 6, 5, 0}, // CellId 4
+                                                                   {0, 4, 6, 16, 9, 7}, // CellId 5
+                                                                   {8, 0, 5, 9, 17, 12}, // CellId 7
+                                                                   {15, 1, 0, 7, 12, 10}}; // CellId 8
 
 /*
  * This is a helper function for xer_sprint, which directs all incoming data
@@ -937,7 +937,7 @@ uint8_t do_SIB1(rrc_eNB_carrier_data_t *carrier,
   (*sib1)->cellSelectionInfo.q_RxLevMinOffset=NULL;
   //(*sib1)->p_Max = CALLOC(1, sizeof(P_Max_t));
   // *((*sib1)->p_Max) = 23;
-  (*sib1)->freqBandIndicator = configuration->eutra_band[CC_id];
+  
   schedulingInfo.si_Periodicity=LTE_SchedulingInfo__si_Periodicity_rf8;
   if(configuration->eMBMS_M2_configured){
        schedulingInfo2.si_Periodicity=LTE_SchedulingInfo__si_Periodicity_rf8;
@@ -964,7 +964,41 @@ uint8_t do_SIB1(rrc_eNB_carrier_data_t *carrier,
   (*sib1)->systemInfoValueTag = 0;
   (*sib1)->nonCriticalExtension = calloc(1, sizeof(LTE_SystemInformationBlockType1_v890_IEs_t));
   LTE_SystemInformationBlockType1_v890_IEs_t *sib1_890 = (*sib1)->nonCriticalExtension;
-  sib1_890->lateNonCriticalExtension = NULL;
+
+  if(configuration->eutra_band[CC_id] <= 64) {
+    (*sib1)->freqBandIndicator = configuration->eutra_band[CC_id];
+    sib1_890->lateNonCriticalExtension = NULL;
+  } else {
+    (*sib1)->freqBandIndicator = 64;
+    
+    sib1_890->lateNonCriticalExtension = calloc(1, sizeof(OCTET_STRING_t));
+    OCTET_STRING_t *octate = (*sib1_890).lateNonCriticalExtension;
+    
+    LTE_SystemInformationBlockType1_v8h0_IEs_t *sib1_8h0 = NULL;
+    sib1_8h0 = calloc(1, sizeof(LTE_SystemInformationBlockType1_v8h0_IEs_t));
+    sib1_8h0->multiBandInfoList = NULL;
+    sib1_8h0->nonCriticalExtension = calloc(1, sizeof(LTE_SystemInformationBlockType1_v9e0_IEs_t)); 
+    
+    long *eutra_band_ptr;
+    eutra_band_ptr = malloc(sizeof(long));
+    *eutra_band_ptr = configuration->eutra_band[CC_id];
+    LTE_SystemInformationBlockType1_v9e0_IEs_t *sib1_9e0 = sib1_8h0->nonCriticalExtension;
+    sib1_9e0->freqBandIndicator_v9e0 = eutra_band_ptr;
+    sib1_9e0->multiBandInfoList_v9e0 = NULL;
+    sib1_9e0->nonCriticalExtension = NULL;
+    char buffer_sib8h0[1024];
+    enc_rval = uper_encode_to_buffer(&asn_DEF_LTE_SystemInformationBlockType1_v8h0_IEs,
+                                     NULL,
+                                     (void *)sib1_8h0,
+                                     buffer_sib8h0,
+                                     1024);
+    AssertFatal (enc_rval.encoded > 0, "ASN1 message encoding failed (%s, %lu)!\n",
+                 enc_rval.failed_type->name, enc_rval.encoded); 
+    OCTET_STRING_fromBuf(octate,(const char *)buffer_sib8h0,(enc_rval.encoded + 7) / 8);
+
+    ASN_STRUCT_FREE(asn_DEF_LTE_SystemInformationBlockType1_v8h0_IEs, sib1_8h0); 
+  }
+
   sib1_890->nonCriticalExtension = calloc(1, sizeof(LTE_SystemInformationBlockType1_v920_IEs_t));
   memset(sib1_890->nonCriticalExtension, 0, sizeof(LTE_SystemInformationBlockType1_v920_IEs_t));
   LTE_SystemInformationBlockType1_v920_IEs_t *sib1_920 = (*sib1_890).nonCriticalExtension;
@@ -1464,7 +1498,7 @@ uint8_t do_SIB23(uint8_t Mod_id,
     //memset((*sib2)->radioResourceConfigCommon.ext4->bcch_Config_v1310, 0, sizeof(BCCH_Config_v1310_t));
     //(*sib2)->radioResourceConfigCommon.ext4->bcch_Config_v1310->modificationPeriodCoeff_v1310 = BCCH_Config_v1310__modificationPeriodCoeff_v1310_n64;
 
-    if (configuration->pcch_config_v1310) {
+    if (configuration->pcch_config_v1310[CC_id] == true) {
       (*sib2)->radioResourceConfigCommon.ext4->pcch_Config_v1310 = CALLOC(1, sizeof(LTE_PCCH_Config_v1310_t));
       (*sib2)->radioResourceConfigCommon.ext4->pcch_Config_v1310->paging_narrowBands_r13 = configuration->paging_narrowbands_r13[CC_id];
       (*sib2)->radioResourceConfigCommon.ext4->pcch_Config_v1310->mpdcch_NumRepetition_Paging_r13 = configuration->mpdcch_numrepetition_paging_r13[CC_id];
@@ -3774,7 +3808,6 @@ do_RRCConnectionReestablishment(
   LTE_DL_CCCH_Message_t dl_ccch_msg;
   LTE_RRCConnectionReestablishment_t *rrcConnectionReestablishment = NULL;
   int i = 0;
-  ue_context_pP->ue_context.reestablishment_xid = Transaction_id;
   LTE_SRB_ToAddModList_t **SRB_configList2 = NULL;
   SRB_configList2 = &ue_context_pP->ue_context.SRB_configList2[Transaction_id];
 
@@ -4013,8 +4046,7 @@ uint8_t do_RRCConnectionRelease(uint8_t                             Mod_id,
   return((enc_rval.encoded+7)/8);
 }
 
-uint8_t TMGI[5] = {4,3,2,1,0};//TMGI is a string of octet, ref. TS 24.008 fig. 10.5.4a
-
+static const uint8_t TMGI[5] = {4, 3, 2, 1, 0}; // TMGI is a string of octet, ref. TS 24.008 fig. 10.5.4a
 
 uint8_t do_MBSFNAreaConfig(uint8_t Mod_id,
                            uint8_t sync_area,
@@ -4378,7 +4410,7 @@ uint8_t do_ULInformationTransfer(uint8_t **buffer, uint32_t pdu_length, uint8_t 
   ul_dcch_msg.message.present           = LTE_UL_DCCH_MessageType_PR_c1;
   ul_dcch_msg.message.choice.c1.present = LTE_UL_DCCH_MessageType__c1_PR_ulInformationTransfer;
   ul_dcch_msg.message.choice.c1.choice.ulInformationTransfer.criticalExtensions.present = LTE_ULInformationTransfer__criticalExtensions_PR_c1;
-  ul_dcch_msg.message.choice.c1.choice.ulInformationTransfer.criticalExtensions.choice.c1.present = LTE_DLInformationTransfer__criticalExtensions__c1_PR_dlInformationTransfer_r8;
+  ul_dcch_msg.message.choice.c1.choice.ulInformationTransfer.criticalExtensions.choice.c1.present = LTE_ULInformationTransfer__criticalExtensions__c1_PR_ulInformationTransfer_r8;
   ul_dcch_msg.message.choice.c1.choice.ulInformationTransfer.criticalExtensions.choice.c1.choice.ulInformationTransfer_r8.dedicatedInfoType.present =
     LTE_ULInformationTransfer_r8_IEs__dedicatedInfoType_PR_dedicatedInfoNAS;
   ul_dcch_msg.message.choice.c1.choice.ulInformationTransfer.criticalExtensions.choice.c1.choice.ulInformationTransfer_r8.dedicatedInfoType.choice.dedicatedInfoNAS.size = pdu_length;

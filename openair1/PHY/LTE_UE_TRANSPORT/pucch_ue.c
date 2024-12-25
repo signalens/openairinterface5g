@@ -32,6 +32,7 @@
 #include "PHY/defs_UE.h"
 #include "PHY/phy_extern_ue.h" 
 #include "PHY/LTE_REFSIG/lte_refsig.h"
+#include "PHY/LTE_TRANSPORT/transport_vars.h"
 
 #include "common/utils/LOG/log.h"
 #include "common/utils/LOG/vcd_signal_dumper.h"
@@ -280,7 +281,7 @@ void generate_pucch1x(int32_t **txdataF,
         }
 
 #ifdef DEBUG_PUCCH_TX
-        printf("[PHY] PUCCH subframe %d z(%d,%d) => %d,%d, alpha(%d) => %d,%d\n",subframe,l,n,((int16_t *)&zptr[n])[0],((int16_t *)&zptr[n])[1],
+        printf("[PHY] PUCCH subframe %d z(%d,%u) => %d,%d, alpha(%d) => %d,%d\n",subframe,l,n,((int16_t *)&zptr[n])[0],((int16_t *)&zptr[n])[1],
             alpha_ind,alpha_re[alpha_ind],alpha_im[alpha_ind]);
 #endif
         alpha_ind = (alpha_ind + n_cs)%12;

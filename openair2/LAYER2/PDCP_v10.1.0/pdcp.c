@@ -40,8 +40,6 @@
 #include "LAYER2/MAC/mac_extern.h"
 #include "RRC/LTE/rrc_proto.h"
 #include "pdcp_primitives.h"
-#include "OCG.h"
-#include "OCG_extern.h"
 #include "otg_rx.h"
 #include "common/utils/LOG/log.h"
 #include <inttypes.h>
@@ -52,13 +50,13 @@
 #include "common/openairinterface5g_limits.h"
 #include "executables/lte-softmodem.h"
 #include "SIMULATION/ETH_TRANSPORT/proto.h"
-#include "UTIL/OSA/osa_defs.h"
 #include "openair2/RRC/NAS/nas_config.h"
 #include "intertask_interface.h"
 #include "openair3/S1AP/s1ap_eNB.h"
 #include <pthread.h>
+#include "pdcp.h"
 
-#  include "openair3/ocp-gtpu/gtp_itf.h"
+#include "openair3/ocp-gtpu/gtp_itf.h"
 #include <openair3/ocp-gtpu/gtp_itf.h>
 
 #include "ENB_APP/enb_config.h"
@@ -137,6 +135,36 @@ pdcp_enb_t pdcp_enb[MAX_NUM_CCs];
 extern int oai_exit;
 
 pthread_t pdcp_stats_thread_desc;
+/*! \fn bool pdcp_config_req_asn1 (const protocol_ctxt_t* const ctxt_pP, srb_flag_t srb_flagP, uint32_t  action, rb_id_t rb_id,
+ * uint8_t rb_sn, uint8_t rb_report, uint16_t header_compression_profile, uint8_t security_mode) \brief  Function for RRC to
+ * configure a Radio Bearer. \param[in]  ctxt_pP           Running context. \param[in]  pdcp_pP            Pointer on PDCP
+ * structure. \param[in]  enb_mod_idP        Virtualized enb module identifier, Not used if eNB_flagP = 0. \param[in]  ue_mod_idP
+ * Virtualized ue module identifier. \param[in]  frame              Frame index. \param[in]  eNB_flag           Flag to indicate eNB
+ * (1) or UE (0) \param[in]  srb_flagP          Flag to indicate SRB (1) or DRB (0) \param[in]  action             add, remove,
+ * modify a RB \param[in]  rb_id              radio bearer id \param[in]  rb_sn              sequence number for this radio bearer
+ * \param[in]  drb_report         set a pdcp report for this drb
+ * \param[in]  header_compression set the rohc profile
+ * \param[in]  security_mode      set the integrity and ciphering algs
+ * \param[in]  kRRCenc            RRC encryption key
+ * \param[in]  kRRCint            RRC integrity key
+ * \param[in]  kUPenc             User-Plane encryption key
+ * \return     A status about the processing, OK or error code.
+ */
+static bool pdcp_config_req_asn1(const protocol_ctxt_t *const ctxt_pP,
+                                 pdcp_t *const pdcp_pP,
+                                 const srb_flag_t srb_flagP,
+                                 const rlc_mode_t rlc_modeP,
+                                 const config_action_t actionP,
+                                 const uint16_t lc_idP,
+                                 const uint16_t mch_idP,
+                                 const rb_id_t rb_idP,
+                                 const uint8_t rb_snP,
+                                 const uint8_t rb_reportP,
+                                 const uint16_t header_compression_profileP,
+                                 const uint8_t security_modeP,
+                                 uint8_t *const kRRCenc_pP,
+                                 uint8_t *const kRRCint_pP,
+                                 uint8_t *const kUPenc_pP);
 
 void *pdcp_stats_thread(void *param) {
 
@@ -648,7 +676,6 @@ pdcp_data_ind(
         exit(1);
       }
 
-      //uint8_t dc = pdcp_get_dc_filed((unsigned char*)sdu_buffer_pP->data);
     }
 
     /*
@@ -1883,24 +1910,21 @@ rrc_pdcp_config_asn1_req(const protocol_ctxt_t *const  ctxt_pP,
 
   return 0;
 }
-
-//-----------------------------------------------------------------------------
-bool
-pdcp_config_req_asn1(const protocol_ctxt_t *const  ctxt_pP,
-                     pdcp_t          *const        pdcp_pP,
-                     const srb_flag_t              srb_flagP,
-                     const rlc_mode_t              rlc_modeP,
-                     const config_action_t         actionP,
-                     const uint16_t                lc_idP,
-                     const uint16_t                mch_idP,
-                     const rb_id_t                 rb_idP,
-                     const uint8_t                 rb_snP,
-                     const uint8_t                 rb_reportP,
-                     const uint16_t                header_compression_profileP,
-                     const uint8_t                 security_modeP,
-                     uint8_t         *const        kRRCenc_pP,
-                     uint8_t         *const        kRRCint_pP,
-                     uint8_t         *const        kUPenc_pP)
+static bool pdcp_config_req_asn1(const protocol_ctxt_t *const ctxt_pP,
+                                 pdcp_t *const pdcp_pP,
+                                 const srb_flag_t srb_flagP,
+                                 const rlc_mode_t rlc_modeP,
+                                 const config_action_t actionP,
+                                 const uint16_t lc_idP,
+                                 const uint16_t mch_idP,
+                                 const rb_id_t rb_idP,
+                                 const uint8_t rb_snP,
+                                 const uint8_t rb_reportP,
+                                 const uint16_t header_compression_profileP,
+                                 const uint8_t security_modeP,
+                                 uint8_t *const kRRCenc_pP,
+                                 uint8_t *const kRRCint_pP,
+                                 uint8_t *const kUPenc_pP)
 //-----------------------------------------------------------------------------
 {
 
@@ -2030,19 +2054,6 @@ pdcp_config_req_asn1(const protocol_ctxt_t *const  ctxt_pP,
         // pdcp_remove_UE(ctxt_pP);
       }
 
-      /* Security keys */
-      if (pdcp_pP->kUPenc != NULL) {
-        free(pdcp_pP->kUPenc);
-      }
-
-      if (pdcp_pP->kRRCint != NULL) {
-        free(pdcp_pP->kRRCint);
-      }
-
-      if (pdcp_pP->kRRCenc != NULL) {
-        free(pdcp_pP->kRRCenc);
-      }
-
       memset(pdcp_pP, 0, sizeof(pdcp_t));
       break;
 
@@ -2107,9 +2118,11 @@ pdcp_config_set_security(
           PROTOCOL_PDCP_CTXT_ARGS(ctxt_pP,pdcp_pP),
           pdcp_pP->cipheringAlgorithm,
           pdcp_pP->integrityProtAlgorithm);
-    pdcp_pP->kRRCenc = kRRCenc;
-    pdcp_pP->kRRCint = kRRCint;
-    pdcp_pP->kUPenc  = kUPenc;
+
+    kRRCenc != NULL ? memcpy(pdcp_pP->kRRCenc, kRRCenc, 32) : memset(pdcp_pP->kRRCenc, 0, 32);
+    kRRCint != NULL ? memcpy(pdcp_pP->kRRCint, kRRCint, 32) : memset(pdcp_pP->kRRCint, 0, 32);
+    kUPenc != NULL ? memcpy(pdcp_pP->kUPenc, kUPenc, 32) : memset(pdcp_pP->kUPenc, 0, 32);
+
     /* Activate security */
     pdcp_pP->security_activated = 1;
   }
@@ -2330,18 +2343,6 @@ pdcp_free (
   pdcp_t *pdcp_p = (pdcp_t *)pdcp_pP;
 
   if (pdcp_p != NULL) {
-    if (pdcp_p->kUPenc != NULL) {
-      free(pdcp_p->kUPenc);
-    }
-
-    if (pdcp_p->kRRCint != NULL) {
-      free(pdcp_p->kRRCint);
-    }
-
-    if (pdcp_p->kRRCenc != NULL) {
-      free(pdcp_p->kRRCenc);
-    }
-
     memset(pdcp_pP, 0, sizeof(pdcp_t));
     free(pdcp_pP);
   }

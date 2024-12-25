@@ -53,28 +53,38 @@
 #define CONFIG_STRING_L1_PUSCH_DTX_THRESHOLD               "pusch_dtx_threshold"
 #define CONFIG_STRING_L1_SRS_DTX_THRESHOLD                 "srs_dtx_threshold"
 #define CONFIG_STRING_L1_MAX_LDPC_ITERATIONS               "max_ldpc_iterations"
+#define CONFIG_STRING_L1_RX_THREAD_CORE                    "L1_rx_thread_core"
+#define CONFIG_STRING_L1_TX_THREAD_CORE                    "L1_tx_thread_core"
+#define HLP_TP_SIZ "thread_pool_size paramter removed, please use --thread-pool"
+#define CONFIG_STRING_L1_TX_AMP_BACKOFF_dB                 "tx_amp_backoff_dB"
+#define HLP_L1TX_BO "Backoff from full-scale output at the L1 entity(frequency domain), ex. 12 would corresponding to 14-bit input level (6 dB/bit). Default 36 dBFS for OAI RU entity"
 /*----------------------------------------------------------------------------------------------------------------------------------------------------*/
 /*                                            L1 configuration parameters                                                                             */
 /*   optname                                         helpstr   paramflags    XXXptr              defXXXval                  type           numelt     */
 /*----------------------------------------------------------------------------------------------------------------------------------------------------*/
+// clang-format off
 #define L1PARAMS_DESC { \
-{CONFIG_STRING_L1_CC,                                NULL,      0,         uptr:NULL,           defintval:1,               TYPE_UINT,     0},         \
-{CONFIG_STRING_L1_TRANSPORT_N_PREFERENCE,            NULL,      0,         strptr:NULL,         defstrval:"local_mac",     TYPE_STRING,   0},         \
-{CONFIG_STRING_L1_LOCAL_N_IF_NAME,                   NULL,      0,         strptr:NULL,         defstrval:"lo",            TYPE_STRING,   0},         \
-{CONFIG_STRING_L1_LOCAL_N_ADDRESS,                   NULL,      0,         strptr:NULL,         defstrval:"127.0.0.1",     TYPE_STRING,   0},         \
-{CONFIG_STRING_L1_REMOTE_N_ADDRESS,                  NULL,      0,         strptr:NULL,         defstrval:"127.0.0.2",     TYPE_STRING,   0},         \
-{CONFIG_STRING_L1_LOCAL_N_PORTC,                     NULL,      0,         uptr:NULL,           defintval:50030,           TYPE_UINT,     0},         \
-{CONFIG_STRING_L1_REMOTE_N_PORTC,                    NULL,      0,         uptr:NULL,           defintval:50030,           TYPE_UINT,     0},         \
-{CONFIG_STRING_L1_LOCAL_N_PORTD,                     NULL,      0,         uptr:NULL,           defintval:50031,           TYPE_UINT,     0},         \
-{CONFIG_STRING_L1_REMOTE_N_PORTD,                    NULL,      0,         uptr:NULL,           defintval:50031,           TYPE_UINT,     0},         \
-{CONFIG_STRING_L1_THREAD_POOL_SIZE, "thread_pool_size paramter removed, please use --thread-pool",      0,         uptr:NULL,           defintval:2022,               TYPE_UINT,     0},         \
-{CONFIG_STRING_L1_OFDM_OFFSET_DIVISOR,               NULL,      0,         uptr:NULL,           defuintval:8,              TYPE_UINT,     0},         \
-{CONFIG_STRING_L1_PUCCH0_DTX_THRESHOLD,              NULL,      0,         uptr:NULL,           defintval:100,             TYPE_UINT,     0},         \
-{CONFIG_STRING_L1_PRACH_DTX_THRESHOLD,               NULL,      0,         uptr:NULL,           defintval:150,             TYPE_UINT,     0},         \
-{CONFIG_STRING_L1_PUSCH_DTX_THRESHOLD,               NULL,      0,         uptr:NULL,           defintval:50,              TYPE_UINT,     0},         \
-{CONFIG_STRING_L1_SRS_DTX_THRESHOLD,                 NULL,      0,         uptr:NULL,           defintval:50,              TYPE_UINT,     0},         \
-{CONFIG_STRING_L1_MAX_LDPC_ITERATIONS,               NULL,      0,         uptr:NULL,           defintval:5,               TYPE_UINT,     0},          \
+  {CONFIG_STRING_L1_CC,                                NULL,       0,         .uptr=NULL,           .defintval=1,               TYPE_UINT,     0},         \
+  {CONFIG_STRING_L1_TRANSPORT_N_PREFERENCE,            NULL,       0,         .strptr=NULL,         .defstrval="local_mac",     TYPE_STRING,   0},         \
+  {CONFIG_STRING_L1_LOCAL_N_IF_NAME,                   NULL,       0,         .strptr=NULL,         .defstrval="lo",            TYPE_STRING,   0},         \
+  {CONFIG_STRING_L1_LOCAL_N_ADDRESS,                   NULL,       0,         .strptr=NULL,         .defstrval="127.0.0.1",     TYPE_STRING,   0},         \
+  {CONFIG_STRING_L1_REMOTE_N_ADDRESS,                  NULL,       0,         .strptr=NULL,         .defstrval="127.0.0.2",     TYPE_STRING,   0},         \
+  {CONFIG_STRING_L1_LOCAL_N_PORTC,                     NULL,       0,         .uptr=NULL,           .defintval=50030,           TYPE_UINT,     0},         \
+  {CONFIG_STRING_L1_REMOTE_N_PORTC,                    NULL,       0,         .uptr=NULL,           .defintval=50030,           TYPE_UINT,     0},         \
+  {CONFIG_STRING_L1_LOCAL_N_PORTD,                     NULL,       0,         .uptr=NULL,           .defintval=50031,           TYPE_UINT,     0},         \
+  {CONFIG_STRING_L1_REMOTE_N_PORTD,                    NULL,       0,         .uptr=NULL,           .defintval=50031,           TYPE_UINT,     0},         \
+  {CONFIG_STRING_L1_THREAD_POOL_SIZE,                  HLP_TP_SIZ, 0,         .uptr=NULL,           .defintval=2022,            TYPE_UINT,     0},         \
+  {CONFIG_STRING_L1_OFDM_OFFSET_DIVISOR,               NULL,       0,         .uptr=NULL,           .defuintval=8,              TYPE_UINT,     0},         \
+  {CONFIG_STRING_L1_PUCCH0_DTX_THRESHOLD,              NULL,       0,         .uptr=NULL,           .defintval=100,             TYPE_UINT,     0},         \
+  {CONFIG_STRING_L1_PRACH_DTX_THRESHOLD,               NULL,       0,         .uptr=NULL,           .defintval=150,             TYPE_UINT,     0},         \
+  {CONFIG_STRING_L1_PUSCH_DTX_THRESHOLD,               NULL,       0,         .uptr=NULL,           .defintval=50,              TYPE_UINT,     0},         \
+  {CONFIG_STRING_L1_SRS_DTX_THRESHOLD,                 NULL,       0,         .uptr=NULL,           .defintval=50,              TYPE_UINT,     0},         \
+  {CONFIG_STRING_L1_MAX_LDPC_ITERATIONS,               NULL,       0,         .uptr=NULL,           .defintval=5,               TYPE_UINT,     0},         \
+  {CONFIG_STRING_L1_RX_THREAD_CORE,                    NULL,       0,         .uptr=NULL,           .defintval=-1,              TYPE_UINT,     0},          \
+  {CONFIG_STRING_L1_TX_THREAD_CORE,                    NULL,       0,         .uptr=NULL,           .defintval=-1,              TYPE_UINT,     0},          \
+  {CONFIG_STRING_L1_TX_AMP_BACKOFF_dB,                 HLP_L1TX_BO,0,         .uptr=NULL,           .defintval=36,              TYPE_UINT,     0},         \
 }
+// clang-format on
 #define L1_CC_IDX                                          0
 #define L1_TRANSPORT_N_PREFERENCE_IDX                      1
 #define L1_LOCAL_N_IF_NAME_IDX                             2
@@ -91,6 +101,9 @@
 #define L1_PUSCH_DTX_THRESHOLD                             13
 #define L1_SRS_DTX_THRESHOLD                               14
 #define L1_MAX_LDPC_ITERATIONS                             15
+#define L1_RX_THREAD_CORE                                  16
+#define L1_TX_THREAD_CORE                                  17
+#define L1_TX_AMP_BACKOFF_dB                               18
 
 /*----------------------------------------------------------------------------------------------------------------------------------------------------*/
 #endif

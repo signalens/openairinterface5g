@@ -328,6 +328,15 @@ typedef struct nas_establish_req_s {
 } nas_establish_req_t;
 
 /*
+ * fill me
+ */
+typedef struct nas_deregistration_req_s {
+  // This dummy element is to avoid CLANG warning: empty struct has size 0 in C, size 1 in C++
+  // To be removed if the structure is filled
+  uint32_t dummy;
+} nas_deregistration_req_t;
+
+/*
  * AS->NAS - NAS signalling connection establishment indication
  * AS transfers the initial NAS message to the NAS.
  */
@@ -462,7 +471,11 @@ typedef ul_info_transfer_ind_t dl_info_transfer_ind_t;
  */
 
 /* TODO: Quality of Service parameters */
-typedef struct {} as_qos_t;
+typedef struct {
+  // This dummy element is to avoid CLANG warning: empty struct has size 0 in C, size 1 in C++
+  // To be removed if the structure is filled
+  uint32_t dummy;
+} as_qos_t;
 
 /*
  * NAS->AS - Radio access bearer establishment request

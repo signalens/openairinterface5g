@@ -42,7 +42,7 @@
 
 #include "assertions.h"
 
-extern void print_shorts(char *s,__m128i *x);
+extern void print_shorts(char *s,simde__m128i *x);
 static mapping channelmod_names[] = {
   CHANNELMOD_MAP_INIT
 };
@@ -61,11 +61,11 @@ static telnetshell_cmddef_t channelmod_cmdarray[] = {
     {"show predef", "", channelmod_show_cmd, {NULL}, TELNETSRV_CMDFLAG_WEBSRVONLY, NULL},
     {"show current", "", channelmod_show_cmd, {NULL}, TELNETSRV_CMDFLAG_WEBSRVONLY, NULL},
     {"modify", "<channelid> <param> <value>", channelmod_modify_cmd, {NULL}, TELNETSRV_CMDFLAG_TELNETONLY, NULL},
-    {"show params", "<channelid> <param> <value>", channelmod_modify_cmd, {webfunc_getdata : get_currentchannels_type}, TELNETSRV_CMDFLAG_GETWEBTBLDATA | TELNETSRV_CMDFLAG_WEBSRV_SETRETURNTBL, NULL},
+    {"show params", "<channelid> <param> <value>", channelmod_modify_cmd, {.webfunc_getdata = get_currentchannels_type}, TELNETSRV_CMDFLAG_GETWEBTBLDATA | TELNETSRV_CMDFLAG_WEBSRV_SETRETURNTBL, NULL},
     {"show channelid",
      HELP_WEBIF_MODIFCHAN_STRING,
      channelmod_modify_cmd,
-     {webfunc_getdata : get_channel_params},
+     {.webfunc_getdata = get_channel_params},
      TELNETSRV_CMDFLAG_NEEDPARAM | TELNETSRV_CMDFLAG_WEBSRVONLY | TELNETSRV_CMDFLAG_GETWEBTBLDATA,
      NULL},
     {"", "", NULL, {NULL}, 0, NULL},
@@ -110,7 +110,7 @@ void fill_channel_desc(channel_desc_t *chan_desc,
   LOG_D(OCM,"[CHANNEL] Doing delays ...\n");
 
   if (delays==NULL) {
-    chan_desc->delays = (double *) malloc(nb_taps*sizeof(double));
+    chan_desc->delays = calloc(nb_taps, sizeof(double));
     chan_desc->free_flags=chan_desc->free_flags|CHANMODEL_FREE_DELAY ;
     delta_tau = Td/nb_taps;
 
@@ -131,22 +131,22 @@ void fill_channel_desc(channel_desc_t *chan_desc,
   chan_desc->first_run                  = 1;
   chan_desc->ip                         = 0.0;
   chan_desc->max_Doppler                = max_Doppler;
-  chan_desc->ch                         = (struct complexd **) malloc(nb_tx*nb_rx*sizeof(struct complexd *));
-  chan_desc->chF                        = (struct complexd **) malloc(nb_tx*nb_rx*sizeof(struct complexd *));
-  chan_desc->a                          = (struct complexd **) malloc(nb_taps*sizeof(struct complexd *));
+  chan_desc->ch                         = calloc(nb_tx*nb_rx, sizeof(struct complexd *));
+  chan_desc->chF                        = calloc(nb_tx*nb_rx, sizeof(struct complexd *));
+  chan_desc->a                          = calloc(nb_taps, sizeof(struct complexd *));
   LOG_D(OCM,"[CHANNEL] Filling ch \n");
 
   for (i = 0; i<nb_tx*nb_rx; i++)
-    chan_desc->ch[i] = (struct complexd *) malloc(channel_length * sizeof(struct complexd));
+    chan_desc->ch[i] = calloc(channel_length, sizeof(struct complexd));
 
   for (i = 0; i<nb_tx*nb_rx; i++)
-    chan_desc->chF[i] = (struct complexd *) malloc(275 * 12 * sizeof(struct complexd)); // allocate for up to 275 RBs, 12 symbols per RB
+    chan_desc->chF[i] = calloc(275 * 12, sizeof(struct complexd)); // allocate for up to 275 RBs, 12 symbols per RB
 
   LOG_D(OCM,"[CHANNEL] Filling a (nb_taps %d)\n",nb_taps);
 
   for (i = 0; i<nb_taps; i++) {
     LOG_D(OCM,"tap %d (%p,%zu)\n",i,&chan_desc->a[i],nb_tx*nb_rx * sizeof(struct complexd));
-    chan_desc->a[i]         = (struct complexd *) malloc(nb_tx*nb_rx * sizeof(struct complexd));
+    chan_desc->a[i]         = calloc(nb_tx*nb_rx, sizeof(struct complexd));
   }
 
   LOG_D(OCM,"[CHANNEL] Doing R_sqrt ...\n");
@@ -359,11 +359,6 @@ static struct complexd R_sqrt_22_EPA_medium[16] = {{0.8375,0.0}, {0.5249,0.0}, {
 void tdlModel(int  tdl_paths, double *tdl_delays, double *tdl_amps_dB, double DS_TDL, channel_desc_t *chan_desc ) {
   int nb_rx=chan_desc-> nb_rx;
   int nb_tx=chan_desc-> nb_tx;
-  int tdl_pathsby3 = tdl_paths/3;
-
-  if ((tdl_paths%3)>0)
-    tdl_pathsby3++;
-
   chan_desc->nb_taps        = tdl_paths;
   chan_desc->Td             = tdl_delays[tdl_paths-1]*DS_TDL;
   printf("last path (%d) at %f * %e = %e\n",tdl_paths-1,tdl_delays[tdl_paths-1],DS_TDL,chan_desc->Td);
@@ -372,7 +367,7 @@ void tdlModel(int  tdl_paths, double *tdl_delays, double *tdl_amps_dB, double DS
                                      2/(M_PI*M_PI)*log(4*M_PI*chan_desc->sampling_rate*chan_desc->Td));
   printf("TDL : %f Ms/s, nb_taps %d, Td %e, channel_length %d\n",chan_desc->sampling_rate,tdl_paths,chan_desc->Td,chan_desc->channel_length);
   double sum_amps = 0;
-  chan_desc->amps           = (double *) malloc(chan_desc->nb_taps*sizeof(double));
+  chan_desc->amps           = calloc(chan_desc->nb_taps, sizeof(double));
 
   for (int i = 0; i<chan_desc->nb_taps; i++) {
     chan_desc->amps[i]      = pow(10,.1*tdl_amps_dB[i]);
@@ -387,19 +382,19 @@ void tdlModel(int  tdl_paths, double *tdl_delays, double *tdl_amps_dB, double DS
   chan_desc->delays         = tdl_delays;
   chan_desc->aoa            = 0;
   chan_desc->random_aoa     = 0;
-  chan_desc->ch             = (struct complexd **) malloc(nb_tx*nb_rx*sizeof(struct complexd *));
-  chan_desc->chF            = (struct complexd **) malloc(nb_tx*nb_rx*sizeof(struct complexd *));
-  chan_desc->a              = (struct complexd **) malloc(chan_desc->nb_taps*sizeof(struct complexd *));
+  chan_desc->ch             = calloc(nb_tx*nb_rx, sizeof(struct complexd *));
+  chan_desc->chF            = calloc(nb_tx*nb_rx, sizeof(struct complexd *));
+  chan_desc->a              = calloc(chan_desc->nb_taps, sizeof(struct complexd *));
   chan_desc->ricean_factor  = 1.0;
 
   for (int i = 0; i<nb_tx*nb_rx; i++)
-    chan_desc->ch[i] = (struct complexd *) malloc(chan_desc->channel_length * sizeof(struct complexd));
+    chan_desc->ch[i] = calloc(chan_desc->channel_length, sizeof(struct complexd));
 
   for (int i = 0; i<nb_tx*nb_rx; i++)
-    chan_desc->chF[i] = (struct complexd *) malloc((2+(275*12)) * sizeof(struct complexd));
+    chan_desc->chF[i] = calloc(2+(275*12), sizeof(struct complexd));
 
   for (int i = 0; i<chan_desc->nb_taps; i++)
-    chan_desc->a[i]         = (struct complexd *) malloc(nb_tx*nb_rx * sizeof(struct complexd));
+    chan_desc->a[i]         = calloc(nb_tx*nb_rx, sizeof(struct complexd));
 
   int matrix_size = nb_tx*nb_rx;
   double *correlation_matrix[matrix_size];
@@ -451,9 +446,9 @@ void tdlModel(int  tdl_paths, double *tdl_delays, double *tdl_amps_dB, double DS
     }
   }
 
-  chan_desc->R_sqrt = (struct complexd **) malloc(matrix_size*sizeof(struct complexd **));
+  chan_desc->R_sqrt = calloc(matrix_size, sizeof(*chan_desc->R_sqrt));
   for (int row = 0; row < matrix_size; row++) {
-    chan_desc->R_sqrt[row] = (struct complexd *) calloc(1, matrix_size*sizeof(struct complexd));
+    chan_desc->R_sqrt[row] = calloc(matrix_size, sizeof(**chan_desc->R_sqrt));
     if (correlation_matrix[row] == NULL) {
       // TS 38.104 - Table G.2.3.1.2-4: MIMO correlation matrices for low correlation
       chan_desc->R_sqrt[row][row].r = 1.0;
@@ -497,7 +492,7 @@ void get_cexp_doppler(struct complexd *cexp_doppler, channel_desc_t *chan_desc, 
     cexp_doppler[t_idx].i = cimag(tmp_cexp_doppler);
 
 #ifdef DOPPLER_DEBUG
-    printf("(%2i) t_us = %f, cos_theta = %f, fs = %f, cexp_doppler = (%f, %f)\n", t_idx, t * 1e6, cos_theta[t_idx], fs[t_idx], cexp_doppler[t_idx].r, cexp_doppler[t_idx].i);
+    printf("(%2u) t_us = %f, cos_theta = %f, fs = %f, cexp_doppler = (%f, %f)\n", t_idx, t * 1e6, cos_theta[t_idx], fs[t_idx], cexp_doppler[t_idx].r, cexp_doppler[t_idx].i);
 #endif
   }
 }
@@ -642,7 +637,7 @@ channel_desc_t *new_channel_desc_scm(uint8_t nb_tx,
       chan_desc->Td             = 4.625;
       chan_desc->channel_length = (int) (2*chan_desc->sampling_rate*chan_desc->Td + 1 + 2/(M_PI*M_PI)*log(4*M_PI*chan_desc->sampling_rate*chan_desc->Td));
       sum_amps = 0;
-      chan_desc->amps           = (double *) malloc(chan_desc->nb_taps*sizeof(double));
+      chan_desc->amps           = calloc(chan_desc->nb_taps, sizeof(double));
       chan_desc->free_flags=chan_desc->free_flags|CHANMODEL_FREE_AMPS ;
 
       for (i = 0; i<chan_desc->nb_taps; i++) {
@@ -662,15 +657,15 @@ channel_desc_t *new_channel_desc_scm(uint8_t nb_tx,
       chan_desc->a              = (struct complexd **) malloc(chan_desc->nb_taps*sizeof(struct complexd *));
 
       for (i = 0; i<nb_tx*nb_rx; i++)
-        chan_desc->ch[i] = (struct complexd *) malloc(chan_desc->channel_length * sizeof(struct complexd));
+        chan_desc->ch[i] = calloc(chan_desc->channel_length, sizeof(struct complexd));
 
       for (i = 0; i<nb_tx*nb_rx; i++)
-        chan_desc->chF[i] = (struct complexd *) malloc(1200 * sizeof(struct complexd));
+        chan_desc->chF[i] = calloc(1200, sizeof(struct complexd));
 
       for (i = 0; i<chan_desc->nb_taps; i++)
-        chan_desc->a[i]         = (struct complexd *) malloc(nb_tx*nb_rx * sizeof(struct complexd));
+        chan_desc->a[i]         = calloc(nb_tx*nb_rx, sizeof(struct complexd));
 
-      chan_desc->R_sqrt  = (struct complexd **) malloc(6*sizeof(struct complexd **));
+      chan_desc->R_sqrt  = calloc(6, sizeof(struct complexd **));
 
       if (nb_tx==2 && nb_rx==2) {
         for (i = 0; i<6; i++)
@@ -685,7 +680,7 @@ channel_desc_t *new_channel_desc_scm(uint8_t nb_tx,
         chan_desc->free_flags=chan_desc->free_flags|CHANMODEL_FREE_RSQRT_6 ;
 
         for (i = 0; i<6; i++) {
-          chan_desc->R_sqrt[i]    = (struct complexd *) malloc(nb_tx*nb_rx*nb_tx*nb_rx * sizeof(struct complexd));
+          chan_desc->R_sqrt[i]    = calloc(nb_tx*nb_rx*nb_tx*nb_rx, sizeof(struct complexd));
 
           for (j = 0; j<nb_tx*nb_rx*nb_tx*nb_rx; j+=(nb_tx*nb_rx+1)) {
             chan_desc->R_sqrt[i][j].r = 1.0;
@@ -1728,8 +1723,9 @@ void free_channel_desc_scm(channel_desc_t *ch) {
   free(ch);
 }
 
-void set_channeldesc_owner(channel_desc_t *cdesc, uint32_t module_id) {
-  cdesc->module_id=module_id;
+void set_channeldesc_owner(channel_desc_t *cdesc, channelmod_moduleid_t module_id)
+{
+  cdesc->module_id = module_id;
 }
 
 void set_channeldesc_name(channel_desc_t *cdesc,char *modelname) {
