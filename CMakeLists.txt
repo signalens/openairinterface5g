@@ -117,7 +117,7 @@ eval_boolean(AUTODETECT_AVX2 DEFINED CPUFLAGS AND CPUFLAGS MATCHES "avx2")
 add_boolean_option(AVX2 ${AUTODETECT_AVX2} "Whether AVX2 intrinsics is available on the host processor" ON)
 
 message(STATUS "CPU architecture is ${CMAKE_SYSTEM_PROCESSOR}")
-if (CROSS_COMPILE)
+if (CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
   message(STATUS "setting as aarch64")
   set(C_FLAGS_PROCESSOR "${C_FLAGS_PROCESSOR} -gdwarf-2 -lgcc -lrt")
 elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
