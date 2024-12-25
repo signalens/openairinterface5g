@@ -666,11 +666,8 @@ check_install_oai_software() {
       lksctp-tools \
       lksctp-tools-devel \
       libtool \
-<<<<<<< HEAD
       libxslt-devel \
-=======
-      ninja-build \
->>>>>>> a062be47
+ #     ninja-build \
       make \
       openssl \
       openssl-devel \
