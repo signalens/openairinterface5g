@@ -23,8 +23,13 @@
 
 #include "mac_proto.h"
 #include "openair2/F1AP/f1ap_ids.h"
+#include "openair2/F1AP/f1ap_common.h"
 #include "openair2/LAYER2/nr_rlc/nr_rlc_oai_api.h"
 #include "F1AP_CauseRadioNetwork.h"
+#include "openair3/ocp-gtpu/gtp_itf.h"
+#include "openair2/LAYER2/nr_pdcp/nr_pdcp_oai_api.h"
+
+#include "executables/softmodem-common.h"
 
 #include "uper_decoder.h"
 #include "uper_encoder.h"
@@ -34,19 +39,108 @@ const uint64_t qos_fiveqi[26] = {1, 2, 3, 4, 65, 66, 67, 71, 72, 73, 74, 76, 5, 
 const uint64_t qos_priority[26] = {20, 40, 30, 50, 7, 20, 15, 56, 56, 56, 56, 56, 10,
                                    60, 70, 80, 90, 5, 55, 65, 68, 19, 22, 24, 21, 18};
 
-static long get_lcid_from_drbid(int drb_id)
+static instance_t get_f1_gtp_instance(void)
 {
-  return drb_id + 3; /* LCID is DRB + 3 */
+  const f1ap_cudu_inst_t *inst = getCxt(0);
+  if (!inst)
+    return -1; // means no F1
+  return inst->gtpInst;
 }
 
-static long get_lcid_from_srbid(int srb_id)
+static int drb_gtpu_create(instance_t instance,
+                           uint32_t ue_id,
+                           int incoming_id,
+                           int outgoing_id,
+                           int qfi,
+                           in_addr_t tlAddress, // only IPv4 now
+                           teid_t outgoing_teid,
+                           gtpCallback callBack,
+                           gtpCallbackSDAP callBackSDAP,
+                           gtpv1u_gnb_create_tunnel_resp_t *create_tunnel_resp)
 {
-  return srb_id;
+  gtpv1u_gnb_create_tunnel_req_t create_tunnel_req = {0};
+  create_tunnel_req.incoming_rb_id[0] = incoming_id;
+  create_tunnel_req.pdusession_id[0] = outgoing_id;
+  memcpy(&create_tunnel_req.dst_addr[0].buffer, &tlAddress, sizeof(uint8_t) * 4);
+  create_tunnel_req.dst_addr[0].length = 32;
+  create_tunnel_req.outgoing_teid[0] = outgoing_teid;
+  create_tunnel_req.outgoing_qfi[0] = qfi;
+  create_tunnel_req.num_tunnels = 1;
+  create_tunnel_req.ue_id = ue_id;
+
+  // we use gtpv1u_create_ngu_tunnel because it returns the interface
+  // address and port of the interface; apart from that, we also might call
+  // newGtpuCreateTunnel() directly
+  return gtpv1u_create_ngu_tunnel(instance, &create_tunnel_req, create_tunnel_resp, callBack, callBackSDAP);
+}
+
+bool DURecvCb(protocol_ctxt_t *ctxt_pP,
+              const srb_flag_t srb_flagP,
+              const rb_id_t rb_idP,
+              const mui_t muiP,
+              const confirm_t confirmP,
+              const sdu_size_t sdu_buffer_sizeP,
+              unsigned char *const sdu_buffer_pP,
+              const pdcp_transmission_mode_t modeP,
+              const uint32_t *sourceL2Id,
+              const uint32_t *destinationL2Id)
+{
+  // The buffer comes from the stack in gtp-u thread, we have a make a separate buffer to enqueue in a inter-thread message queue
+  uint8_t *sdu = malloc16(sdu_buffer_sizeP);
+  memcpy(sdu, sdu_buffer_pP, sdu_buffer_sizeP);
+  du_rlc_data_req(ctxt_pP, srb_flagP, false, rb_idP, muiP, confirmP, sdu_buffer_sizeP, sdu);
+  return true;
 }
 
 static bool check_plmn_identity(const f1ap_plmn_t *check_plmn, const f1ap_plmn_t *plmn)
 {
   return plmn->mcc == check_plmn->mcc && plmn->mnc_digit_length == check_plmn->mnc_digit_length && plmn->mnc == check_plmn->mnc;
+}
+
+static void du_clear_all_ue_states()
+{
+  gNB_MAC_INST *mac = RC.nrmac[0];
+  NR_SCHED_LOCK(&mac->sched_lock);
+
+  NR_UE_info_t *UE = *mac->UE_info.list;
+
+  instance_t f1inst = get_f1_gtp_instance();
+
+  while (UE != NULL) {
+    int rnti = UE->rnti;
+    nr_mac_release_ue(mac, rnti);
+    // free all F1 contexts
+    if (du_exists_f1_ue_data(rnti))
+      du_remove_f1_ue_data(rnti);
+    newGtpuDeleteAllTunnels(f1inst, rnti);
+    UE = *mac->UE_info.list;
+  }
+  NR_SCHED_UNLOCK(&mac->sched_lock);
+}
+
+void f1_reset_cu_initiated(const f1ap_reset_t *reset)
+{
+  LOG_I(MAC, "F1 Reset initiated by CU\n");
+
+  f1ap_reset_ack_t ack = {0};
+  if(reset->reset_type == F1AP_RESET_ALL) {
+    du_clear_all_ue_states();
+    ack = (f1ap_reset_ack_t) {
+      .transaction_id = reset->transaction_id
+    };
+  } else {
+    // reset->reset_type == F1AP_RESET_PART_OF_F1_INTERFACE
+    AssertFatal(1==0, "Not implemented yet\n");
+  }
+
+  gNB_MAC_INST *mac = RC.nrmac[0];
+  mac->mac_rrc.f1_reset_acknowledge(&ack);
+}
+
+void f1_reset_acknowledge_du_initiated(const f1ap_reset_ack_t *ack)
+{
+  (void) ack;
+  AssertFatal(false, "%s() not implemented yet\n", __func__);
 }
 
 void f1_setup_response(const f1ap_setup_resp_t *resp)
@@ -80,6 +174,24 @@ void f1_setup_response(const f1ap_setup_resp_t *resp)
     mac->f1_config.setup_resp->gNB_CU_name = strdup(resp->gNB_CU_name);
 
   NR_SCHED_UNLOCK(&mac->sched_lock);
+
+  // NOTE: Before accepting any UEs, we should initialize the UE states.
+  // This is to handle cases when DU loses the existing SCTP connection,
+  // and reestablishes a new connection to either a new CU or the same CU.
+  // This triggers a new F1 Setup Request from DU to CU as per the specs.
+  // Reinitializing the UE states is necessary to avoid any inconsistent states
+  // between DU and CU.
+  // NOTE2: do not reset in phy_test, because there is a pre-configured UE in
+  // this case. Once NSA/phy-test use F1, this might be lifted, because
+  // creation of a UE will be requested from higher layers.
+
+  // TS38.473 [Sec 8.2.3.1]: "This procedure also re-initialises the F1AP UE-related
+  // contexts (if any) and erases all related signalling connections
+  // in the two nodes like a Reset procedure would do."
+  if (!get_softmodem_params()->phy_test) {
+    LOG_I(MAC, "Clearing the DU's UE states before, if any.\n");
+    du_clear_all_ue_states();
+  }
 }
 
 void f1_setup_failure(const f1ap_setup_failure_t *failure)
@@ -88,15 +200,21 @@ void f1_setup_failure(const f1ap_setup_failure_t *failure)
   exit(1);
 }
 
+void gnb_du_configuration_update_acknowledge(const f1ap_gnb_du_configuration_update_acknowledge_t *ack)
+{
+  (void)ack;
+  LOG_I(MAC, "received gNB-DU configuration update acknowledge\n");
+}
+
 static NR_RLC_BearerConfig_t *get_bearerconfig_from_srb(const f1ap_srb_to_be_setup_t *srb)
 {
-  long priority = srb->srb_id; // high priority for SRB
+  long priority = srb->srb_id == 2 ? 3 : 1; // see 38.331 sec 9.2.1
   e_NR_LogicalChannelConfig__ul_SpecificParameters__bucketSizeDuration bucket =
       NR_LogicalChannelConfig__ul_SpecificParameters__bucketSizeDuration_ms5;
   return get_SRB_RLC_BearerConfig(get_lcid_from_srbid(srb->srb_id), priority, bucket);
 }
 
-static int handle_ue_context_srbs_setup(int rnti,
+static int handle_ue_context_srbs_setup(NR_UE_info_t *UE,
                                         int srbs_len,
                                         const f1ap_srb_to_be_setup_t *req_srbs,
                                         f1ap_srb_to_be_setup_t **resp_srbs,
@@ -109,7 +227,11 @@ static int handle_ue_context_srbs_setup(int rnti,
   for (int i = 0; i < srbs_len; i++) {
     const f1ap_srb_to_be_setup_t *srb = &req_srbs[i];
     NR_RLC_BearerConfig_t *rlc_BearerConfig = get_bearerconfig_from_srb(srb);
-    nr_rlc_add_srb(rnti, srb->srb_id, rlc_BearerConfig);
+    nr_rlc_add_srb(UE->rnti, srb->srb_id, rlc_BearerConfig);
+
+    int priority = rlc_BearerConfig->mac_LogicalChannelConfig->ul_SpecificParameters->priority;
+    nr_lc_config_t c = {.lcid = rlc_BearerConfig->logicalChannelIdentity, .priority = priority};
+    nr_mac_add_lcid(&UE->UE_sched_ctrl, &c);
 
     (*resp_srbs)[i] = *srb;
 
@@ -126,13 +248,42 @@ static NR_RLC_BearerConfig_t *get_bearerconfig_from_drb(const f1ap_drb_to_be_set
   return get_DRB_RLC_BearerConfig(get_lcid_from_drbid(drb->drb_id), drb->drb_id, rlc_conf, priority);
 }
 
-static int handle_ue_context_drbs_setup(int rnti,
+static int get_non_dynamic_priority(int fiveqi)
+{
+  for (int i = 0; i < sizeofArray(qos_fiveqi); ++i)
+    if (qos_fiveqi[i] == fiveqi)
+      return qos_priority[i];
+  AssertFatal(false, "illegal 5QI value %d\n", fiveqi);
+  return 0;
+}
+
+static NR_QoS_config_t get_qos_config(const f1ap_qos_characteristics_t *qos_char)
+{
+  NR_QoS_config_t qos_c = {0};
+  switch (qos_char->qos_type) {
+    case dynamic:
+      qos_c.priority = qos_char->dynamic.qos_priority_level;
+      qos_c.fiveQI = qos_char->dynamic.fiveqi > 0 ? qos_char->dynamic.fiveqi : 0;
+      break;
+    case non_dynamic:
+      qos_c.fiveQI = qos_char->non_dynamic.fiveqi;
+      qos_c.priority = get_non_dynamic_priority(qos_char->non_dynamic.fiveqi);
+      break;
+    default:
+      AssertFatal(false, "illegal QoS type %d\n", qos_char->qos_type);
+      break;
+  }
+  return qos_c;
+}
+
+static int handle_ue_context_drbs_setup(NR_UE_info_t *UE,
                                         int drbs_len,
                                         const f1ap_drb_to_be_setup_t *req_drbs,
                                         f1ap_drb_to_be_setup_t **resp_drbs,
                                         NR_CellGroupConfig_t *cellGroupConfig)
 {
   DevAssert(req_drbs != NULL && resp_drbs != NULL && cellGroupConfig != NULL);
+  instance_t f1inst = get_f1_gtp_instance();
 
   /* Note: the actual GTP tunnels are created in the F1AP breanch of
    * ue_context_*_response() */
@@ -140,12 +291,41 @@ static int handle_ue_context_drbs_setup(int rnti,
   AssertFatal(*resp_drbs != NULL, "out of memory\n");
   for (int i = 0; i < drbs_len; i++) {
     const f1ap_drb_to_be_setup_t *drb = &req_drbs[i];
+    f1ap_drb_to_be_setup_t *resp_drb = &(*resp_drbs)[i];
     NR_RLC_BearerConfig_t *rlc_BearerConfig = get_bearerconfig_from_drb(drb);
-    nr_rlc_add_drb(rnti, drb->drb_id, rlc_BearerConfig);
+    nr_rlc_add_drb(UE->rnti, drb->drb_id, rlc_BearerConfig);
 
-    (*resp_drbs)[i] = *drb;
+    nr_lc_config_t c = {.lcid = rlc_BearerConfig->logicalChannelIdentity, .nssai = drb->nssai};
+    int prio = 100;
+    for (int q = 0; q < drb->drb_info.flows_to_be_setup_length; ++q) {
+      c.qos_config[q] = get_qos_config(&drb->drb_info.flows_mapped_to_drb[q].qos_params.qos_characteristics);
+      prio = min(prio, c.qos_config[q].priority);
+    }
+    c.priority = prio;
+    nr_mac_add_lcid(&UE->UE_sched_ctrl, &c);
+
+    *resp_drb = *drb;
     // just put same number of tunnels in DL as in UL
-    (*resp_drbs)[i].up_dl_tnl_length = drb->up_ul_tnl_length;
+    DevAssert(drb->up_ul_tnl_length == 1);
+    resp_drb->up_dl_tnl_length = drb->up_ul_tnl_length;
+
+    if (f1inst >= 0) { // we actually use F1-U
+      int qfi = -1; // don't put PDU session marker in GTP
+      gtpv1u_gnb_create_tunnel_resp_t resp_f1 = {0};
+      int ret = drb_gtpu_create(f1inst,
+                                UE->rnti,
+                                drb->drb_id,
+                                drb->drb_id,
+                                qfi,
+                                drb->up_ul_tnl[0].tl_address,
+                                drb->up_ul_tnl[0].teid,
+                                DURecvCb,
+                                NULL,
+                                &resp_f1);
+      AssertFatal(ret >= 0, "Unable to create GTP Tunnel for F1-U\n");
+      memcpy(&resp_drb->up_dl_tnl[0].tl_address, &resp_f1.gnb_addr.buffer, 4);
+      resp_drb->up_dl_tnl[0].teid = resp_f1.gnb_NGu_teid[0];
+    }
 
     int ret = ASN_SEQUENCE_ADD(&cellGroupConfig->rlc_BearerToAddModList->list, rlc_BearerConfig);
     DevAssert(ret == 0);
@@ -153,12 +333,13 @@ static int handle_ue_context_drbs_setup(int rnti,
   return drbs_len;
 }
 
-static int handle_ue_context_drbs_release(int rnti,
+static int handle_ue_context_drbs_release(NR_UE_info_t *UE,
                                           int drbs_len,
                                           const f1ap_drb_to_be_released_t *req_drbs,
                                           NR_CellGroupConfig_t *cellGroupConfig)
 {
   DevAssert(req_drbs != NULL && cellGroupConfig != NULL);
+  instance_t f1inst = get_f1_gtp_instance();
 
   cellGroupConfig->rlc_BearerToReleaseList = calloc(1, sizeof(*cellGroupConfig->rlc_BearerToReleaseList));
   AssertFatal(cellGroupConfig->rlc_BearerToReleaseList != NULL, "out of memory\n");
@@ -177,10 +358,13 @@ static int handle_ue_context_drbs_release(int rnti,
       ++idx;
     }
     if (idx < cellGroupConfig->rlc_BearerToAddModList->list.count) {
-      nr_rlc_release_entity(rnti, lcid);
+      nr_mac_remove_lcid(&UE->UE_sched_ctrl, lcid);
+      nr_rlc_release_entity(UE->rnti, lcid);
+      if (f1inst >= 0)
+        newGtpuDeleteOneTunnel(f1inst, UE->rnti, drb->rb_id);
       asn_sequence_del(&cellGroupConfig->rlc_BearerToAddModList->list, idx, 1);
       long *plcid = malloc(sizeof(*plcid));
-      AssertFatal(plcid != NULL, "out of memory\n");
+      AssertFatal(plcid, "out of memory\n");
       *plcid = lcid;
       int ret = ASN_SEQUENCE_ADD(&cellGroupConfig->rlc_BearerToReleaseList->list, plcid);
       DevAssert(ret == 0);
@@ -237,60 +421,6 @@ NR_CellGroupConfig_t *clone_CellGroupConfig(const NR_CellGroupConfig_t *orig)
   return cloned;
 }
 
-static void set_nssaiConfig(const int drb_len, const f1ap_drb_to_be_setup_t *req_drbs, NR_UE_sched_ctrl_t *sched_ctrl)
-{
-  for (int i = 0; i < drb_len; i++) {
-    const f1ap_drb_to_be_setup_t *drb = &req_drbs[i];
-
-    long lcid = get_lcid_from_drbid(drb->drb_id);
-    sched_ctrl->dl_lc_nssai[lcid] = drb->nssai;
-    LOG_I(NR_MAC, "Setting NSSAI sst: %d, sd: %d for DRB: %ld\n", drb->nssai.sst, drb->nssai.sd, drb->drb_id);
-  }
-}
-
-static void set_QoSConfig(const f1ap_ue_context_modif_req_t *req, NR_UE_sched_ctrl_t *sched_ctrl)
-{
-  AssertFatal(req != NULL, "f1ap_ue_context_modif_req is NULL\n");
-  uint8_t drb_count = req->drbs_to_be_setup_length;
-  uint8_t srb_count = req->srbs_to_be_setup_length;
-  LOG_I(NR_MAC, "Number of DRBs = %d and SRBs = %d\n", drb_count, srb_count);
-
-  /* DRBs*/
-  for (int i = 0; i < drb_count; i++) {
-    f1ap_drb_to_be_setup_t *drb_p = &req->drbs_to_be_setup[i];
-    uint8_t nb_qos_flows = drb_p->drb_info.flows_to_be_setup_length;
-    long drb_id = drb_p->drb_id;
-    LOG_I(NR_MAC, "number of QOS flows mapped to DRB_id %ld: %d\n", drb_id, nb_qos_flows);
-
-    for (int q = 0; q < nb_qos_flows; q++) {
-      f1ap_flows_mapped_to_drb_t *qos_flow = &drb_p->drb_info.flows_mapped_to_drb[q];
-
-      f1ap_qos_characteristics_t *qos_char = &qos_flow->qos_params.qos_characteristics;
-      uint64_t priority = qos_char->non_dynamic.qos_priority_level;
-      int64_t fiveqi = qos_char->non_dynamic.fiveqi;
-      if (qos_char->qos_type == dynamic) {
-        priority = qos_char->dynamic.qos_priority_level;
-        fiveqi = qos_char->dynamic.fiveqi > 0 ? qos_char->dynamic.fiveqi : 0;
-      }
-      if (qos_char->qos_type == non_dynamic) {
-        LOG_D(NR_MAC, "Qos Priority level is considered from the standarsdized 5QI to QoS mapping table\n");
-        for (int id = 0; id < 26; id++) {
-          if (qos_fiveqi[id] == fiveqi)
-            priority = qos_priority[id];
-        }
-      }
-      sched_ctrl->qos_config[drb_id - 1][q].fiveQI = fiveqi;
-      sched_ctrl->qos_config[drb_id - 1][q].priority = priority;
-      LOG_D(NR_MAC,
-            "In %s: drb_id %ld: 5QI %lu priority %lu\n",
-            __func__,
-            drb_id,
-            sched_ctrl->qos_config[drb_id - 1][q].fiveQI,
-            sched_ctrl->qos_config[drb_id - 1][q].priority);
-    }
-  }
-}
-
 void ue_context_setup_request(const f1ap_ue_context_setup_t *req)
 {
   gNB_MAC_INST *mac = RC.nrmac[0];
@@ -312,12 +442,12 @@ void ue_context_setup_request(const f1ap_ue_context_setup_t *req)
   NR_SCHED_LOCK(&mac->sched_lock);
 
   NR_UE_info_t *UE = find_nr_UE(&RC.nrmac[0]->UE_info, req->gNB_DU_ue_id);
-  AssertFatal(UE != NULL, "did not find UE with RNTI %04x, but UE Context Setup Failed not implemented\n", req->gNB_DU_ue_id);
+  AssertFatal(UE, "did not find UE with RNTI %04x, but UE Context Setup Failed not implemented\n", req->gNB_DU_ue_id);
 
   NR_CellGroupConfig_t *new_CellGroup = clone_CellGroupConfig(UE->CellGroup);
 
   if (req->srbs_to_be_setup_length > 0) {
-    resp.srbs_to_be_setup_length = handle_ue_context_srbs_setup(req->gNB_DU_ue_id,
+    resp.srbs_to_be_setup_length = handle_ue_context_srbs_setup(UE,
                                                                 req->srbs_to_be_setup_length,
                                                                 req->srbs_to_be_setup,
                                                                 &resp.srbs_to_be_setup,
@@ -325,7 +455,7 @@ void ue_context_setup_request(const f1ap_ue_context_setup_t *req)
   }
 
   if (req->drbs_to_be_setup_length > 0) {
-    resp.drbs_to_be_setup_length = handle_ue_context_drbs_setup(req->gNB_DU_ue_id,
+    resp.drbs_to_be_setup_length = handle_ue_context_drbs_setup(UE,
                                                                 req->drbs_to_be_setup_length,
                                                                 req->drbs_to_be_setup,
                                                                 &resp.drbs_to_be_setup,
@@ -353,14 +483,7 @@ void ue_context_setup_request(const f1ap_ue_context_setup_t *req)
   AssertFatal(enc_rval.encoded > 0, "Could not encode CellGroup, failed element %s\n", enc_rval.failed_type->name);
   resp.du_to_cu_rrc_information->cellGroupConfig_length = (enc_rval.encoded + 7) >> 3;
 
-  /* TODO: need to apply after UE context reconfiguration confirmed? */
   nr_mac_prepare_cellgroup_update(mac, UE, new_CellGroup);
-
-  /* Fill the QoS config in MAC for each active DRB */
-  set_QoSConfig(req, &UE->UE_sched_ctrl);
-
-  /* Set NSSAI config in MAC for each active DRB */
-  set_nssaiConfig(req->drbs_to_be_setup_length, req->drbs_to_be_setup, &UE->UE_sched_ctrl);
 
   NR_SCHED_UNLOCK(&mac->sched_lock);
 
@@ -406,7 +529,7 @@ void ue_context_modification_request(const f1ap_ue_context_modif_req_t *req)
   NR_CellGroupConfig_t *new_CellGroup = clone_CellGroupConfig(UE->CellGroup);
 
   if (req->srbs_to_be_setup_length > 0) {
-    resp.srbs_to_be_setup_length = handle_ue_context_srbs_setup(req->gNB_DU_ue_id,
+    resp.srbs_to_be_setup_length = handle_ue_context_srbs_setup(UE,
                                                                 req->srbs_to_be_setup_length,
                                                                 req->srbs_to_be_setup,
                                                                 &resp.srbs_to_be_setup,
@@ -414,7 +537,7 @@ void ue_context_modification_request(const f1ap_ue_context_modif_req_t *req)
   }
 
   if (req->drbs_to_be_setup_length > 0) {
-    resp.drbs_to_be_setup_length = handle_ue_context_drbs_setup(req->gNB_DU_ue_id,
+    resp.drbs_to_be_setup_length = handle_ue_context_drbs_setup(UE,
                                                                 req->drbs_to_be_setup_length,
                                                                 req->drbs_to_be_setup,
                                                                 &resp.drbs_to_be_setup,
@@ -423,7 +546,7 @@ void ue_context_modification_request(const f1ap_ue_context_modif_req_t *req)
 
   if (req->drbs_to_be_released_length > 0) {
     resp.drbs_to_be_released_length =
-        handle_ue_context_drbs_release(req->gNB_DU_ue_id, req->drbs_to_be_released_length, req->drbs_to_be_released, new_CellGroup);
+        handle_ue_context_drbs_release(UE, req->drbs_to_be_released_length, req->drbs_to_be_released, new_CellGroup);
   }
 
   if (req->rrc_container != NULL) {
@@ -460,12 +583,6 @@ void ue_context_modification_request(const f1ap_ue_context_modif_req_t *req)
     resp.du_to_cu_rrc_information->cellGroupConfig_length = (enc_rval.encoded + 7) >> 3;
 
     nr_mac_prepare_cellgroup_update(mac, UE, new_CellGroup);
-
-    /* Fill the QoS config in MAC for each active DRB */
-    set_QoSConfig(req, &UE->UE_sched_ctrl);
-
-    /* Set NSSAI config in MAC for each active DRB */
-    set_nssaiConfig(req->drbs_to_be_setup_length, req->drbs_to_be_setup, &UE->UE_sched_ctrl);
   } else {
     ASN_STRUCT_FREE(asn_DEF_NR_CellGroupConfig, new_CellGroup); // we actually don't need it
   }
@@ -532,7 +649,7 @@ void ue_context_modification_refuse(const f1ap_ue_context_modif_refuse_t *refuse
   for (int i = 0; i < NR_NB_RA_PROC_MAX; i++) {
     NR_RA_t *ra = &cc->ra[i];
     if (ra->rnti == UE->rnti)
-      nr_clear_ra_proc(0, CC_id, 0 /* frame */, ra);
+      nr_clear_ra_proc(ra);
   }
   NR_SCHED_UNLOCK(&mac->sched_lock);
 
@@ -557,9 +674,14 @@ void ue_context_release_command(const f1ap_ue_context_release_cmd_t *cmd)
     return;
   }
 
+  instance_t f1inst = get_f1_gtp_instance();
+  if (f1inst >= 0)
+    newGtpuDeleteAllTunnels(f1inst, cmd->gNB_DU_ue_id);
+
   if (UE->UE_sched_ctrl.ul_failure || cmd->rrc_container_length == 0) {
     /* The UE is already not connected anymore or we have nothing to forward*/
     nr_mac_release_ue(mac, cmd->gNB_DU_ue_id);
+    nr_mac_trigger_release_complete(mac, cmd->gNB_DU_ue_id);
   } else {
     /* UE is in sync: forward release message and mark to be deleted
      * after UL failure */
@@ -603,6 +725,14 @@ void dl_rrc_message_transfer(const f1ap_dl_rrc_message_t *dl_rrc)
     nr_mac_enable_ue_rrc_processing_timer(mac, UE, /* apply_cellGroup = */ true);
     NR_SCHED_UNLOCK(&mac->sched_lock);
     UE->expect_reconfiguration = false;
+    /* Re-establish RLC for all remaining bearers */
+    if (UE->reestablish_rlc) {
+      for (int i = 1; i < seq_arr_size(&UE->UE_sched_ctrl.lc_config); ++i) {
+        nr_lc_config_t *lc_config = seq_arr_at(&UE->UE_sched_ctrl.lc_config, i);
+        nr_rlc_reestablish_entity(dl_rrc->gNB_DU_ue_id, lc_config->lcid);
+      }
+      UE->reestablish_rlc = false;
+    }
   }
 
   if (dl_rrc->old_gNB_DU_ue_id != NULL) {
@@ -625,13 +755,25 @@ void dl_rrc_message_transfer(const f1ap_dl_rrc_message_t *dl_rrc)
     UE->uid = oldUE->uid;
     oldUE->uid = temp_uid;
     configure_UE_BWP(mac, scc, sched_ctrl, NULL, UE, -1, -1);
+    for (int i = 1; i < seq_arr_size(&oldUE->UE_sched_ctrl.lc_config); ++i) {
+      const nr_lc_config_t *c = seq_arr_at(&oldUE->UE_sched_ctrl.lc_config, i);
+      nr_mac_add_lcid(&UE->UE_sched_ctrl, c);
+    }
 
     nr_mac_prepare_cellgroup_update(mac, UE, oldUE->CellGroup);
     oldUE->CellGroup = NULL;
     mac_remove_nr_ue(mac, *dl_rrc->old_gNB_DU_ue_id);
     pthread_mutex_unlock(&mac->sched_lock);
     nr_rlc_remove_ue(dl_rrc->gNB_DU_ue_id);
-    nr_rlc_update_rnti(*dl_rrc->old_gNB_DU_ue_id, dl_rrc->gNB_DU_ue_id);
+    nr_rlc_update_id(*dl_rrc->old_gNB_DU_ue_id, dl_rrc->gNB_DU_ue_id);
+    /* Set flag to trigger RLC re-establishment
+     * for remaining RBs in next RRCReconfiguration */
+    UE->reestablish_rlc = true;
+    /* 38.331 clause 5.3.7.4: apply the specified configuration defined in 9.2.1 for SRB1 */
+    nr_rlc_reconfigure_entity(dl_rrc->gNB_DU_ue_id, 1, NULL);
+    instance_t f1inst = get_f1_gtp_instance();
+    if (f1inst >= 0) // we actually use F1-U
+      gtpv1u_update_ue_id(f1inst, *dl_rrc->old_gNB_DU_ue_id, dl_rrc->gNB_DU_ue_id);
   }
 
   /* the DU ue id is the RNTI */

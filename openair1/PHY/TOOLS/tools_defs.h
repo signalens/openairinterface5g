@@ -183,6 +183,11 @@ extern "C" {
     return a.r * a.r + a.i * a.i;
   }
 
+  __attribute__((always_inline)) inline c16_t c16add(const c16_t a, const c16_t b)
+  {
+    return (c16_t){.r = (int16_t)(a.r + b.r), .i = (int16_t)(a.i + b.i)};
+  }
+
   __attribute__((always_inline)) inline c16_t c16sub(const c16_t a, const c16_t b) {
     return (c16_t) {
         .r = (int16_t) (a.r - b.r),
@@ -235,6 +240,11 @@ extern "C" {
       .r = (a.r * b.r - a.i * b.i) >> Shift,
       .i = (a.r * b.i + a.i * b.r) >> Shift
     };
+  }
+
+  __attribute__((always_inline)) inline c16_t c16xmulConstShift(const c16_t a, const int b, const int Shift)
+  {
+    return (c16_t){.r = (int16_t)((a.r * b) >> Shift), .i = (int16_t)((a.i * b) >> Shift)};
   }
 
   __attribute__((always_inline)) inline c32_t c32x16maddShift(const c16_t a, const c16_t b, const c32_t c, const int Shift) {
@@ -308,6 +318,25 @@ This function performs componentwise multiplication and accumulation of a comple
 The function implemented is : \f$\mathbf{y} = y + \alpha\mathbf{x}\f$
 */
   void multadd_real_vector_complex_scalar(const int16_t *x, const int16_t *alpha, int16_t *y, uint32_t N);
+
+  // Same with correct types
+  static inline void multaddRealVectorComplexScalar(const c16_t *in, const c16_t alpha, c16_t *out, uint32_t N)
+  {
+    // do 8 multiplications at a time
+    simd_q15_t *x_128 = (simd_q15_t *)in, *y_128 = (simd_q15_t *)out;
+
+    //  printf("alpha = %d,%d\n",alpha[0],alpha[1]);
+    const simd_q15_t alpha_r_128 = set1_int16(alpha.r);
+    const simd_q15_t alpha_i_128 = set1_int16(alpha.i);
+    for (unsigned int i = 0; i < N >> 3; i++) {
+      const simd_q15_t yr = mulhi_s1_int16(alpha_r_128, x_128[i]);
+      const simd_q15_t yi = mulhi_s1_int16(alpha_i_128, x_128[i]);
+      const simd_q15_t tmp = simde_mm_loadu_si128(y_128);
+      simde_mm_storeu_si128(y_128++, simde_mm_adds_epi16(tmp, simde_mm_unpacklo_epi16(yr, yi)));
+      const simd_q15_t tmp2 = simde_mm_loadu_si128(y_128);
+      simde_mm_storeu_si128(y_128++, simde_mm_adds_epi16(tmp2, simde_mm_unpackhi_epi16(yr, yi)));
+    }
+  }
 
 static __attribute__((always_inline)) inline void multadd_real_four_symbols_vector_complex_scalar(const int16_t *x,
                                                                                            c16_t *alpha,
@@ -655,14 +684,20 @@ idft_size_idx_t get_idft(int ofdm_symbol_size)
       return IDFT_9216;
     case 12288:
       return IDFT_12288;
+    case 16384:
+      return IDFT_16384;
     case 18432:
       return IDFT_18432;
     case 24576:
       return IDFT_24576;
+    case 32768:
+      return IDFT_32768;
     case 36864:
       return IDFT_36864;
     case 49152:
       return IDFT_49152;
+    case 65536:
+      return IDFT_65536;
     case 73728:
       return IDFT_73728;
     case 98304:
@@ -726,7 +761,7 @@ int32_t subcarrier_energy(int32_t *,uint32_t, int32_t *subcarrier_energy, uint16
 /*!\fn int32_t signal_energy_nodc(int32_t *,uint32_t);
 \brief Computes the signal energy per subcarrier, without DC removal
 */
-int32_t signal_energy_nodc(int32_t *,uint32_t);
+int32_t signal_energy_nodc(const c16_t *input, uint32_t length);
 
 int32_t signal_power(int32_t *,uint32_t);
 int32_t interference_power(int32_t *,uint32_t);
@@ -788,11 +823,6 @@ double interp(double x, double *xs, double *ys, int count);
 
 void simde_mm128_separate_real_imag_parts(simde__m128i *out_re, simde__m128i *out_im, simde__m128i in0, simde__m128i in1);
 void simde_mm256_separate_real_imag_parts(simde__m256i *out_re, simde__m256i *out_im, simde__m256i in0, simde__m256i in1);
-
-static __attribute__((always_inline)) inline int count_bits_set(uint64_t v)
-{
-  return __builtin_popcountll(v);
-}
 
 #ifdef __cplusplus
 }

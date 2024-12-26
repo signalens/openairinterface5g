@@ -25,7 +25,7 @@
 #
 #---------------------------------------------------------------------
 
-FROM ran-base:latest as ran-build
+FROM ran-base:latest AS ran-build
 
 RUN rm -Rf /oai-ran
 WORKDIR /oai-ran

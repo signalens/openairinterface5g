@@ -34,6 +34,7 @@
 #define __COMMON_UTILS_NR_NR_COMMON__H__
 
 #include <stdint.h>
+#include <stdlib.h>
 #include "assertions.h"
 #include "PHY/defs_common.h"
 
@@ -76,12 +77,16 @@ static inline const char *rnti_types(nr_rnti_type_t rr)
 }
 #undef R
 
+#define MU_SCS(m) (15 << m)
+#define MAX_GSCN_BAND 620 // n78 has the highest GSCN range of 619
+
 #define NR_MAX_NB_LAYERS 4 // 8
 
-typedef enum {
-  nr_FR1 = 0,
-  nr_FR2
-} nr_frequency_range_e;
+// Since the IQ samples are represented by SQ15 R+I (see https://en.wikipedia.org/wiki/Q_(number_format)) we need to compensate when
+// calcualting signal energy. Instead of shifting each sample right by 15, we can normalize the result in dB scale once its
+// calcualted. Signal energy is calculated using RMS^2, where each sample is squared before taking the average of the sum, therefore
+// the total shift is 2 * 15, in dB scale thats 10log10(2^(15*2))
+#define SQ15_SQUARED_NORM_FACTOR_DB 90.3089986992
 
 typedef struct nr_bandentry_s {
   int16_t band;
@@ -101,6 +106,12 @@ typedef struct {
   int step_gscn;
   int last_gscn;
 } sync_raster_t;
+
+typedef struct {
+  int gscn;
+  double ssRef;
+  int ssbFirstSC;
+} nr_gscn_info_t;
 
 typedef enum frequency_range_e {
   FR1 = 0,
@@ -158,16 +169,42 @@ bool nr_timer_expired(NR_timer_t timer);
  * @return Indication if the timer is active or not
  */
 bool is_nr_timer_active(NR_timer_t timer);
+/**
+ * @brief To return how much time has passed since start of timer
+ * @param timer Timer to be checked
+ * @return Time passed since start of timer
+ */
+uint32_t nr_timer_elapsed_time(NR_timer_t timer);
+
 
 extern const nr_bandentry_t nr_bandtable[];
 
-static inline int get_num_dmrs(uint16_t dmrs_mask ) {
+static inline int get_num_dmrs(uint16_t dmrs_mask )
+{
   int num_dmrs=0;
   for (int i=0;i<16;i++) num_dmrs+=((dmrs_mask>>i)&1);
   return(num_dmrs);
 }
 
+static inline int count_bits(uint8_t *arr, int sz)
+{
+  AssertFatal(sz % sizeof(int) == 0, "to implement if needed\n");
+  int ret = 0;
+  for (uint *ptr = (uint *)arr; (uint8_t *)ptr < arr + sz; ptr++)
+    ret += __builtin_popcount(*ptr);
+  return ret;
+}
+
+static __attribute__((always_inline)) inline int count_bits64(uint64_t v)
+{
+  return __builtin_popcountll(v);
+}
+
 uint64_t reverse_bits(uint64_t in, int n_bits);
+void reverse_bits_u8(uint8_t const* in, size_t sz, uint8_t* out);
+
+uint64_t from_nrarfcn(int nr_bandP, uint8_t scs_index, uint32_t dl_nrarfcn);
+uint32_t to_nrarfcn(int nr_bandP, uint64_t dl_CarrierFreq, uint8_t scs_index, uint32_t bw);
 
 int get_first_ul_slot(int nrofDownlinkSlots, int nrofDownlinkSymbols, int nrofUplinkSymbols);
 int cce_to_reg_interleaving(const int R, int k, int n_shift, const int C, int L, const int N_regs);
@@ -186,11 +223,10 @@ void SLIV2SL(int SLIV,int *S,int *L);
 int get_dmrs_port(int nl, uint16_t dmrs_ports);
 uint16_t SL_to_bitmap(int startSymbolIndex, int nrOfSymbols);
 int get_nb_periods_per_frame(uint8_t tdd_period);
-int get_supported_band_index(int scs, int band, int n_rbs);
 long rrc_get_max_nr_csrs(const int max_rbs, long b_SRS);
-void get_K1_K2(int N1, int N2, int *K1, int *K2);
-bool compare_relative_ul_channel_bw(int nr_band, int scs, int nb_ul, frame_type_t frame_type);
+bool compare_relative_ul_channel_bw(int nr_band, int scs, int channel_bandwidth, frame_type_t frame_type);
 int get_supported_bw_mhz(frequency_range_t frequency_range, int bw_index);
+int get_supported_band_index(int scs, frequency_range_t freq_range, int n_rbs);
 void get_samplerate_and_bw(int mu,
                            int n_rb,
                            int8_t threequarter_fs,
@@ -205,11 +241,14 @@ uint32_t get_ssb_offset_to_pointA(uint32_t absoluteFrequencySSB,
 int get_ssb_subcarrier_offset(uint32_t absoluteFrequencySSB, uint32_t absoluteFrequencyPointA, int scs);
 int get_delay_idx(int delay, int max_delay_comp);
 
-void freq2time(uint16_t ofdm_symbol_size,
-               int16_t *freq_signal,
-               int16_t *time_signal);
+int get_scan_ssb_first_sc(const double fc,
+                          const int nbRB,
+                          const int nrBand,
+                          const int mu,
+                          nr_gscn_info_t ssbStartSC[MAX_GSCN_BAND]);
 
-void nr_est_delay(int ofdm_symbol_size, const c16_t *ls_est, c16_t *ch_estimates_time, delay_t *delay);
+void check_ssb_raster(uint64_t freq, int band, int scs);
+int get_smallest_supported_bandwidth_index(int scs, frequency_range_t frequency_range, int n_rbs);
 
 #define CEILIDIV(a,b) ((a+b-1)/b)
 #define ROUNDIDIV(a,b) (((a<<1)+b)/(b<<1))

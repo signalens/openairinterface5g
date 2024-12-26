@@ -12,10 +12,8 @@
   </tr>
 </table>
 
-This page is valid for an `Ubuntu18` host.
-It is also valid for `Ubuntu 20.04`.
+It is also valid for `Ubuntu 22.04`.
 
-This tutorial is only valid once this file is merged into the `develop` branch.
 # 1. Adapt the `docker-compose` to your environment #
 The yaml file is in the following directory:  `ci-scripts/yaml_files/5g_l2sim_tdd`
 
@@ -56,7 +54,7 @@ file, in the section `oai-nr-ue0`:
             - ../../../openair1/SIMULATION/LTE_PHY/BLER_SIMULATIONS/AWGN/AWGN_results:/opt/oai-nr-ue/openair1/SIMULATION/LTE_PHY/BLER_SIMULATIONS/AWGN/AWGN_results
 ```
 
-In this section, you need to set the proper values for `local_n_if_name` and `remote_n_address`
+In this section, you need to set the proper value `remote_n_address`
 where the UE configuration (mounted to `/opt/oai-nr-ue/etc/nr-ue.conf`) reads:
 
 ```libconfig
@@ -64,7 +62,6 @@ MACRLCs = (
         {
         num_cc = 1;
         tr_n_preference = "nfapi";
-        local_n_if_name  = "eno1";
         remote_n_address = "127.0.0.1"; //Proxy IP
         local_n_address  = "127.0.0.1";
         ...

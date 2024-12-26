@@ -49,7 +49,6 @@
 #include "PHY_INTERFACE/phy_interface_vars.h"
 #include "gnb_config.h"
 #include "SIMULATION/TOOLS/sim.h"
-#include "executables/lte-softmodem.h"
 
 #ifdef SMBV
 #include "PHY/TOOLS/smbv.h"
@@ -93,6 +92,7 @@ pthread_t    dup_thread;
 
 fuzz_nr_duplication_t fuzz_nr_dup;
 /* -------------------- */
+#include "LAYER2/NR_MAC_gNB/nr_mac_gNB.h"
 #ifdef ENABLE_AERIAL
 #include "nfapi/oai_integration/aerial/fapi_nvIPC.h"
 #endif
@@ -120,7 +120,6 @@ int NB_UE_INST = 0;
 static int wait_for_sync = 0;
 
 unsigned int mmapped_dma=0;
-int single_thread_flag=1;
 
 uint64_t downlink_frequency[MAX_NUM_CCs][4];
 int32_t uplink_frequency_offset[MAX_NUM_CCs][4];
@@ -152,13 +151,7 @@ uint8_t dci_Format = 0;
 uint8_t nb_antenna_tx = 1;
 uint8_t nb_antenna_rx = 1;
 
-int rx_input_level_dBm;
-
 int otg_enabled;
-
-uint64_t num_missed_slots=0; // counter for the number of missed slots
-
-#include <SIMULATION/ETH_TRANSPORT/proto.h>
 
 extern void reset_opp_meas(void);
 extern void print_opp_meas(void);
@@ -378,15 +371,6 @@ static int create_gNB_tasks(ngran_node_t node_type, configmodule_interface_t *cf
     sprintf(aprefix,"%s.[%i].%s",GNB_CONFIG_STRING_GNB_LIST,0,GNB_CONFIG_STRING_NETWORK_INTERFACES_CONFIG);
     config_get(cfg, NETParams, sizeofArray(NETParams), aprefix);
 
-    for(int i = GNB_INTERFACE_NAME_FOR_NG_AMF_IDX; i <= GNB_IPV4_ADDRESS_FOR_NG_AMF_IDX; i++) {
-      if( NETParams[i].strptr == NULL) {
-        LOG_E(NGAP, "No AMF configuration in the file.\n");
-        exit(1);
-      } else {
-        LOG_D(NGAP, "Configuration in the file: %s.\n",*NETParams[i].strptr);
-      }
-    }
-    
     if (gnb_nb > 0) {
       if (itti_create_task (TASK_NGAP, ngap_gNB_task, NULL) < 0) {
         LOG_E(NGAP, "Create task for NGAP failed\n");
@@ -569,10 +553,8 @@ static  void wait_nfapi_init(char *thread_name) {
 }
 
 void init_pdcp(void) {
-  uint32_t pdcp_initmask = (IS_SOFTMODEM_NOS1) ?
-    PDCP_USE_NETLINK_BIT | LINK_ENB_PDCP_TO_IP_DRIVER_BIT | ENB_NAS_USE_TUN_BIT | SOFTMODEM_NOKRNMOD_BIT:
-    LINK_ENB_PDCP_TO_GTPV1U_BIT;
-  
+  uint32_t pdcp_initmask = IS_SOFTMODEM_NOS1 ? ENB_NAS_USE_TUN_BIT : LINK_ENB_PDCP_TO_GTPV1U_BIT;
+
   if (!NODE_IS_DU(get_node_type())) {
     nr_pdcp_layer_init(get_node_type() == ngran_gNB_CUCP);
     nr_pdcp_module_init(pdcp_initmask, 0);
@@ -711,7 +693,7 @@ static void initialize_agent(ngran_node_t node_type, e2_agent_args_t oai_args)
     nb_id = rrc->node_id;
   } else if (node_type == ngran_gNB_DU) {
     const gNB_MAC_INST* mac = RC.nrmac[0];
-    AssertFatal(mac != NULL, "MAC not initialized\n");
+    AssertFatal(mac, "MAC not initialized\n");
     cu_du_id = mac->f1_config.gnb_id;
     nb_id = mac->f1_config.setup_req->gNB_DU_id;
   } else if (node_type == ngran_gNB_CU || node_type == ngran_gNB_CUCP) {
@@ -732,6 +714,7 @@ static void initialize_agent(ngran_node_t node_type, e2_agent_args_t oai_args)
 }
 #endif
 
+void init_eNB_afterRU(void);
 configmodule_interface_t *uniqCfg = NULL;
 >>>>>>> 8931e133
 int main( int argc, char **argv ) {
@@ -751,7 +734,7 @@ int main( int argc, char **argv ) {
   mode = normal_txrx;
   memset(tx_max_power,0,sizeof(int)*MAX_NUM_CCs);
   logInit();
-  set_latency_target();
+  lock_memory_to_ram();
   printf("Reading in command-line options\n");
   get_options(uniqCfg);
 
@@ -761,6 +744,10 @@ int main( int argc, char **argv ) {
     fprintf(stderr,"Getting configuration failed\n");
     exit(-1);
   }
+
+  if (!has_cap_sys_nice())
+    LOG_W(UTIL,
+          "no SYS_NICE capability: cannot set thread priority and affinity, consider running with sudo for optimum performance\n");
 
   if (get_softmodem_params()->do_ra)
     AssertFatal(get_softmodem_params()->phy_test == 0,"RA and phy_test are mutually exclusive\n");
@@ -802,12 +789,7 @@ int main( int argc, char **argv ) {
   itti_init(TASK_MAX, tasks_info);
   // initialize mscgen log after ITTI
   init_opt();
-  if(PDCP_USE_NETLINK && !IS_SOFTMODEM_NOS1) {
-    netlink_init();
-    if (get_softmodem_params()->nsa) {
-      init_pdcp();
-    }
-  }
+
 #ifndef PACKAGE_VERSION
 #define PACKAGE_VERSION "UNKNOWN-EXPERIMENTAL"
 #endif
@@ -825,7 +807,6 @@ int main( int argc, char **argv ) {
     AssertFatal(ret == 0, "cannot create ITTI tasks\n");
   }
 
-  mlockall(MCL_CURRENT | MCL_FUTURE);
   pthread_cond_init(&sync_cond,NULL);
   pthread_mutex_init(&sync_mutex, NULL);
   usleep(1000);
@@ -842,8 +823,8 @@ int main( int argc, char **argv ) {
   printf("RC.nb_nr_L1_inst:%d\n", RC.nb_nr_L1_inst);
 
   if (RC.nb_nr_L1_inst > 0) {
-    printf("Initializing gNB threads single_thread_flag:%d wait_for_sync:%d\n", single_thread_flag,wait_for_sync);
-    init_gNB(single_thread_flag,wait_for_sync);
+    printf("Initializing gNB threads wait_for_sync:%d\n", wait_for_sync);
+    init_gNB(wait_for_sync);
   }
 
   printf("wait_gNBs()\n");
@@ -893,7 +874,8 @@ int main( int argc, char **argv ) {
   if (RC.nb_RU > 0)
     start_NR_RU();
 #ifdef ENABLE_AERIAL
-  nvIPC_Init();
+  gNB_MAC_INST *nrmac = RC.nrmac[0];
+  nvIPC_Init(nrmac->nvipc_params_s);
 #endif
   if (RC.nb_nr_L1_inst > 0) {
     printf("wait RUs\n");
@@ -912,15 +894,6 @@ int main( int argc, char **argv ) {
       p.gNB=RC.gNB[0];
       p.ru=RC.ru[0];
       load_softscope("nr",&p);
-    }
-
-    if(IS_SOFTMODEM_DOSCOPE_QT) {
-      scopeParms_t p;
-      p.argc = &argc;
-      p.argv = argv;
-      p.gNB  = RC.gNB[0];
-      p.ru   = RC.ru[0];
-      load_softscope("nrqt", &p);
     }
 
     if (NFAPI_MODE != NFAPI_MODE_PNF && NFAPI_MODE != NFAPI_MODE_VNF && NFAPI_MODE != NFAPI_MODE_AERIAL) {

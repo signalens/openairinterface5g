@@ -41,7 +41,6 @@
 #include "UTIL/OTG/otg.h"
 #include "UTIL/OTG/otg_externs.h"
 #include "intertask_interface.h"
-#include "s1ap_eNB.h"
 #include "ngap_gNB.h"
 #include "sctp_eNB_task.h"
 #include "sctp_default_values.h"
@@ -82,9 +81,11 @@
 #include "NR_RateMatchPatternLTE-CRS.h"
 #include "NR_SearchSpace.h"
 #include "NR_ControlResourceSet.h"
+#include "NR_MeasurementTimingConfiguration.h"
 #include "NR_EUTRA-MBSFN-SubframeConfig.h"
 #include "uper_decoder.h"
 #include "uper_encoder.h"
+#include "common/utils/ds/seq_arr.h"
 
 #include "RRC/NR/MESSAGES/asn1_msg.h"
 #include "RRC/NR/nr_rrc_extern.h"
@@ -95,50 +96,6 @@
 #endif
 
 extern uint16_t sf_ahead;
-
-// synchronization raster per band tables (Rel.15)
-// (38.101-1 Table 5.4.3.3-1 and 38.101-2 Table 5.4.3.3-1)
-// band nb, sub-carrier spacing index, Range of gscn (First, Step size, Last)
-const sync_raster_t sync_raster[] = {
-  {1, 0, 5279, 1, 5419},
-  {2, 0, 4829, 1, 4969},
-  {3, 0, 4517, 1, 4693},
-  {5, 0, 2177, 1, 2230},
-  {5, 1, 2183, 1, 2224},
-  {7, 0, 6554, 1, 6718},
-  {8, 0, 2318, 1, 2395},
-  {12, 0, 1828, 1, 1858},
-  {20, 0, 1982, 1, 2047},
-  {25, 0, 4829, 1, 4981},
-  {28, 0, 1901, 1, 2002},
-  {34, 0, 5030, 1, 5056},
-  {38, 0, 6431, 1, 6544},
-  {39, 0, 4706, 1, 4795},
-  {40, 1, 5762, 1, 5989},
-  {41, 0, 6246, 3, 6717},
-  {41, 1, 6252, 3, 6714},
-  {48, 1, 7884, 1, 7982},
-  {50, 0, 3584, 1, 3787},
-  {51, 0, 3572, 1, 3574},
-  {66, 0, 5279, 1, 5494},
-  {66, 1, 5285, 1, 5488},
-  {70, 0, 4993, 1, 5044},
-  {71, 0, 1547, 1, 1624},
-  {74, 0, 3692, 1, 3790},
-  {75, 0, 3584, 1, 3787},
-  {76, 0, 3572, 1, 3574},
-  {77, 1, 7711, 1, 8329},
-  {78, 1, 7711, 1, 8051},
-  {79, 1, 8480, 16, 8880},
-  {257, 3, 22388, 1, 22558},
-  {257, 4, 22390, 2, 22556},
-  {258, 3, 22257, 1, 22443},
-  {258, 4, 22258, 2, 22442},
-  {260, 3, 22995, 1, 23166},
-  {260, 4, 22996, 2, 23164},
-  {261, 3, 22446, 1, 22492},
-  {261, 4, 22446, 2, 22490},
-};
 
 extern int config_check_band_frequencies(int ind, int16_t band, uint64_t downlink_frequency,
                                          int32_t uplink_frequency_offset, uint32_t  frame_type);
@@ -258,7 +215,10 @@ void prepare_scc(NR_ServingCellConfigCommon_t *scc) {
   //ratematchpattern->patternType.choice.bitmaps->periodicityAndPattern->choice.n40.buf       = MALLOC(5);
   //ratematchpattern->subcarrierSpacing           = CALLOC(1,sizeof(NR_SubcarrierSpacing_t));
   //ratematchpatternid                            = CALLOC(1,sizeof(NR_RateMatchPatternId_t));
-  
+
+  scc->ext2 = CALLOC(1, sizeof(*scc->ext2));
+  scc->ext2->ntn_Config_r17 = CALLOC(1, sizeof(*scc->ext2->ntn_Config_r17));
+  scc->ext2->ntn_Config_r17->cellSpecificKoffset_r17 = CALLOC(1, sizeof(*scc->ext2->ntn_Config_r17->cellSpecificKoffset_r17));
 }
 
 void fill_scc_sim(NR_ServingCellConfigCommon_t *scc,uint64_t *ssb_bitmap,int N_RB_DL,int N_RB_UL,int mu_dl,int mu_ul) {
@@ -450,6 +410,13 @@ void fix_scc(NR_ServingCellConfigCommon_t *scc,uint64_t ssbmap) {
   // check pucch_ResourceConfig
   AssertFatal(*scc->uplinkConfigCommon->initialUplinkBWP->pucch_ConfigCommon->choice.setup->pucch_ResourceCommon < 2,
 	      "pucch_ResourceConfig should be 0 or 1 for now\n");
+
+  if(*scc->ext2->ntn_Config_r17->cellSpecificKoffset_r17 == 0) {
+    free(scc->ext2->ntn_Config_r17->cellSpecificKoffset_r17);
+    free(scc->ext2->ntn_Config_r17);
+    free(scc->ext2);
+    scc->ext2 = NULL;
+  }
 }
 
 /* Function to allocate dedicated serving cell config strutures */
@@ -654,6 +621,16 @@ void fix_scd(NR_ServingCellConfig_t *scd) {
     }
 
   }
+
+  if (scd->downlinkBWP_ToAddModList->list.count == 0) {
+    free(scd->downlinkBWP_ToAddModList);
+    scd->downlinkBWP_ToAddModList = NULL;
+  }
+
+  if (scd->uplinkConfig->uplinkBWP_ToAddModList->list.count == 0) {
+    free(scd->uplinkConfig->uplinkBWP_ToAddModList);
+    scd->uplinkConfig->uplinkBWP_ToAddModList = NULL;
+  }
 }
 
 static void verify_gnb_param_notset(paramdef_t *params, int paramidx, const char *paramname)
@@ -697,6 +674,7 @@ void RCconfig_verify(configmodule_interface_t *cfg, ngran_node_t node_type)
     verify_gnb_param_notset(gnbp, GNB_DO_CSIRS_IDX, GNB_CONFIG_STRING_DOCSIRS);
     verify_gnb_param_notset(gnbp, GNB_DO_SRS_IDX, GNB_CONFIG_STRING_DOSRS);
     verify_gnb_param_notset(gnbp, GNB_FORCE256QAMOFF_IDX, GNB_CONFIG_STRING_FORCE256QAMOFF);
+    verify_gnb_param_notset(gnbp, GNB_MAXMIMOLAYERS_IDX, GNB_CONFIG_STRING_MAXMIMOLAYERS);
 
     // check for some general sections
     verify_section_notset(cfg, NULL, CONFIG_STRING_L1_LIST);
@@ -892,7 +870,6 @@ void RCconfig_NR_L1(void)
       if (strcmp(*(L1_ParamList.paramarray[j][L1_TRANSPORT_N_PREFERENCE_IDX].strptr), "local_mac") == 0) {
         // sf_ahead = 2; // Need 4 subframe gap between RX and TX
       } else if (strcmp(*(L1_ParamList.paramarray[j][L1_TRANSPORT_N_PREFERENCE_IDX].strptr), "nfapi") == 0) {
-        RC.gNB[j]->eth_params_n.local_if_name = strdup(*(L1_ParamList.paramarray[j][L1_LOCAL_N_IF_NAME_IDX].strptr));
         RC.gNB[j]->eth_params_n.my_addr = strdup(*(L1_ParamList.paramarray[j][L1_LOCAL_N_ADDRESS_IDX].strptr));
         RC.gNB[j]->eth_params_n.remote_addr = strdup(*(L1_ParamList.paramarray[j][L1_REMOTE_N_ADDRESS_IDX].strptr));
         RC.gNB[j]->eth_params_n.my_portc = *(L1_ParamList.paramarray[j][L1_LOCAL_N_PORTC_IDX].iptr);
@@ -938,8 +915,6 @@ void RCconfig_NR_L1(void)
     }
   }
 }
-
-static void check_ssb_raster(uint64_t freq, int band, int scs);
 
 static NR_ServingCellConfigCommon_t *get_scc_config(configmodule_interface_t *cfg, int minRXTXTIME)
 {
@@ -1075,6 +1050,8 @@ static int read_du_cell_info(configmodule_interface_t *cfg,
     PLMNParams[I].chkPptr = &(config_check_PLMNParams[I]);
   paramlist_def_t PLMNParamList = {GNB_CONFIG_STRING_PLMN_LIST, NULL, 0};
   config_getlist(cfg, &PLMNParamList, PLMNParams, sizeof(PLMNParams) / sizeof(paramdef_t), aprefix);
+  AssertFatal(PLMNParamList.numelt > 0, "need to have a PLMN in PLMN section\n");
+  AssertFatal(PLMNParamList.numelt == 1, "cannot have more than one PLMN\n");
 
   // if fronthaul is F1, require gNB_DU_ID, else use gNB_ID
   if (separate_du) {
@@ -1099,10 +1076,51 @@ static int read_du_cell_info(configmodule_interface_t *cfg,
               info->plmn.mnc_digit_length);
   info->nr_cellid = (uint64_t) * (GNBParamList.paramarray[0][GNB_NRCELLID_IDX].u64ptr);
 
-  LOG_W(GNB_APP, "no slices transported via F1 Setup Request!\n");
-  info->num_ssi = 0;
+  paramdef_t SNSSAIParams[] = GNBSNSSAIPARAMS_DESC;
+  paramlist_def_t SNSSAIParamList = {GNB_CONFIG_STRING_SNSSAI_LIST, NULL, 0};
+  checkedparam_t config_check_SNSSAIParams[] = SNSSAIPARAMS_CHECK;
+  for (int J = 0; J < sizeofArray(SNSSAIParams); ++J)
+    SNSSAIParams[J].chkPptr = &(config_check_SNSSAIParams[J]);
+  char snssaistr[MAX_OPTNAME_SIZE * 2 + 8];
+  sprintf(snssaistr, "%s.[0].%s.[0]", GNB_CONFIG_STRING_GNB_LIST, GNB_CONFIG_STRING_PLMN_LIST);
+  config_getlist(config_get_if(), &SNSSAIParamList, SNSSAIParams, sizeofArray(SNSSAIParams), snssaistr);
+  info->num_ssi = SNSSAIParamList.numelt;
+  for (int s = 0; s < info->num_ssi; ++s) {
+    info->nssai[s].sst = *SNSSAIParamList.paramarray[s][GNB_SLICE_SERVICE_TYPE_IDX].uptr;
+    info->nssai[s].sd = *SNSSAIParamList.paramarray[s][GNB_SLICE_DIFFERENTIATOR_IDX].uptr;
+    AssertFatal(info->nssai[s].sd <= 0xffffff, "SD cannot be bigger than 0xffffff, but is %d\n", info->nssai[s].sd);
+  }
 
   return 1;
+}
+
+static f1ap_tdd_info_t read_tdd_config(const NR_ServingCellConfigCommon_t *scc)
+{
+  const NR_FrequencyInfoDL_t *dl = scc->downlinkConfigCommon->frequencyInfoDL;
+  f1ap_tdd_info_t tdd = {
+      .freqinfo.arfcn = dl->absoluteFrequencyPointA,
+      .freqinfo.band = *dl->frequencyBandList.list.array[0],
+      .tbw.scs = dl->scs_SpecificCarrierList.list.array[0]->subcarrierSpacing,
+      .tbw.nrb = dl->scs_SpecificCarrierList.list.array[0]->carrierBandwidth,
+  };
+  return tdd;
+}
+
+static f1ap_fdd_info_t read_fdd_config(const NR_ServingCellConfigCommon_t *scc)
+{
+  const NR_FrequencyInfoDL_t *dl = scc->downlinkConfigCommon->frequencyInfoDL;
+  const NR_FrequencyInfoUL_t *ul = scc->uplinkConfigCommon->frequencyInfoUL;
+  f1ap_fdd_info_t fdd = {
+      .dl_freqinfo.arfcn = dl->absoluteFrequencyPointA,
+      .ul_freqinfo.arfcn = *ul->absoluteFrequencyPointA,
+      .dl_tbw.scs = dl->scs_SpecificCarrierList.list.array[0]->subcarrierSpacing,
+      .ul_tbw.scs = ul->scs_SpecificCarrierList.list.array[0]->subcarrierSpacing,
+      .dl_tbw.nrb = dl->scs_SpecificCarrierList.list.array[0]->carrierBandwidth,
+      .ul_tbw.nrb = ul->scs_SpecificCarrierList.list.array[0]->carrierBandwidth,
+      .dl_freqinfo.band = *dl->frequencyBandList.list.array[0],
+      .ul_freqinfo.band = *ul->frequencyBandList->list.array[0],
+  };
+  return fdd;
 }
 
 static f1ap_setup_req_t *RC_read_F1Setup(uint64_t id,
@@ -1130,30 +1148,26 @@ static f1ap_setup_req_t *RC_read_F1Setup(uint64_t id,
         req->cell[0].info.nr_cellid);
 
   req->cell[0].info.nr_pci = *scc->physCellId;
-  struct NR_FrequencyInfoDL *frequencyInfoDL = scc->downlinkConfigCommon->frequencyInfoDL;
   if (scc->tdd_UL_DL_ConfigurationCommon) {
     LOG_I(GNB_APP, "ngran_DU: Configuring Cell %d for TDD\n", 0);
     req->cell[0].info.mode = F1AP_MODE_TDD;
-    f1ap_tdd_info_t *tdd = &req->cell[0].info.tdd;
-    tdd->freqinfo.arfcn = frequencyInfoDL->absoluteFrequencyPointA;
-    tdd->tbw.scs = frequencyInfoDL->scs_SpecificCarrierList.list.array[0]->subcarrierSpacing;
-    tdd->tbw.nrb = frequencyInfoDL->scs_SpecificCarrierList.list.array[0]->carrierBandwidth;
-    tdd->freqinfo.band = *frequencyInfoDL->frequencyBandList.list.array[0];
+    req->cell[0].info.tdd = read_tdd_config(scc);
   } else {
     LOG_I(GNB_APP, "ngran_DU: Configuring Cell %d for FDD\n", 0);
     req->cell[0].info.mode = F1AP_MODE_FDD;
-    f1ap_fdd_info_t *fdd = &req->cell[0].info.fdd;
-    fdd->dl_freqinfo.arfcn = frequencyInfoDL->absoluteFrequencyPointA;
-    fdd->ul_freqinfo.arfcn = *scc->uplinkConfigCommon->frequencyInfoUL->absoluteFrequencyPointA;
-    fdd->dl_tbw.scs = frequencyInfoDL->scs_SpecificCarrierList.list.array[0]->subcarrierSpacing;
-    fdd->ul_tbw.scs = scc->uplinkConfigCommon->frequencyInfoUL->scs_SpecificCarrierList.list.array[0]->subcarrierSpacing;
-    fdd->dl_tbw.nrb = frequencyInfoDL->scs_SpecificCarrierList.list.array[0]->carrierBandwidth;
-    fdd->ul_tbw.nrb = scc->uplinkConfigCommon->frequencyInfoUL->scs_SpecificCarrierList.list.array[0]->carrierBandwidth;
-    fdd->dl_freqinfo.band = *frequencyInfoDL->frequencyBandList.list.array[0];
-    fdd->ul_freqinfo.band = *scc->uplinkConfigCommon->frequencyInfoUL->frequencyBandList->list.array[0];
+    req->cell[0].info.fdd = read_fdd_config(scc);
   }
 
-  req->cell[0].info.measurement_timing_information = "0";
+  NR_MeasurementTimingConfiguration_t *mtc = get_new_MeasurementTimingConfiguration(scc);
+  uint8_t buf[1024];
+  int len = encode_MeasurementTimingConfiguration(mtc, buf, sizeof(buf));
+  DevAssert(len <= sizeof(buf));
+  free_MeasurementTimingConfiguration(mtc);
+  uint8_t *mtc_buf = calloc(len, sizeof(*mtc_buf));
+  AssertFatal(mtc_buf != NULL, "out of memory\n");
+  memcpy(mtc_buf, buf, len);
+  req->cell[0].info.measurement_timing_config = mtc_buf;
+  req->cell[0].info.measurement_timing_config_len = len;
 
   if (get_softmodem_params()->sa) {
     // in NSA we don't transmit SIB1, so cannot fill DU system information
@@ -1166,7 +1180,8 @@ static f1ap_setup_req_t *RC_read_F1Setup(uint64_t id,
     sys_info->mib = calloc(buf_len, sizeof(*sys_info->mib));
     DevAssert(sys_info->mib != NULL);
     DevAssert(mib != NULL);
-    sys_info->mib_length = encode_MIB_NR(mib, 0, sys_info->mib, buf_len);
+    // encode only the mib message itself
+    sys_info->mib_length = encode_MIB_NR_setup(mib->message.choice.mib, 0, sys_info->mib, buf_len);
     DevAssert(sys_info->mib_length == buf_len);
 
     DevAssert(sib1 != NULL);
@@ -1242,11 +1257,51 @@ void RCconfig_nr_macrlc(configmodule_interface_t *cfg)
   config.do_CSIRS = *GNBParamList.paramarray[0][GNB_DO_CSIRS_IDX].iptr;
   config.do_SRS = *GNBParamList.paramarray[0][GNB_DO_SRS_IDX].iptr;
   config.force_256qam_off = *GNBParamList.paramarray[0][GNB_FORCE256QAMOFF_IDX].iptr;
+  config.force_UL256qam_off = *GNBParamList.paramarray[0][GNB_FORCEUL256QAMOFF_IDX].iptr;
+  config.use_deltaMCS = *GNBParamList.paramarray[0][GNB_USE_DELTA_MCS_IDX].iptr != 0;
+  config.maxMIMO_layers = *GNBParamList.paramarray[0][GNB_MAXMIMOLAYERS_IDX].iptr;
+  config.disable_harq = *GNBParamList.paramarray[0][GNB_DISABLE_HARQ_IDX].iptr;
+  if (config.disable_harq)
+    LOG_W(GNB_APP, "\"disable_harq\" is a REL17 feature and is incompatible with REL15 and REL16 UEs!\n");
   LOG_I(GNB_APP,
-        "CSI-RS %d, SRS %d, 256 QAM %s\n",
+        "CSI-RS %d, SRS %d, 256 QAM %s, delta_MCS %s, maxMIMO_Layers %d, HARQ feedback %s\n",
         config.do_CSIRS,
         config.do_SRS,
-        config.force_256qam_off ? "force off" : "may be on");
+        config.force_256qam_off ? "force off" : "may be on",
+        config.use_deltaMCS ? "on" : "off",
+        config.maxMIMO_layers,
+        config.disable_harq ? "disabled" : "enabled");
+  int tot_ant = config.pdsch_AntennaPorts.N1 * config.pdsch_AntennaPorts.N2 * config.pdsch_AntennaPorts.XP;
+  AssertFatal(config.maxMIMO_layers != 0 && config.maxMIMO_layers <= tot_ant, "Invalid maxMIMO_layers %d\n", config.maxMIMO_layers);
+
+  paramdef_t Timers_Params[] = GNB_TIMERS_PARAMS_DESC;
+  char aprefix[MAX_OPTNAME_SIZE * 2 + 8];
+  sprintf(aprefix, "%s.[0].%s", GNB_CONFIG_STRING_GNB_LIST, GNB_CONFIG_STRING_TIMERS_CONFIG);
+  config_get(config_get_if(), Timers_Params, sizeofArray(Timers_Params), aprefix);
+
+  config.timer_config.sr_ProhibitTimer = *Timers_Params[GNB_TIMERS_SR_PROHIBIT_TIMER_IDX].iptr;
+  config.timer_config.sr_TransMax = *Timers_Params[GNB_TIMERS_SR_TRANS_MAX_IDX].iptr;
+  config.timer_config.sr_ProhibitTimer_v1700 = *Timers_Params[GNB_TIMERS_SR_PROHIBIT_TIMER_V1700_IDX].iptr;
+  config.timer_config.t300 = *Timers_Params[GNB_TIMERS_T300_IDX].iptr;
+  config.timer_config.t301 = *Timers_Params[GNB_TIMERS_T301_IDX].iptr;
+  config.timer_config.t310 = *Timers_Params[GNB_TIMERS_T310_IDX].iptr;
+  config.timer_config.n310 = *Timers_Params[GNB_TIMERS_N310_IDX].iptr;
+  config.timer_config.t311 = *Timers_Params[GNB_TIMERS_T311_IDX].iptr;
+  config.timer_config.n311 = *Timers_Params[GNB_TIMERS_N311_IDX].iptr;
+  config.timer_config.t319 = *Timers_Params[GNB_TIMERS_T319_IDX].iptr;
+  LOG_I(GNB_APP,
+        "sr_ProhibitTimer %d, sr_TransMax %d, sr_ProhibitTimer_v1700 %d, "
+        "t300 %d, t301 %d, t310 %d, n310 %d, t311 %d, n311 %d, t319 %d\n",
+        config.timer_config.sr_ProhibitTimer,
+        config.timer_config.sr_TransMax,
+        config.timer_config.sr_ProhibitTimer_v1700,
+        config.timer_config.t300,
+        config.timer_config.t301,
+        config.timer_config.t310,
+        config.timer_config.n310,
+        config.timer_config.t311,
+        config.timer_config.n311,
+        config.timer_config.t319);
 
   NR_ServingCellConfigCommon_t *scc = get_scc_config(cfg, config.minRXTXTIME);
   //xer_fprint(stdout, &asn_DEF_NR_ServingCellConfigCommon, scc);
@@ -1278,8 +1333,10 @@ void RCconfig_nr_macrlc(configmodule_interface_t *cfg)
       } else if (strcmp(*(MacRLC_ParamList.paramarray[j][MACRLC_TRANSPORT_N_PREFERENCE_IDX].strptr), "f1") == 0
                  || strcmp(*(MacRLC_ParamList.paramarray[j][MACRLC_TRANSPORT_N_PREFERENCE_IDX].strptr), "cudu") == 0) {
         printf("Configuring F1 interfaces for MACRLC\n");
-        RC.nrmac[j]->eth_params_n.local_if_name = strdup(*(MacRLC_ParamList.paramarray[j][MACRLC_LOCAL_N_IF_NAME_IDX].strptr));
-        RC.nrmac[j]->eth_params_n.my_addr = strdup(*(MacRLC_ParamList.paramarray[j][MACRLC_LOCAL_N_ADDRESS_IDX].strptr));
+        char **f1caddr = MacRLC_ParamList.paramarray[j][MACRLC_LOCAL_N_ADDRESS_IDX].strptr;
+        RC.nrmac[j]->eth_params_n.my_addr = strdup(*f1caddr);
+        char **f1uaddr = MacRLC_ParamList.paramarray[j][MACRLC_LOCAL_N_ADDRESS_F1U_IDX].strptr;
+        RC.nrmac[j]->f1u_addr = f1uaddr != NULL ? strdup(*f1uaddr) : strdup(*f1caddr);
         RC.nrmac[j]->eth_params_n.remote_addr = strdup(*(MacRLC_ParamList.paramarray[j][MACRLC_REMOTE_N_ADDRESS_IDX].strptr));
         RC.nrmac[j]->eth_params_n.my_portc = *(MacRLC_ParamList.paramarray[j][MACRLC_LOCAL_N_PORTC_IDX].iptr);
         RC.nrmac[j]->eth_params_n.remote_portc = *(MacRLC_ParamList.paramarray[j][MACRLC_REMOTE_N_PORTC_IDX].iptr);
@@ -1292,7 +1349,6 @@ void RCconfig_nr_macrlc(configmodule_interface_t *cfg)
 
       if (strcmp(*(MacRLC_ParamList.paramarray[j][MACRLC_TRANSPORT_S_PREFERENCE_IDX].strptr), "local_L1") == 0) {
       } else if (strcmp(*(MacRLC_ParamList.paramarray[j][MACRLC_TRANSPORT_S_PREFERENCE_IDX].strptr), "nfapi") == 0) {
-        RC.nrmac[j]->eth_params_s.local_if_name = strdup(*(MacRLC_ParamList.paramarray[j][MACRLC_LOCAL_S_IF_NAME_IDX].strptr));
         RC.nrmac[j]->eth_params_s.my_addr = strdup(*(MacRLC_ParamList.paramarray[j][MACRLC_LOCAL_S_ADDRESS_IDX].strptr));
         RC.nrmac[j]->eth_params_s.remote_addr = strdup(*(MacRLC_ParamList.paramarray[j][MACRLC_REMOTE_S_ADDRESS_IDX].strptr));
         RC.nrmac[j]->eth_params_s.my_portc = *(MacRLC_ParamList.paramarray[j][MACRLC_LOCAL_S_PORTC_IDX].iptr);
@@ -1307,7 +1363,10 @@ void RCconfig_nr_macrlc(configmodule_interface_t *cfg)
         printf("**************** RETURNED FROM configure_nfapi_vnf() vnf_port:%d\n", RC.nrmac[j]->eth_params_s.my_portc);
       } else if(strcmp(*(MacRLC_ParamList.paramarray[j][MACRLC_TRANSPORT_S_PREFERENCE_IDX].strptr), "aerial") == 0){
 #ifdef ENABLE_AERIAL
-        printf("Configuring VNF for Aerial connection\n");
+        RC.nrmac[j]->nvipc_params_s.nvipc_shm_prefix =
+            strdup(*(MacRLC_ParamList.paramarray[j][MACRLC_TRANSPORT_S_SHM_PREFIX].strptr));
+        RC.nrmac[j]->nvipc_params_s.nvipc_poll_core = *(MacRLC_ParamList.paramarray[j][MACRLC_TRANSPORT_S_POLL_CORE].i8ptr);
+        printf("Configuring VNF for Aerial connection with prefix %s\n", RC.nrmac[j]->eth_params_s.local_if_name);
         aerial_configure_nr_fapi_vnf();
 #endif
       } else { // other midhaul
@@ -1318,12 +1377,18 @@ void RCconfig_nr_macrlc(configmodule_interface_t *cfg)
       dl_bler_options->upper = *(MacRLC_ParamList.paramarray[j][MACRLC_DL_BLER_TARGET_UPPER_IDX].dblptr);
       dl_bler_options->lower = *(MacRLC_ParamList.paramarray[j][MACRLC_DL_BLER_TARGET_LOWER_IDX].dblptr);
       dl_bler_options->max_mcs = *(MacRLC_ParamList.paramarray[j][MACRLC_DL_MAX_MCS_IDX].u8ptr);
-      dl_bler_options->harq_round_max = *(MacRLC_ParamList.paramarray[j][MACRLC_DL_HARQ_ROUND_MAX_IDX].u8ptr);
+      if (config.disable_harq)
+        dl_bler_options->harq_round_max = 1;
+      else
+        dl_bler_options->harq_round_max = *(MacRLC_ParamList.paramarray[j][MACRLC_DL_HARQ_ROUND_MAX_IDX].u8ptr);
       NR_bler_options_t *ul_bler_options = &RC.nrmac[j]->ul_bler;
       ul_bler_options->upper = *(MacRLC_ParamList.paramarray[j][MACRLC_UL_BLER_TARGET_UPPER_IDX].dblptr);
       ul_bler_options->lower = *(MacRLC_ParamList.paramarray[j][MACRLC_UL_BLER_TARGET_LOWER_IDX].dblptr);
       ul_bler_options->max_mcs = *(MacRLC_ParamList.paramarray[j][MACRLC_UL_MAX_MCS_IDX].u8ptr);
-      ul_bler_options->harq_round_max = *(MacRLC_ParamList.paramarray[j][MACRLC_UL_HARQ_ROUND_MAX_IDX].u8ptr);
+      if (config.disable_harq)
+        ul_bler_options->harq_round_max = 1;
+      else
+        ul_bler_options->harq_round_max = *(MacRLC_ParamList.paramarray[j][MACRLC_UL_HARQ_ROUND_MAX_IDX].u8ptr);
       RC.nrmac[j]->min_grant_prb = *(MacRLC_ParamList.paramarray[j][MACRLC_MIN_GRANT_PRB_IDX].u8ptr);
       RC.nrmac[j]->min_grant_mcs = *(MacRLC_ParamList.paramarray[j][MACRLC_MIN_GRANT_MCS_IDX].u8ptr);
       RC.nrmac[j]->identity_pm = *(MacRLC_ParamList.paramarray[j][MACRLC_IDENTITY_PM_IDX].u8ptr);
@@ -1474,54 +1539,153 @@ void config_security(gNB_RRC_INST *rrc)
   }
 }
 
-// Section 5.4.3 of 38.101-1 and -2
-static void check_ssb_raster(uint64_t freq, int band, int scs)
+static int sort_neighbour_cell_config_by_cell_id(const void *a, const void *b)
 {
-  int start_gscn = 0, step_gscn = 0, end_gscn = 0;
-  for (int i = 0; i < sizeof(sync_raster) / sizeof(sync_raster_t); i++) {
-    if (sync_raster[i].band == band &&
-        sync_raster[i].scs_index == scs) {
-      start_gscn = sync_raster[i].first_gscn;
-      step_gscn = sync_raster[i].step_gscn;
-      end_gscn = sync_raster[i].last_gscn;
-      break;
+  const neighbour_cell_configuration_t *config_a = (const neighbour_cell_configuration_t *)a;
+  const neighbour_cell_configuration_t *config_b = (const neighbour_cell_configuration_t *)b;
+
+  if (config_a->nr_cell_id < config_b->nr_cell_id) {
+    return -1;
+  } else if (config_a->nr_cell_id > config_b->nr_cell_id) {
+    return 1;
+  }
+
+  return 0;
+}
+
+static void fill_neighbour_cell_configuration(uint8_t gnb_idx, gNB_RRC_INST *rrc)
+{
+  char gnbpath[MAX_OPTNAME_SIZE + 8];
+  sprintf(gnbpath, "%s.[%i]", GNB_CONFIG_STRING_GNB_LIST, gnb_idx);
+
+  paramdef_t neighbour_list_params[] = GNB_NEIGHBOUR_LIST_PARAM_LIST;
+  paramlist_def_t neighbour_list_param_list = {GNB_CONFIG_STRING_NEIGHBOUR_LIST, NULL, 0};
+
+  config_getlist(config_get_if(), &neighbour_list_param_list, neighbour_list_params, sizeofArray(neighbour_list_params), gnbpath);
+  if (neighbour_list_param_list.numelt < 1)
+    return;
+
+  rrc->neighbour_cell_configuration = malloc(sizeof(seq_arr_t));
+  seq_arr_init(rrc->neighbour_cell_configuration, sizeof(neighbour_cell_configuration_t));
+
+  for (int elm = 0; elm < neighbour_list_param_list.numelt; ++elm) {
+    neighbour_cell_configuration_t *cell = calloc(1, sizeof(neighbour_cell_configuration_t));
+    AssertFatal(cell != NULL, "out of memory\n");
+    cell->nr_cell_id = (uint64_t)*neighbour_list_param_list.paramarray[elm][0].u64ptr;
+
+    char neighbourpath[MAX_OPTNAME_SIZE + 8];
+    sprintf(neighbourpath, "%s.[%i].%s.[%i]", GNB_CONFIG_STRING_GNB_LIST, gnb_idx, GNB_CONFIG_STRING_NEIGHBOUR_LIST, elm);
+    paramdef_t NeighbourCellParams[] = GNBNEIGHBOURCELLPARAMS_DESC;
+    paramlist_def_t NeighbourCellParamList = {GNB_CONFIG_STRING_NEIGHBOUR_CELL_LIST, NULL, 0};
+    config_getlist(config_get_if(), &NeighbourCellParamList, NeighbourCellParams, sizeofArray(NeighbourCellParams), neighbourpath);
+    LOG_D(GNB_APP, "HO LOG: For the Cell: %d Neighbour Cell ELM NUM: %d\n", cell->nr_cell_id, NeighbourCellParamList.numelt);
+    if (NeighbourCellParamList.numelt < 1)
+      continue;
+
+    cell->neighbour_cells = malloc(sizeof(seq_arr_t));
+    AssertFatal(cell->neighbour_cells != NULL, "Memory exhausted!!!");
+    seq_arr_init(cell->neighbour_cells, sizeof(nr_neighbour_gnb_configuration_t));
+    for (int l = 0; l < NeighbourCellParamList.numelt; ++l) {
+      nr_neighbour_gnb_configuration_t *neighbourCell = calloc(1, sizeof(nr_neighbour_gnb_configuration_t));
+      AssertFatal(neighbourCell != NULL, "out of memory\n");
+      neighbourCell->gNB_ID = *(NeighbourCellParamList.paramarray[l][GNB_CONFIG_N_CELL_GNB_ID_IDX].uptr);
+      neighbourCell->nrcell_id = (uint64_t) * (NeighbourCellParamList.paramarray[l][GNB_CONFIG_N_CELL_NR_CELLID_IDX].u64ptr);
+      neighbourCell->physicalCellId = *NeighbourCellParamList.paramarray[l][GNB_CONFIG_N_CELL_PHYSICAL_ID_IDX].uptr;
+      neighbourCell->subcarrierSpacing = *NeighbourCellParamList.paramarray[l][GNB_CONFIG_N_CELL_SCS_IDX].uptr;
+      neighbourCell->absoluteFrequencySSB = *NeighbourCellParamList.paramarray[l][GNB_CONFIG_N_CELL_ABS_FREQ_SSB_IDX].i64ptr;
+      neighbourCell->tac = *NeighbourCellParamList.paramarray[l][GNB_CONFIG_N_CELL_TAC_IDX].uptr;
+
+      char neighbour_plmn_path[CONFIG_MAXOPTLENGTH];
+      sprintf(neighbour_plmn_path,
+              "%s.%s.[%i].%s",
+              neighbourpath,
+              GNB_CONFIG_STRING_NEIGHBOUR_CELL_LIST,
+              l,
+              GNB_CONFIG_STRING_NEIGHBOUR_PLMN);
+
+      paramdef_t NeighbourPlmn[] = GNBPLMNPARAMS_DESC;
+      config_get(config_get_if(), NeighbourPlmn, sizeofArray(NeighbourPlmn), neighbour_plmn_path);
+
+      neighbourCell->plmn.mcc = *NeighbourPlmn[GNB_MOBILE_COUNTRY_CODE_IDX].uptr;
+      neighbourCell->plmn.mnc = *NeighbourPlmn[GNB_MOBILE_NETWORK_CODE_IDX].uptr;
+      neighbourCell->plmn.mnc_digit_length = *NeighbourPlmn[GNB_MNC_DIGIT_LENGTH].uptr;
+      seq_arr_push_back(cell->neighbour_cells, neighbourCell, sizeof(nr_neighbour_gnb_configuration_t));
     }
+
+    seq_arr_push_back(rrc->neighbour_cell_configuration, cell, sizeof(neighbour_cell_configuration_t));
   }
-  AssertFatal(start_gscn != 0, "Couldn't find band %d with SCS %d\n", band, scs);
-  int gscn;
-  if (freq < 3000000000) {
-    int N = 0;
-    int M = 0;
-    for (int k = 0; k < 3; k++) {
-      M = (k << 1) + 1;
-      if ((freq - M * 50000) % 1200000 == 0) {
-        N = (freq - M * 50000) / 1200000;
-        break;
-      }
-    }
-    AssertFatal(N != 0, "SSB frequency %lu Hz not on the synchronization raster (N * 1200kHz + M * 50 kHz)\n",
-                freq);
-    gscn = (3 * N) + (M - 3) / 2;
+  void *base = seq_arr_front(rrc->neighbour_cell_configuration);
+  size_t nmemb = seq_arr_size(rrc->neighbour_cell_configuration);
+  size_t element_size = sizeof(neighbour_cell_configuration_t);
+
+  qsort(base, nmemb, element_size, sort_neighbour_cell_config_by_cell_id);
+}
+
+static void fill_measurement_configuration(uint8_t gnb_idx, gNB_RRC_INST *rrc)
+{
+  char measurement_path[MAX_OPTNAME_SIZE + 8];
+  sprintf(measurement_path, "%s.[%i].%s", GNB_CONFIG_STRING_GNB_LIST, gnb_idx, GNB_CONFIG_STRING_MEASUREMENT_CONFIGURATION);
+
+  nr_measurement_configuration_t *measurementConfig = &rrc->measurementConfiguration;
+  // Periodical Event Configuration
+  char periodic_event_path[MAX_OPTNAME_SIZE + 8];
+  sprintf(periodic_event_path,
+          "%s.[%i].%s.%s",
+          GNB_CONFIG_STRING_GNB_LIST,
+          gnb_idx,
+          GNB_CONFIG_STRING_MEASUREMENT_CONFIGURATION,
+          MEASUREMENT_EVENTS_PERIODICAL);
+  paramdef_t Periodical_EventParams[] = MEASUREMENT_PERIODICAL_GLOBALPARAMS_DESC;
+  config_get(config_get_if(), Periodical_EventParams, sizeofArray(Periodical_EventParams), periodic_event_path);
+  if (*Periodical_EventParams[MEASUREMENT_EVENTS_ENABLE_IDX].i64ptr) {
+    nr_per_event_t *periodic_event = (nr_per_event_t *)calloc(1, sizeof(nr_per_event_t));
+    periodic_event->includeBeamMeasurements = *Periodical_EventParams[MEASUREMENT_EVENTS_INCLUDE_BEAM_MEAS_IDX].i64ptr;
+    periodic_event->maxReportCells = *Periodical_EventParams[MEASUREMENT_EVENTS_MAX_RS_INDEX_TO_REPORT].i64ptr;
+
+    measurementConfig->per_event = periodic_event;
   }
-  else if (freq < 24250000000) {
-    AssertFatal((freq - 3000000000) % 1440000 == 0,
-                "SSB frequency %lu Hz not on the synchronization raster (3000 MHz + N * 1.44 MHz)\n",
-                freq);
-    gscn = ((freq - 3000000000) / 1440000) + 7499;
+
+  // A2 Event Configuration
+  char a2_path[MAX_OPTNAME_SIZE + 8];
+  sprintf(a2_path,
+          "%s.[%i].%s.%s",
+          GNB_CONFIG_STRING_GNB_LIST,
+          gnb_idx,
+          GNB_CONFIG_STRING_MEASUREMENT_CONFIGURATION,
+          MEASUREMENT_EVENTS_A2);
+  paramdef_t A2_EventParams[] = MEASUREMENT_A2_GLOBALPARAMS_DESC;
+  config_get(config_get_if(), A2_EventParams, sizeofArray(A2_EventParams), a2_path);
+  if (*A2_EventParams[MEASUREMENT_EVENTS_ENABLE_IDX].i64ptr) {
+    nr_a2_event_t *a2_event = (nr_a2_event_t *)calloc(1, sizeof(nr_a2_event_t));
+    a2_event->threshold_RSRP = *A2_EventParams[MEASUREMENT_EVENTS_A2_THRESHOLD_IDX].i64ptr;
+    a2_event->timeToTrigger = *A2_EventParams[MEASUREMENT_EVENTS_TIMETOTRIGGER_IDX].i64ptr;
+
+    measurementConfig->a2_event = a2_event;
   }
-  else {
-    AssertFatal((freq - 24250080000) % 17280000 == 0,
-                "SSB frequency %lu Hz not on the synchronization raster (24250.08 MHz + N * 17.28 MHz)\n",
-                freq);
-    gscn = ((freq - 24250080000) / 17280000) + 22256;
+  // A3 Event Configuration
+  paramlist_def_t A3_EventList = {MEASUREMENT_EVENTS_A3, NULL, 0};
+  paramdef_t A3_EventParams[] = MEASUREMENT_A3_GLOBALPARAMS_DESC;
+  config_getlist(config_get_if(), &A3_EventList, A3_EventParams, sizeofArray(A3_EventParams), measurement_path);
+  LOG_D(GNB_APP, "HO LOG: A3 Configuration Exists: %d\n", A3_EventList.numelt);
+
+  if (A3_EventList.numelt < 1)
+    return;
+
+  measurementConfig->a3_event_list = malloc(sizeof(seq_arr_t));
+  seq_arr_init(measurementConfig->a3_event_list, sizeof(nr_a3_event_t));
+  for (int i = 0; i < A3_EventList.numelt; i++) {
+    nr_a3_event_t *a3_event = (nr_a3_event_t *)calloc(1, sizeof(nr_a3_event_t));
+    AssertFatal(a3_event != NULL, "out of memory\n");
+    a3_event->cell_id = *A3_EventList.paramarray[i][MEASUREMENT_EVENTS_CELL_ID_IDX].i64ptr;
+    a3_event->timeToTrigger = *A3_EventList.paramarray[i][MEASUREMENT_EVENTS_TIMETOTRIGGER_IDX].i64ptr;
+    a3_event->a3_offset = *A3_EventList.paramarray[i][MEASUREMENT_EVENTS_OFFSET_IDX].i64ptr;
+    a3_event->hysteresis = *A3_EventList.paramarray[i][MEASUREMENT_EVENTS_HYSTERESIS_IDX].i64ptr;
+
+    if (a3_event->cell_id == -1)
+      measurementConfig->is_default_a3_configuration_exists = true;
+
+    seq_arr_push_back(measurementConfig->a3_event_list, a3_event, sizeof(nr_a3_event_t));
   }
-  AssertFatal(gscn >= start_gscn && gscn <= end_gscn,
-              "GSCN %d corresponding to SSB frequency %lu does not belong to GSCN range for band %d\n",
-              gscn, freq, band);
-  int rel_gscn = gscn - start_gscn;
-  AssertFatal(rel_gscn % step_gscn == 0,
-              "GSCN %d corresponding to SSB frequency %lu not in accordance with GSCN step for band %d\n",
-               gscn, freq, band);
 }
 
 void RCconfig_NRRRC(gNB_RRC_INST *rrc)
@@ -1544,7 +1708,7 @@ void RCconfig_NRRRC(gNB_RRC_INST *rrc)
 
   config_get(config_get_if(), GNBSParams, sizeofArray(GNBSParams), NULL);
   num_gnbs = GNBSParams[GNB_ACTIVE_GNBS_IDX].numelt;
-  AssertFatal (i<num_gnbs,"Failed to parse config file no %uth element in %s \n",i, GNB_CONFIG_STRING_ACTIVE_GNBS);
+  AssertFatal (i < num_gnbs,"Failed to parse config file no %dth element in %s \n", i, GNB_CONFIG_STRING_ACTIVE_GNBS);
   AssertFatal(num_gnbs == 1, "required section \"gNBs\" not in config!\n");
 
   if (num_gnbs > 0) {
@@ -1566,19 +1730,18 @@ void RCconfig_NRRRC(gNB_RRC_INST *rrc)
 
     sprintf(aprefix, "%s.[%i]", GNB_CONFIG_STRING_GNB_LIST, 0);
 
-    printf("NRRRC %u: Southbound Transport %s\n",i,*(GNBParamList.paramarray[i][GNB_TRANSPORT_S_PREFERENCE_IDX].strptr));
+    printf("NRRRC %d: Southbound Transport %s\n", i, *(GNBParamList.paramarray[i][GNB_TRANSPORT_S_PREFERENCE_IDX].strptr));
 
     rrc->node_type = get_node_type();
     rrc->node_id        = gnb_id;
     if (NODE_IS_CU(rrc->node_type)) {
       paramdef_t SCTPParams[]  = GNBSCTPPARAMS_DESC;
       char aprefix[MAX_OPTNAME_SIZE*2 + 8];
-      sprintf(aprefix,"%s.[%u].%s",GNB_CONFIG_STRING_GNB_LIST,i,GNB_CONFIG_STRING_SCTP_CONFIG);
+      sprintf(aprefix,"%s.[%d].%s", GNB_CONFIG_STRING_GNB_LIST, i, GNB_CONFIG_STRING_SCTP_CONFIG);
       config_get(config_get_if(), SCTPParams, sizeofArray(SCTPParams), aprefix);
-      LOG_I(GNB_APP,"F1AP: gNB_CU_id[%d] %d\n",k,rrc->node_id);
+      LOG_I(GNB_APP,"F1AP: gNB_CU_id[%d] %d\n", k, rrc->node_id);
       rrc->node_name = strdup(*(GNBParamList.paramarray[0][GNB_GNB_NAME_IDX].strptr));
-      LOG_I(GNB_APP,"F1AP: gNB_CU_name[%d] %s\n",k,rrc->node_name);
-      rrc->eth_params_s.local_if_name            = strdup(*(GNBParamList.paramarray[i][GNB_LOCAL_S_IF_NAME_IDX].strptr));
+      LOG_I(GNB_APP,"F1AP: gNB_CU_name[%d] %s\n", k, rrc->node_name);
       rrc->eth_params_s.my_addr                  = strdup(*(GNBParamList.paramarray[i][GNB_LOCAL_S_ADDRESS_IDX].strptr));
       rrc->eth_params_s.remote_addr              = strdup(*(GNBParamList.paramarray[i][GNB_REMOTE_S_ADDRESS_IDX].strptr));
       rrc->eth_params_s.my_portc                 = *(GNBParamList.paramarray[i][GNB_LOCAL_S_PORTC_IDX].uptr);
@@ -1595,7 +1758,6 @@ void RCconfig_NRRRC(gNB_RRC_INST *rrc)
     if (strcmp(*(GNBParamList.paramarray[i][GNB_TRANSPORT_S_PREFERENCE_IDX].strptr), "local_mac") == 0) {
       
     } else if (strcmp(*(GNBParamList.paramarray[i][GNB_TRANSPORT_S_PREFERENCE_IDX].strptr), "cudu") == 0) {
-      rrc->eth_params_s.local_if_name            = strdup(*(GNBParamList.paramarray[i][GNB_LOCAL_S_IF_NAME_IDX].strptr));
       rrc->eth_params_s.my_addr                  = strdup(*(GNBParamList.paramarray[i][GNB_LOCAL_S_ADDRESS_IDX].strptr));
       rrc->eth_params_s.remote_addr              = strdup(*(GNBParamList.paramarray[i][GNB_REMOTE_S_ADDRESS_IDX].strptr));
       rrc->eth_params_s.my_portc                 = *(GNBParamList.paramarray[i][GNB_LOCAL_S_PORTC_IDX].uptr);
@@ -1615,7 +1777,10 @@ void RCconfig_NRRRC(gNB_RRC_INST *rrc)
         char gnbpath[MAX_OPTNAME_SIZE + 8];
         sprintf(gnbpath,"%s.[%i]",GNB_CONFIG_STRING_GNB_LIST,k);
 
-	
+        fill_neighbour_cell_configuration(k, rrc);
+
+        fill_measurement_configuration(k, rrc);
+
         paramdef_t PLMNParams[] = GNBPLMNPARAMS_DESC;
 
         paramlist_def_t PLMNParamList = {GNB_CONFIG_STRING_PLMN_LIST, NULL, 0};
@@ -1804,27 +1969,15 @@ int RCconfig_NR_NG(MessageDef *msg_p, uint32_t i) {
             for (int l = 0; l < NGParamList.numelt; l++) {
               
               NGAP_REGISTER_GNB_REQ (msg_p).nb_amf += 1;
-              
               strcpy(NGAP_REGISTER_GNB_REQ (msg_p).amf_ip_address[l].ipv4_address,*(NGParamList.paramarray[l][GNB_AMF_IPV4_ADDRESS_IDX].strptr));
-              strcpy(NGAP_REGISTER_GNB_REQ (msg_p).amf_ip_address[l].ipv6_address,*(NGParamList.paramarray[l][GNB_AMF_IPV6_ADDRESS_IDX].strptr));
-
-              if (strcmp(*(NGParamList.paramarray[l][GNB_AMF_IP_ADDRESS_ACTIVE_IDX].strptr), "yes") == 0) {
-              } 
-              if (strcmp(*(NGParamList.paramarray[l][GNB_AMF_IP_ADDRESS_PREFERENCE_IDX].strptr), "ipv4") == 0) {
-                NGAP_REGISTER_GNB_REQ (msg_p).amf_ip_address[j].ipv4 = 1;
-              } else if (strcmp(*(NGParamList.paramarray[l][GNB_AMF_IP_ADDRESS_PREFERENCE_IDX].strptr), "ipv6") == 0) {
-                NGAP_REGISTER_GNB_REQ (msg_p).amf_ip_address[j].ipv6 = 1;
-              } else if (strcmp(*(NGParamList.paramarray[l][GNB_AMF_IP_ADDRESS_PREFERENCE_IDX].strptr), "no") == 0) {
-                NGAP_REGISTER_GNB_REQ (msg_p).amf_ip_address[j].ipv4 = 1;
-                NGAP_REGISTER_GNB_REQ (msg_p).amf_ip_address[j].ipv6 = 1;
-              }
+              NGAP_REGISTER_GNB_REQ (msg_p).amf_ip_address[j].ipv4 = 1;
+              NGAP_REGISTER_GNB_REQ (msg_p).amf_ip_address[j].ipv6 = 0;
 
               /* not in configuration yet ...
               if (NGParamList.paramarray[l][GNB_AMF_BROADCAST_PLMN_INDEX].iptr)
                 NGAP_REGISTER_GNB_REQ(msg_p).broadcast_plmn_num[l] = NGParamList.paramarray[l][GNB_AMF_BROADCAST_PLMN_INDEX].numelt;
               else
                 NGAP_REGISTER_GNB_REQ(msg_p).broadcast_plmn_num[l] = 0;
-              */
 
               AssertFatal(NGAP_REGISTER_GNB_REQ(msg_p).broadcast_plmn_num[l] <= NGAP_REGISTER_GNB_REQ(msg_p).num_plmn,
                           "List of broadcast PLMN to be sent to AMF can not be longer than actual "
@@ -1833,7 +1986,7 @@ int RCconfig_NR_NG(MessageDef *msg_p, uint32_t i) {
                           NGAP_REGISTER_GNB_REQ(msg_p).broadcast_plmn_num[l]);
 
               for (int el = 0; el < NGAP_REGISTER_GNB_REQ(msg_p).broadcast_plmn_num[l]; ++el) {
-                /* UINTARRAY gets mapped to int, see config_libconfig.c:223 */
+                // UINTARRAY gets mapped to int, see config_libconfig.c:223
                 NGAP_REGISTER_GNB_REQ(msg_p).broadcast_plmn_index[l][el] = NGParamList.paramarray[l][GNB_AMF_BROADCAST_PLMN_INDEX].iptr[el];
                 AssertFatal(NGAP_REGISTER_GNB_REQ(msg_p).broadcast_plmn_index[l][el] >= 0
                             && NGAP_REGISTER_GNB_REQ(msg_p).broadcast_plmn_index[l][el] < NGAP_REGISTER_GNB_REQ(msg_p).num_plmn,
@@ -1841,6 +1994,7 @@ int RCconfig_NR_NG(MessageDef *msg_p, uint32_t i) {
                             NGAP_REGISTER_GNB_REQ(msg_p).broadcast_plmn_index[l][el],
                             NGAP_REGISTER_GNB_REQ(msg_p).num_plmn);
               }
+              */
 
               /* if no broadcasst_plmn array is defined, fill default values */
               if (NGAP_REGISTER_GNB_REQ(msg_p).broadcast_plmn_num[l] == 0) {
@@ -2080,18 +2234,8 @@ int RCconfig_NR_X2(MessageDef *msg_p, uint32_t i) {
             for (l = 0; l < X2ParamList.numelt; l++) {
               X2AP_REGISTER_ENB_REQ (msg_p).nb_x2 += 1;
               strcpy(X2AP_REGISTER_ENB_REQ (msg_p).target_enb_x2_ip_address[l].ipv4_address,*(X2ParamList.paramarray[l][ENB_X2_IPV4_ADDRESS_IDX].strptr));
-              strcpy(X2AP_REGISTER_ENB_REQ (msg_p).target_enb_x2_ip_address[l].ipv6_address,*(X2ParamList.paramarray[l][ENB_X2_IPV6_ADDRESS_IDX].strptr));
-
-              if (strcmp(*(X2ParamList.paramarray[l][ENB_X2_IP_ADDRESS_PREFERENCE_IDX].strptr), "ipv4") == 0) {
-                X2AP_REGISTER_ENB_REQ (msg_p).target_enb_x2_ip_address[l].ipv4 = 1;
-                X2AP_REGISTER_ENB_REQ (msg_p).target_enb_x2_ip_address[l].ipv6 = 0;
-              } else if (strcmp(*(X2ParamList.paramarray[l][ENB_X2_IP_ADDRESS_PREFERENCE_IDX].strptr), "ipv6") == 0) {
-                X2AP_REGISTER_ENB_REQ (msg_p).target_enb_x2_ip_address[l].ipv4 = 0;
-                X2AP_REGISTER_ENB_REQ (msg_p).target_enb_x2_ip_address[l].ipv6 = 1;
-              } else if (strcmp(*(X2ParamList.paramarray[l][ENB_X2_IP_ADDRESS_PREFERENCE_IDX].strptr), "no") == 0) {
-                X2AP_REGISTER_ENB_REQ (msg_p).target_enb_x2_ip_address[l].ipv4 = 1;
-                X2AP_REGISTER_ENB_REQ (msg_p).target_enb_x2_ip_address[l].ipv6 = 1;
-              }
+              X2AP_REGISTER_ENB_REQ (msg_p).target_enb_x2_ip_address[l].ipv4 = 1;
+              X2AP_REGISTER_ENB_REQ (msg_p).target_enb_x2_ip_address[l].ipv6 = 0;
             }
 
             // timers

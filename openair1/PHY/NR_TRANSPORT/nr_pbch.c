@@ -33,9 +33,9 @@
 
 #include "PHY/defs_gNB.h"
 #include "PHY/NR_TRANSPORT/nr_transport_proto.h"
-#include "PHY/LTE_REFSIG/lte_refsig.h"
 #include "PHY/sse_intrin.h"
 #include "executables/softmodem-common.h"
+#include "openair1/PHY/NR_REFSIG/nr_refsig_common.h"
 
 //#define DEBUG_PBCH
 //#define DEBUG_PBCH_ENCODING
@@ -143,27 +143,22 @@ int nr_generate_pbch_dmrs(uint32_t *gold_pbch_dmrs,
 }
 
 static void nr_pbch_scrambling(NR_gNB_PBCH *pbch,
-                        uint32_t Nid,
-                        uint8_t nushift,
-                        uint16_t M,
-                        uint16_t length,
-                        uint8_t encoded,
-                        uint32_t unscrambling_mask) {
-  uint8_t reset, offset;
-  uint32_t x1 = 0, x2 = 0, s = 0;
+                               uint32_t Nid,
+                               uint8_t nushift,
+                               uint16_t M,
+                               uint16_t length,
+                               uint8_t encoded,
+                               uint32_t unscrambling_mask)
+{
   uint32_t *pbch_e = pbch->pbch_e;
-  reset = 1;
   // x1 is set in lte_gold_generic
-  x2 = Nid;
 
+  const int len = (nushift * M + 31) / 32 + (length + 31) / 32;
+  uint32_t *s = gold_cache(Nid, len);
   // The Gold sequence is shifted by nushift* M, so we skip (nushift*M /32) double words
-  for (int i=0; i<(uint16_t)ceil(((float)nushift*M)/32); i++) {
-    s = lte_gold_generic(&x1, &x2, reset);
-    reset = 0;
-  }
-
+  int goldIdx = (nushift * M + 31) / 32 - 1;
   // Scrambling is now done with offset (nushift*M)%32
-  offset = (nushift*M)&0x1f;
+  uint8_t offset = (nushift * M) & 0x1f;
 #ifdef DEBUG_PBCH_ENCODING
   printf("Scrambling params: nushift %d M %d length %d encoded %d offset %d\n", nushift, M, length, encoded, offset);
 #endif
@@ -178,28 +173,21 @@ static void nr_pbch_scrambling(NR_gNB_PBCH *pbch,
       if ((unscrambling_mask>>i)&1)
         pbch->pbch_a_prime ^= ((pbch->pbch_a_interleaved>>i)&1)<<i;
       else {
-        if (((k+offset)&0x1f)==0) {
-          s = lte_gold_generic(&x1, &x2, reset);
-          reset = 0;
-        }
-
-        pbch->pbch_a_prime ^= (((pbch->pbch_a_interleaved>>i)&1) ^ ((s>>((k+offset)&0x1f))&1))<<i;
+        if (((k + offset) & 0x1f) == 0)
+          goldIdx++;
+        pbch->pbch_a_prime ^= (((pbch->pbch_a_interleaved >> i) & 1) ^ ((s[goldIdx] >> ((k + offset) & 0x1f)) & 1)) << i;
         k++;                  /// k increase only when payload bit is not special bit
       }
     }
   } else {
     /// 2nd Scrambling
     for (int i = 0; i < length; ++i) {
-      if (((i+offset)&0x1f)==0) {
-        s = lte_gold_generic(&x1, &x2, reset);
-        reset = 0;
-      }
-
-      pbch_e[i>>5] ^= (((s>>((i+offset)&0x1f))&1)<<(i&0x1f));
+      if (((i + offset) & 0x1f) == 0)
+        goldIdx++;
+      pbch_e[i >> 5] ^= (((s[goldIdx] >> ((i + offset) & 0x1f)) & 1) << (i & 0x1f));
     }
   }
 }
-
 
 void nr_init_pbch_interleaver(uint8_t *interleaver) {
   uint8_t j_sfn=0, j_hrf=10, j_ssb=11, j_other=14;
@@ -265,10 +253,10 @@ int nr_generate_pbch(nfapi_nr_dl_tti_ssb_pdu *ssb_pdu,
   pbch->pbch_a |= n_hf<<28; // half frame index bit
 
   if (Lmax == 64)
-    for (int i=0; i<3; i++)
-      pbch->pbch_a |= ((ssb_index>>(5-i))&1)<<(29+i); // resp. 6th, 5th and 4th bits of ssb_index
+    for (int i = 0; i < 3; i++)
+      pbch->pbch_a |= (uint32_t)((ssb_index >> (5 - i)) & 1) << (29 + i); // resp. 6th, 5th and 4th bits of ssb_index
   else
-    pbch->pbch_a |= ((ssb_sc_offset>>4)&1)<<29; //MSB of k_SSB (bit index 4)
+    pbch->pbch_a |= ((ssb_sc_offset >> 4) & 1) << 29; //MSB of k_SSB (bit index 4)
 
   LOG_D(PHY,"After extra byte: pbch_a = 0x%08x\n",pbch->pbch_a);
 

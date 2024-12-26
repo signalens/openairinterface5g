@@ -72,8 +72,6 @@ static int DEFRUTPCORES[] = {2,4,6,8};
 #include "ENB_APP/enb_paramdef.h"
 #include "common/config/config_userapi.h"
 
-#include "SIMULATION/ETH_TRANSPORT/proto.h"
-
 #include "T.h"
 
 #include "executables/softmodem-common.h"
@@ -92,12 +90,6 @@ void prach_procedures(PHY_VARS_eNB *eNB,int br_flag);
 void stop_RU(RU_t **rup,int nb_ru);
 
 static void do_ru_synch(RU_t *ru);
-
-void configure_ru(int idx,
-                  void *arg);
-
-void configure_rru(int idx,
-                   void *arg);
 
 void reset_proc(RU_t *ru);
 int connect_rau(RU_t *ru);
@@ -2183,8 +2175,6 @@ int stop_rf(RU_t *ru) {
   return 0;
 }
 
-
-extern void configure_ru(int idx, void *arg);
 extern void fep_full(RU_t *ru, int subframe);
 extern void feptx_ofdm(RU_t *ru, int frame_tx, int tti_tx);
 extern void feptx_ofdm_2thread(RU_t *ru, int frame_tx, int tti_tx);

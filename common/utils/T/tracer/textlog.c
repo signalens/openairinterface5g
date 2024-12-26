@@ -122,13 +122,15 @@ int main(int n, char **v)
   socket = connect_to(ip, port);
   if (socket == -1) {
     printf("fatal: connection failed\n");
+    free(on_off_name);
+    free(on_off_action);
     return 1;
   }
 
   /* send the first message - activate selected traces */
   activate_traces(socket, is_on, number_of_events);
 
-  OBUF ebuf = { osize: 0, omaxsize: 0, obuf: NULL };
+  OBUF ebuf = {.osize = 0, .omaxsize = 0, .obuf = NULL};
 
   /* read messages */
   while (1) {

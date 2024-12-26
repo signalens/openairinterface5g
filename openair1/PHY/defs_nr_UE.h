@@ -39,6 +39,8 @@
 
 #include "defs_nr_common.h"
 #include "CODING/nrPolar_tools/nr_polar_pbch_defs.h"
+#include "PHY/defs_nr_sl_UE.h"
+#include "openair1/PHY/nr_phy_common/inc/nr_ue_phy_meas.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -48,6 +50,7 @@
 #include "common_lib.h"
 #include "fapi_nr_ue_interface.h"
 #include "assertions.h"
+//#include "openair1/SCHED_NR_UE/defs.h"
 
 #ifdef MEX
   #define msg mexPrintf
@@ -59,9 +62,9 @@
     #endif
     #define msg(aRGS...) LOG_D(PHY, ##aRGS)
 #endif
-//use msg in the real-time thread context
+// use msg in the real-time thread context
 #define msg_nrt printf
-//use msg_nrt in the non real-time context (for initialization, ...)
+// use msg_nrt in the non real-time context (for initialization, ...)
 #ifndef malloc16
     #define malloc16(x) memalign(32,x)
 #endif
@@ -121,6 +124,11 @@ typedef enum {
 } NR_CHANNEL_EST_t;
 
 #define debug_msg if (((mac_xface->frame%100) == 0) || (mac_xface->frame < 50)) msg
+
+typedef struct {
+  uint8_t decoded_output[3]; // PBCH paylod not larger than 3B
+  uint8_t xtra_byte;
+} fapiPbch_t;
 
 typedef struct {
 
@@ -307,16 +315,6 @@ typedef struct {
   fapi_nr_ul_config_srs_pdu srs_config_pdu;
 } NR_UE_SRS;
 
-// structure used for multiple SSB detection
-typedef struct NR_UE_SSB {
-  uint8_t i_ssb;   // i_ssb between 0 and 7 (it corresponds to ssb_index only for Lmax=4,8)
-  uint8_t n_hf;    // n_hf = 0,1 for Lmax =4 or n_hf = 0 for Lmax =8,64
-  uint32_t metric; // metric to order SSB hypothesis
-  uint32_t c_re;
-  uint32_t c_im;
-  struct NR_UE_SSB *next_ssb;
-} NR_UE_SSB;
-
 typedef struct UE_NR_SCAN_INFO_s {
   /// 10 best amplitudes (linear) for each pss signals
   int32_t amp[3][10];
@@ -410,32 +408,7 @@ typedef struct PHY_VARS_NR_UE_s {
   uint32_t dmrs_pbch_bitmap_nr[DMRS_PBCH_I_SSB][DMRS_PBCH_N_HF][DMRS_BITMAP_SIZE];
 
 #endif
-
-
-  /// PBCH DMRS sequence
-  uint32_t nr_gold_pbch[2][64][NR_PBCH_DMRS_LENGTH_DWORD];
-
-  /// PDSCH DMRS
-  uint32_t ****nr_gold_pdsch[NUMBER_OF_CONNECTED_eNB_MAX];
-
-  // Scrambling IDs used in PDSCH DMRS
-  uint16_t scramblingID_dlsch[2];
-
   // Scrambling IDs used in PUSCH DMRS
-  uint16_t scramblingID_ulsch[2];
-
-  /// PDCCH DMRS
-  uint32_t ***nr_gold_pdcch[NUMBER_OF_CONNECTED_eNB_MAX];
-
-  // Scrambling IDs used in PDCCH DMRS
-  uint16_t scramblingID_pdcch;
-
-  /// PUSCH DMRS sequence
-  uint32_t ****nr_gold_pusch_dmrs;
-
-  // PRS sequence per gNB, per resource
-  uint32_t *****nr_gold_prs;
-
   c16_t X_u[64][839];
 
   // flag to activate PRB based averaging of channel estimates
@@ -468,15 +441,15 @@ typedef struct PHY_VARS_NR_UE_s {
   int dlsch_ra_errors[NUMBER_OF_CONNECTED_gNB_MAX];
   int dlsch_p_received[NUMBER_OF_CONNECTED_gNB_MAX];
   int dlsch_p_errors[NUMBER_OF_CONNECTED_gNB_MAX];
-  int dlsch_mch_received_sf[MAX_MBSFN_AREA][NUMBER_OF_CONNECTED_gNB_MAX];
   int dlsch_mch_received[NUMBER_OF_CONNECTED_gNB_MAX];
+  int current_dlsch_cqi[NUMBER_OF_CONNECTED_gNB_MAX];
+  int dlsch_mch_received_sf[MAX_MBSFN_AREA][NUMBER_OF_CONNECTED_gNB_MAX];
   int dlsch_mcch_received[MAX_MBSFN_AREA][NUMBER_OF_CONNECTED_gNB_MAX];
   int dlsch_mtch_received[MAX_MBSFN_AREA][NUMBER_OF_CONNECTED_gNB_MAX];
   int dlsch_mcch_errors[MAX_MBSFN_AREA][NUMBER_OF_CONNECTED_gNB_MAX];
   int dlsch_mtch_errors[MAX_MBSFN_AREA][NUMBER_OF_CONNECTED_gNB_MAX];
   int dlsch_mcch_trials[MAX_MBSFN_AREA][NUMBER_OF_CONNECTED_gNB_MAX];
   int dlsch_mtch_trials[MAX_MBSFN_AREA][NUMBER_OF_CONNECTED_gNB_MAX];
-  int current_dlsch_cqi[NUMBER_OF_CONNECTED_gNB_MAX];
   uint8_t               decode_SIB;
   uint8_t               decode_MIB;
   uint8_t               init_sync_frame;
@@ -513,6 +486,7 @@ typedef struct PHY_VARS_NR_UE_s {
 
   uint8_t max_ldpc_iterations;
 
+  int ldpc_offload_enable;
   /// SRS variables
   nr_srs_info_t *nr_srs_info;
 
@@ -529,56 +503,10 @@ typedef struct PHY_VARS_NR_UE_s {
   scheduling_request_config_t scheduling_request_config_nr[NUMBER_OF_CONNECTED_gNB_MAX];
 
 #endif
-
-  time_stats_t phy_proc;
-  time_stats_t phy_proc_tx;
-  time_stats_t phy_proc_rx;
-
-  time_stats_t ue_ul_indication_stats;
-
   uint32_t use_ia_receiver;
-
-  time_stats_t ofdm_mod_stats;
-  time_stats_t ulsch_encoding_stats;
-  time_stats_t ulsch_ldpc_encoding_stats;
-  time_stats_t ulsch_modulation_stats;
-  time_stats_t ulsch_segmentation_stats;
-  time_stats_t ulsch_rate_matching_stats;
-  time_stats_t ulsch_interleaving_stats;
-  time_stats_t ulsch_multiplexing_stats;
-
-  time_stats_t ue_front_end_stat;
-  time_stats_t ue_front_end_per_slot_stat[LTE_SLOTS_PER_SUBFRAME];
-  time_stats_t pdcch_procedures_stat;
-  time_stats_t pdsch_procedures_stat;
-  time_stats_t pdsch_procedures_per_slot_stat[LTE_SLOTS_PER_SUBFRAME];
-  time_stats_t dlsch_procedures_stat;
-
-  time_stats_t rx_pdsch_stats;
-  time_stats_t ofdm_demod_stats;
-  time_stats_t dlsch_rx_pdcch_stats;
-  time_stats_t rx_dft_stats;
-  time_stats_t dlsch_channel_estimation_stats;
-  time_stats_t dlsch_freq_offset_estimation_stats;
-  time_stats_t dlsch_decoding_stats;
-  time_stats_t dlsch_demodulation_stats;
-  time_stats_t dlsch_rate_unmatching_stats;
-  time_stats_t dlsch_ldpc_decoding_stats;
-  time_stats_t dlsch_deinterleaving_stats;
-  time_stats_t dlsch_llr_stats;
-  time_stats_t dlsch_llr_stats_parallelization[LTE_SLOTS_PER_SUBFRAME];
-  time_stats_t dlsch_unscrambling_stats;
-  time_stats_t dlsch_rate_matching_stats;
-  time_stats_t dlsch_ldpc_encoding_stats;
-  time_stats_t dlsch_interleaving_stats;
-  time_stats_t dlsch_tc_init_stats;
-  time_stats_t dlsch_tc_alpha_stats;
-  time_stats_t dlsch_tc_beta_stats;
-  time_stats_t dlsch_tc_gamma_stats;
-  time_stats_t dlsch_tc_ext_stats;
-  time_stats_t dlsch_tc_intl1_stats;
-  time_stats_t dlsch_tc_intl2_stats;
-  time_stats_t tx_prach;
+  // TODO: move this out of phy
+  time_stats_t ue_ul_indication_stats;
+  nr_ue_phy_cpu_stat_t phy_cpu_stats;
 
   /// RF and Interface devices per CC
   openair0_device rfdevice;
@@ -599,8 +527,15 @@ typedef struct PHY_VARS_NR_UE_s {
   void *phy_sim_pdsch_dl_ch_estimates;
   void *phy_sim_pdsch_dl_ch_estimates_ext;
   uint8_t *phy_sim_dlsch_b;
-  notifiedFIFO_t phy_config_ind;
+
   notifiedFIFO_t tx_resume_ind_fifo[NR_MAX_SLOTS_PER_FRAME];
+
+  // Gain change required for automation RX gain change
+  int adjust_rxgain;
+
+  // Sidelink parameters
+  sl_nr_sidelink_mode_t sl_mode;
+  sl_nr_ue_phy_params_t SL_UE_PHY_PARAMS;
 } PHY_VARS_NR_UE;
 
 typedef struct {
@@ -619,15 +554,53 @@ typedef struct {
   int frame_rx;
 } UE_nr_rxtx_proc_t;
 
+typedef struct {
+  bool cell_detected;
+  int rx_offset;
+  int frame_id;
+} nr_initial_sync_t;
+
+typedef struct {
+  nr_gscn_info_t gscnInfo;
+  int foFlag;
+  int targetNidCell;
+  c16_t **rxdata;
+  NR_DL_FRAME_PARMS *fp;
+  UE_nr_rxtx_proc_t *proc;
+  int nFrames;
+  int halfFrameBit;
+  int symbolOffset;
+  int ssbIndex;
+  int ssbOffset;
+  int nidCell;
+  int freqOffset;
+  nr_initial_sync_t syncRes;
+  fapiPbch_t pbchResult;
+  int pssCorrPeakPower;
+  int pssCorrAvgPower;
+  int adjust_rxgain;
+} nr_ue_ssb_scan_t;
+
 typedef struct nr_phy_data_tx_s {
   NR_UE_ULSCH_t ulsch;
   NR_UE_PUCCH pucch_vars;
+
+  // Sidelink Rx action decided by MAC
+  sl_nr_tx_config_type_enum_t sl_tx_action;
+  sl_nr_tx_config_psbch_pdu_t psbch_vars;
+
 } nr_phy_data_tx_t;
 
 typedef struct nr_phy_data_s {
   NR_UE_PDCCH_CONFIG phy_pdcch_config;
   NR_UE_DLSCH_t dlsch[2];
+
+  // Sidelink Rx action decided by MAC
+  sl_nr_rx_config_type_enum_t sl_rx_action;
+
 } nr_phy_data_t;
+
+enum stream_status_e { STREAM_STATUS_UNSYNC, STREAM_STATUS_SYNCING, STREAM_STATUS_SYNCED};
 /* this structure is used to pass both UE phy vars and
  * proc to the function UE_thread_rxn_txnp4
  */
@@ -638,6 +611,7 @@ typedef struct nr_rxtx_thread_data_s {
   nr_phy_data_t phy_data;
   int tx_wait_for_dlsch;
   int rx_offset;
+  enum stream_status_e stream_status;
 } nr_rxtx_thread_data_t;
 
 typedef struct LDPCDecode_ue_s {
@@ -666,5 +640,12 @@ typedef struct LDPCDecode_ue_s {
   UE_nr_rxtx_proc_t proc;
 } ldpcDecode_ue_t;
 
-#include "SIMULATION/ETH_TRANSPORT/defs.h"
+static inline void start_meas_nr_ue_phy(PHY_VARS_NR_UE *ue, int meas_index) {
+  start_meas(&ue->phy_cpu_stats.cpu_time_stats[meas_index]);
+}
+
+static inline void stop_meas_nr_ue_phy(PHY_VARS_NR_UE *ue, int meas_index) {
+  stop_meas(&ue->phy_cpu_stats.cpu_time_stats[meas_index]);
+}
+
 #endif

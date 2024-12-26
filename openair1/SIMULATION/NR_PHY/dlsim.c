@@ -95,6 +95,9 @@ nfapi_ue_release_request_body_t release_rntis;
 instance_t DUuniqInstance=0;
 instance_t CUuniqInstance=0;
 
+// NTN cellSpecificKoffset-r17, but in slots for DL SCS
+unsigned int NTN_UE_Koffset = 0;
+
 void nr_derive_key_ng_ran_star(uint16_t pci, uint64_t nr_arfcn_dl, const uint8_t key[32], uint8_t *key_ng_ran_star)
 {
 }
@@ -115,8 +118,6 @@ void nr_derive_key(int alg_type, uint8_t alg_id, const uint8_t key[32], uint8_t 
 }
 
 void processSlotTX(void *arg) {}
-
-nr_bler_struct nr_bler_data[NR_NUM_MCS];
 
 // needed for some functions
 openair0_config_t openair0_cfg[MAX_CARDS];
@@ -336,7 +337,14 @@ int main(int argc, char **argv)
 
   FILE *scg_fd=NULL;
 
-  while ((c = getopt(argc, argv, "f:hA:p:f:g:i:n:s:S:t:v:x:y:z:o:M:N:F:GR:d:PI:L:a:b:e:m:w:T:U:q:X:Y:Z:c")) != -1) {
+  while ((c = getopt(argc, argv, "--:O:f:hA:p:f:g:i:n:s:S:t:v:x:y:z:o:M:N:F:GR:d:PI:L:a:b:e:m:w:T:U:q:X:Y:Z:c")) != -1) {
+
+    /* ignore long options starting with '--', option '-O' and their arguments that are handled by configmodule */
+    /* with this opstring getopt returns 1 for non-option arguments, refer to 'man 3 getopt' */
+    if (c == 1 || c == '-' || c == 'O')
+      continue;
+
+    printf("handling optarg %c\n",c);
     switch (c) {
     case 'f':
       scg_fd = fopen(optarg,"r");
@@ -636,7 +644,17 @@ int main(int argc, char **argv)
                                 .minRXTXTIME = 6,
                                 .do_CSIRS = 0,
                                 .do_SRS = 0,
-                                .force_256qam_off = false};
+                                .force_256qam_off = false,
+                                .timer_config.sr_ProhibitTimer = 0,
+                                .timer_config.sr_TransMax = 64,
+                                .timer_config.sr_ProhibitTimer_v1700 = 0,
+                                .timer_config.t300 = 400,
+                                .timer_config.t301 = 400,
+                                .timer_config.t310 = 2000,
+                                .timer_config.n310 = 10,
+                                .timer_config.t311 = 3000,
+                                .timer_config.n311 = 1,
+                                .timer_config.t319 = 400};
 
   RC.nb_nr_macrlc_inst = 1;
   RC.nb_nr_mac_CC = (int*)malloc(RC.nb_nr_macrlc_inst*sizeof(int));
@@ -691,6 +709,8 @@ int main(int argc, char **argv)
 
   NR_ServingCellConfig_t *scd = calloc(1,sizeof(*scd));
   prepare_scd(scd);
+  /* removes unnecessary BWPs, if any */
+  fix_scd(scd);
 
   gNB->ap_N1 = pdsch_AntennaPorts.N1;
   gNB->ap_N2 = pdsch_AntennaPorts.N2;
@@ -702,9 +722,6 @@ int main(int argc, char **argv)
   prepare_sim_uecap(UE_Capability_nr, scc, mu, N_RB_DL, g_mcsTableIdx, 0);
 
   NR_CellGroupConfig_t *secondaryCellGroup = get_default_secondaryCellGroup(scc, scd, UE_Capability_nr, 0, 1, &conf, 0);
-
-  /* RRC parameter validation for secondaryCellGroup */
-  fix_scd(scd);
 
   /* -U option modify DMRS */
   if(modify_dmrs) {
@@ -809,6 +826,7 @@ int main(int argc, char **argv)
   UE->frame_parms.nb_antennas_rx = n_rx;
   UE->frame_parms.nb_antenna_ports_gNB = n_tx;
   UE->max_ldpc_iterations = max_ldpc_iterations;
+  init_nr_ue_phy_cpu_stats(&UE->phy_cpu_stats);
 
   if (run_initial_sync==1)
     UE->is_synchronized = 0;
@@ -822,18 +840,6 @@ int main(int argc, char **argv)
   }
 
   init_nr_ue_transport(UE);
-
-  nr_gold_pbch(UE);
-
-  // compute the scramblingID_pdcch and the gold pdcch
-  UE->scramblingID_pdcch = frame_parms->Nid_cell;
-  nr_gold_pdcch(UE, frame_parms->Nid_cell);
-
-  // compute the scrambling IDs for PDSCH DMRS
-  for (int i = 0; i < 2; i++) {
-    UE->scramblingID_dlsch[i] = frame_parms->Nid_cell;
-    nr_gold_pdsch(UE, i, UE->scramblingID_dlsch[i]);
-  }
 
   nr_l2_init_ue(1);
   UE_mac = get_mac_inst(0);
@@ -873,7 +879,7 @@ int main(int argc, char **argv)
   asn1cFreeStruc(asn_DEF_NR_CellGroupConfig, UE_CellGroup);
 
   UE_mac->state = UE_CONNECTED;
-  UE_mac->ra.ra_state = RA_SUCCEEDED;
+  UE_mac->ra.ra_state = nrRA_SUCCEEDED;
 
   nr_phy_data_t phy_data = {0};
   fapi_nr_dl_config_request_t dl_config = {.sfn = frame, .slot = slot};
@@ -917,6 +923,11 @@ int main(int argc, char **argv)
     csv_file = fopen(filename_csv, "a");
     if (csv_file == NULL) {
       printf("Can't open file \"%s\", errno %d\n", filename_csv, errno);
+      free(s_re);
+      free(s_im);
+      free(r_re);
+      free(r_im);
+      free(txdata);
       return 1;
     }
     // adding name of parameters into file
@@ -1218,41 +1229,14 @@ int main(int argc, char **argv)
       printStatIndent3(&gNB->dlsch_rate_matching_stats,"DLSCH Rate Mataching time");
       printStatIndent3(&gNB->dlsch_interleaving_stats,  "DLSCH Interleaving time");
       printStatIndent2(&gNB->dlsch_modulation_stats,"DLSCH modulation time");
-      printStatIndent2(&gNB->dlsch_scrambling_stats,  "DLSCH scrambling time");
-      printStatIndent2(&gNB->dlsch_layer_mapping_stats, "DLSCH Layer Mapping time");
+      printStatIndent2(&gNB->dlsch_scrambling_stats, "DLSCH scrambling time");
       printStatIndent2(&gNB->dlsch_resource_mapping_stats, "DLSCH Resource Mapping time");
       printStatIndent2(&gNB->dlsch_precoding_stats,"DLSCH Layer Precoding time");
 
-      printf("\nUE RX function statistics (per %d us slot)\n",1000>>*scc->ssbSubcarrierSpacing);
-      /*
-      printDistribution(&phy_proc_rx_tot, table_rx,"Total PHY proc rx");
-      printStatIndent(&ue_front_end_tot,"Front end processing");
-      printStatIndent(&dlsch_llr_tot,"rx_pdsch processing");
-      printStatIndent2(&pdsch_procedures_tot,"pdsch processing");
-      printStatIndent2(&dlsch_procedures_tot,"dlsch processing");
-      printStatIndent2(&UE->crnti_procedures_stats,"C-RNTI processing");
-      printStatIndent(&UE->ofdm_demod_stats,"ofdm demodulation");
-      printStatIndent(&UE->dlsch_channel_estimation_stats,"DLSCH channel estimation time");
-      printStatIndent(&UE->dlsch_freq_offset_estimation_stats,"DLSCH frequency offset estimation time");
-      printStatIndent(&dlsch_decoding_tot, "DLSCH Decoding time ");
-      printStatIndent(&UE->dlsch_unscrambling_stats,"DLSCH unscrambling time");
-      printStatIndent(&UE->dlsch_rate_unmatching_stats,"DLSCH Rate Unmatching");
-      printf("|__ DLSCH Turbo Decoding(%d bits), avg iterations: %.1f       %.2f us (%d cycles, %d trials)\n",
-	     UE->dlsch[0][0]->harq_processes[0]->Cminus ?
-	     UE->dlsch[0][0]->harq_processes[0]->Kminus :
-	     UE->dlsch[0][0]->harq_processes[0]->Kplus,
-	     UE->dlsch_tc_intl1_stats.trials/(double)UE->dlsch_tc_init_stats.trials,
-	     (double)UE->dlsch_turbo_decoding_stats.diff/UE->dlsch_turbo_decoding_stats.trials*timeBase,
-	     (int)((double)UE->dlsch_turbo_decoding_stats.diff/UE->dlsch_turbo_decoding_stats.trials),
-	     UE->dlsch_turbo_decoding_stats.trials);
-      printStatIndent2(&UE->dlsch_tc_init_stats,"init");
-      printStatIndent2(&UE->dlsch_tc_alpha_stats,"alpha");
-      printStatIndent2(&UE->dlsch_tc_beta_stats,"beta");
-      printStatIndent2(&UE->dlsch_tc_gamma_stats,"gamma");
-      printStatIndent2(&UE->dlsch_tc_ext_stats,"ext");
-      printStatIndent2(&UE->dlsch_tc_intl1_stats,"turbo internal interleaver");
-      printStatIndent2(&UE->dlsch_tc_intl2_stats,"intl2+HardDecode+CRC");
-      */
+      printf("\nUE function statistics (per %d us slot)\n", 1000 >> *scc->ssbSubcarrierSpacing);
+      for (int i = RX_PDSCH_STATS; i <= DLSCH_PROCEDURES_STATS; i++) {
+        printStatIndent(&UE->phy_cpu_stats.cpu_time_stats[i], UE->phy_cpu_stats.cpu_time_stats[i].meas_name);
+      }
     }
 
     if (n_trials == 1) {

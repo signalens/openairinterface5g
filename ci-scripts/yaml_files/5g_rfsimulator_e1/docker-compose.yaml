@@ -1,4 +1,3 @@
-version: '3.8'
 services:
     mysql:
         container_name: "rfsim5g-mysql"
@@ -67,8 +66,9 @@ services:
 
     oai-cucp:
         image: oaisoftwarealliance/oai-gnb:develop
-        privileged: true
         container_name: rfsim5g-oai-cucp
+        cap_drop:
+            - ALL
         environment:
             USE_ADDITIONAL_OPTIONS: --sa --log_config.global_log_options level,nocolor,time
                                     --gNBs.[0].E1_INTERFACE.[0].ipv4_cucp 192.168.77.2
@@ -93,8 +93,9 @@ services:
 
     oai-cuup:
         image: oaisoftwarealliance/oai-nr-cuup:develop
-        privileged: true
         container_name: rfsim5g-oai-cuup
+        cap_drop:
+            - ALL
         environment:
             USE_ADDITIONAL_OPTIONS: --sa --log_config.global_log_options level,nocolor,time
                                     --gNBs.[0].E1_INTERFACE.[0].ipv4_cucp 192.168.77.2
@@ -121,8 +122,9 @@ services:
 
     oai-cuup2:
         image: oaisoftwarealliance/oai-nr-cuup:develop
-        privileged: true
         container_name: rfsim5g-oai-cuup2
+        cap_drop:
+            - ALL
         environment:
             USE_ADDITIONAL_OPTIONS: --sa --log_config.global_log_options level,nocolor,time
                                     --gNBs.[0].gNB_CU_UP_ID 0xe01
@@ -152,8 +154,9 @@ services:
 
     oai-cuup3:
         image: oaisoftwarealliance/oai-nr-cuup:develop
-        privileged: true
         container_name: rfsim5g-oai-cuup3
+        cap_drop:
+            - ALL
         environment:
             USE_ADDITIONAL_OPTIONS: --sa --log_config.global_log_options level,nocolor,time
                                     --gNBs.[0].gNB_CU_UP_ID 0xe02
@@ -183,12 +186,14 @@ services:
 
     oai-du:
         image: oaisoftwarealliance/oai-gnb:develop
-        privileged: true
         container_name: rfsim5g-oai-du
+        cap_drop:
+            - ALL
         environment:
             USE_ADDITIONAL_OPTIONS: --sa --rfsim --log_config.global_log_options level,nocolor,time
-                                    --MACRLCs.[0].local_n_address 192.168.73.3
-                                    --MACRLCs.[0].remote_n_address 192.168.72.2
+                                    --MACRLCs.[0].local_n_address 192.168.72.3
+                                    --MACRLCs.[0].remote_n_address oai-cucp
+                                    --MACRLCs.[0].local_n_address_f1u 192.168.73.3
             ASAN_OPTIONS: detect_leaks=0
         depends_on:
             - oai-cucp
@@ -210,15 +215,17 @@ services:
 
     oai-du2:
         image: oaisoftwarealliance/oai-gnb:develop
-        privileged: true
         container_name: rfsim5g-oai-du2
+        cap_drop:
+            - ALL
         environment:
             USE_ADDITIONAL_OPTIONS: --sa --rfsim --log_config.global_log_options level,nocolor,time
                                     --gNBs.[0].gNB_DU_ID 0xe01
                                     --gNBs.[0].nr_cellid 87654321
                                     --gNBs.[0].servingCellConfigCommon.[0].physCellId 1
-                                    --MACRLCs.[0].local_n_address 192.168.74.3
-                                    --MACRLCs.[0].remote_n_address 192.168.72.2
+                                    --MACRLCs.[0].remote_n_address oai-cucp
+                                    --MACRLCs.[0].local_n_address 192.168.72.4
+                                    --MACRLCs.[0].local_n_address_f1u 192.168.74.3
             ASAN_OPTIONS: detect_leaks=0
         depends_on:
             - oai-cucp
@@ -240,15 +247,17 @@ services:
 
     oai-du3:
         image: oaisoftwarealliance/oai-gnb:develop
-        privileged: true
         container_name: rfsim5g-oai-du3
+        cap_drop:
+            - ALL
         environment:
             USE_ADDITIONAL_OPTIONS: --sa --rfsim --log_config.global_log_options level,nocolor,time
                                     --gNBs.[0].gNB_DU_ID 0xe02
                                     --gNBs.[0].nr_cellid 11111111
                                     --gNBs.[0].servingCellConfigCommon.[0].physCellId 2
-                                    --MACRLCs.[0].local_n_address 192.168.76.3
-                                    --MACRLCs.[0].remote_n_address 192.168.72.2
+                                    --MACRLCs.[0].remote_n_address oai-cucp
+                                    --MACRLCs.[0].local_n_address 192.168.72.5
+                                    --MACRLCs.[0].local_n_address_f1u 192.168.76.3
             ASAN_OPTIONS: detect_leaks=0
         depends_on:
             - oai-cucp
@@ -270,8 +279,12 @@ services:
 
     oai-nr-ue:
         image: oaisoftwarealliance/oai-nr-ue:develop
-        privileged: true
         container_name: rfsim5g-oai-nr-ue
+        cap_drop:
+            - ALL
+        cap_add:
+            - NET_ADMIN  # for interface bringup
+            - NET_RAW    # for ping
         environment:
             USE_ADDITIONAL_OPTIONS: --sa --rfsim --log_config.global_log_options level,nocolor,time
                                     -r 106 --numerology 1 -C 3619200000
@@ -282,6 +295,8 @@ services:
         networks:
             ue_net:
                 ipv4_address: 192.168.78.5
+        devices:
+             - /dev/net/tun:/dev/net/tun
         volumes:
             - ../../conf_files/nrue.uicc.conf:/opt/oai-nr-ue/etc/nr-ue.conf
         healthcheck:
@@ -292,8 +307,12 @@ services:
 
     oai-nr-ue2:
         image: oaisoftwarealliance/oai-nr-ue:develop
-        privileged: true
         container_name: rfsim5g-oai-nr-ue2
+        cap_drop:
+            - ALL
+        cap_add:
+            - NET_ADMIN  # for interface bringup
+            - NET_RAW    # for ping
         environment:
             USE_ADDITIONAL_OPTIONS: --sa --rfsim --log_config.global_log_options level,nocolor,time
                                     -r 106 --numerology 1 -C 3619200000
@@ -304,6 +323,8 @@ services:
         networks:
             ue_net:
                 ipv4_address: 192.168.78.6
+        devices:
+             - /dev/net/tun:/dev/net/tun
         volumes:
             - ../../conf_files/nrue.uicc.conf:/opt/oai-nr-ue/etc/nr-ue.conf
         healthcheck:
@@ -314,8 +335,12 @@ services:
 
     oai-nr-ue3:
         image: oaisoftwarealliance/oai-nr-ue:develop
-        privileged: true
         container_name: rfsim5g-oai-nr-ue3
+        cap_drop:
+            - ALL
+        cap_add:
+            - NET_ADMIN  # for interface bringup
+            - NET_RAW    # for ping
         environment:
             USE_ADDITIONAL_OPTIONS: --sa --rfsim --log_config.global_log_options level,nocolor,time
                                     -r 106 --numerology 1 -C 3619200000
@@ -327,6 +352,8 @@ services:
         networks:
             ue_net:
                 ipv4_address: 192.168.78.7
+        devices:
+             - /dev/net/tun:/dev/net/tun
         volumes:
             - ../../conf_files/nrue.uicc.conf:/opt/oai-nr-ue/etc/nr-ue.conf
         healthcheck:
@@ -389,7 +416,7 @@ networks:
         name: rfsim5g-oai-e1-net
         ipam:
             config:
-                - subnet: 192.168.77.1/28
+                - subnet: 192.168.77.0/28
         driver_opts:
             com.docker.network.bridge.name: "rfsim5g-e1"
     ue_net:
@@ -397,6 +424,6 @@ networks:
         name: rfsim5g-oai-ue-net
         ipam:
             config:
-                - subnet: 192.168.78.1/28
+                - subnet: 192.168.78.0/28
         driver_opts:
             com.docker.network.bridge.name: "rfsim5g-ue"

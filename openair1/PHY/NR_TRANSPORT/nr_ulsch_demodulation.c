@@ -454,10 +454,9 @@ static void nr_ulsch_channel_level(int **ul_ch_estimates_ext,
         avg128U = simde_mm_add_epi32(avg128U, simde_mm_srai_epi32(simde_mm_madd_epi16(ul_ch128[i], ul_ch128[i]), x));
       }
 
-      avg[aatx*frame_parms->nb_antennas_rx+aarx] = (((int32_t*)&avg128U)[0] +
-                                                    ((int32_t*)&avg128U)[1] +
-                                                    ((int32_t*)&avg128U)[2] +
-                                                    ((int32_t*)&avg128U)[3]) / y;
+      int32_t *avg32i = (int32_t *)&avg128U;
+      int64_t avg64 = (int64_t)avg32i[0] + avg32i[1] + avg32i[2] + avg32i[3];
+      avg[aatx * frame_parms->nb_antennas_rx + aarx] = avg64 / y;
     }
   }
 
@@ -1389,6 +1388,20 @@ static void inner_rx(PHY_VARS_gNB *gNB,
                           rel15_ul->qam_mod_order);
 }
 
+typedef struct puschSymbolProc_s {
+  PHY_VARS_gNB *gNB;
+  NR_DL_FRAME_PARMS *frame_parms;
+  nfapi_nr_pusch_pdu_t *rel15_ul;
+  int ulsch_id;
+  int slot;
+  int startSymbol;
+  int numSymbols;
+  int16_t *llr;
+  int16_t **llr_layers;
+  int16_t *scramblingSequence;
+  uint32_t nvar;
+} puschSymbolProc_t;
+
 static void nr_pusch_symbol_processing(void *arg)
 {
   puschSymbolProc_t *rdata=(puschSymbolProc_t*)arg;
@@ -1438,8 +1451,10 @@ static void nr_pusch_symbol_processing(void *arg)
     }
     // unscrambling
     int16_t *llr16 = (int16_t*)&rdata->llr[pusch_vars->llr_offset[symbol] * rel15_ul->nrOfLayers];
-    for (int i = 0; i < (nb_re_pusch * rel15_ul->qam_mod_order * rel15_ul->nrOfLayers); i++) 
-      llr16[i] = llr_ptr[i] * rdata->s[i];
+    int16_t *s = rdata->scramblingSequence + pusch_vars->llr_offset[symbol] * rel15_ul->nrOfLayers;
+    const int end = nb_re_pusch * rel15_ul->qam_mod_order * rel15_ul->nrOfLayers;
+    for (int i = 0; i < end; i++)
+      llr16[i] = llr_ptr[i] * s[i];
   }
 }
 
@@ -1450,16 +1465,13 @@ int nr_rx_pusch_tp(PHY_VARS_gNB *gNB,
                    uint8_t slot,
                    unsigned char harq_pid)
 {
-  uint8_t aarx;
-  uint32_t bwp_start_subcarrier;
-
   NR_DL_FRAME_PARMS *frame_parms = &gNB->frame_parms;
   nfapi_nr_pusch_pdu_t *rel15_ul = &gNB->ulsch[ulsch_id].harq_process->ulsch_pdu;
 
   NR_gNB_PUSCH *pusch_vars = &gNB->pusch_vars[ulsch_id];
   pusch_vars->dmrs_symbol = INVALID_VALUE;
-  gNB->nbSymb = 0;
-  bwp_start_subcarrier = ((rel15_ul->rb_start + rel15_ul->bwp_start)*NR_NB_SC_PER_RB + frame_parms->first_carrier_offset) % frame_parms->ofdm_symbol_size;
+  int nbSymb = 0;
+  uint32_t bwp_start_subcarrier = ((rel15_ul->rb_start + rel15_ul->bwp_start) * NR_NB_SC_PER_RB + frame_parms->first_carrier_offset) % frame_parms->ofdm_symbol_size;
   LOG_D(PHY,"pusch %d.%d : bwp_start_subcarrier %d, rb_start %d, first_carrier_offset %d\n", frame,slot,bwp_start_subcarrier, rel15_ul->rb_start, frame_parms->first_carrier_offset);
   LOG_D(PHY,"pusch %d.%d : ul_dmrs_symb_pos %x\n",frame,slot,rel15_ul->ul_dmrs_symb_pos);
 
@@ -1477,11 +1489,12 @@ int nr_rx_pusch_tp(PHY_VARS_gNB *gNB,
       if (pusch_vars->dmrs_symbol == INVALID_VALUE)
         pusch_vars->dmrs_symbol = symbol;
 
-      for (int nl=0; nl<rel15_ul->nrOfLayers; nl++) {
+      for (int nl = 0; nl < rel15_ul->nrOfLayers; nl++) {
         uint32_t nvar_tmp = 0;
         nr_pusch_channel_estimation(gNB,
                                     slot,
-                                    get_dmrs_port(nl,rel15_ul->dmrs_ports),
+                                    nl,
+                                    get_dmrs_port(nl, rel15_ul->dmrs_ports),
                                     symbol,
                                     ulsch_id,
                                     bwp_start_subcarrier,
@@ -1502,16 +1515,14 @@ int nr_rx_pusch_tp(PHY_VARS_gNB *gNB,
                   frame_parms->nb_antennas_rx,
                   frame_parms->N_RB_UL,
                   false);
-      for (aarx = 0; aarx < frame_parms->nb_antennas_rx; aarx++) 
-      {
-        if (symbol == rel15_ul->start_symbol_index) 
-        {
+      for (int aarx = 0; aarx < frame_parms->nb_antennas_rx; aarx++) {
+        if (symbol == rel15_ul->start_symbol_index) {
           pusch_vars->ulsch_power[aarx] = 0;
           pusch_vars->ulsch_noise_power[aarx] = 0;
         }
         for (int aatx = 0; aatx < rel15_ul->nrOfLayers; aatx++) {
           pusch_vars->ulsch_power[aarx] += signal_energy_nodc(
-              &pusch_vars->ul_ch_estimates[aatx * gNB->frame_parms.nb_antennas_rx + aarx][symbol * frame_parms->ofdm_symbol_size],
+              (c16_t*)&pusch_vars->ul_ch_estimates[aatx * gNB->frame_parms.nb_antennas_rx + aarx][symbol * frame_parms->ofdm_symbol_size],
               rel15_ul->rb_size * 12);
         }
         for (int rb = 0; rb < rel15_ul->rb_size; rb++)
@@ -1575,9 +1586,9 @@ int nr_rx_pusch_tp(PHY_VARS_gNB *gNB,
   gNB->ulsch[ulsch_id].unav_res = unav_res;
 
   // initialize scrambling sequence //
-  int16_t s[G+96] __attribute__((aligned(32)));
+  int16_t scramblingSequence[G + 96] __attribute__((aligned(32)));
 
-  nr_codeword_unscrambling_init(s, G, 0, rel15_ul->data_scrambling_id, rel15_ul->rnti); 
+  nr_codeword_unscrambling_init(scramblingSequence, G, 0, rel15_ul->data_scrambling_id, rel15_ul->rnti);
 
   // first the computation of channel levels
 
@@ -1678,23 +1689,23 @@ int nr_rx_pusch_tp(PHY_VARS_gNB *gNB,
       rdata->ulsch_id = ulsch_id;
       rdata->llr = pusch_vars->llr;
       rdata->llr_layers = pusch_vars->llr_layers;
-      rdata->s   = &s[pusch_vars->llr_offset[symbol]*rel15_ul->nrOfLayers];
+      rdata->scramblingSequence = scramblingSequence;
       rdata->nvar = nvar;
 
       if (rel15_ul->pdu_bit_map & PUSCH_PDU_BITMAP_PUSCH_PTRS) {
         nr_pusch_symbol_processing(rdata);
       } else {
         pushTpool(&gNB->threadPool, req);
-        gNB->nbSymb++;
+        nbSymb++;
       }
 
-      LOG_D(PHY,"%d.%d Added symbol %d (count %d) to process, in pipe\n",frame,slot,symbol,gNB->nbSymb);
+      LOG_D(PHY, "%d.%d Added symbol %d (count %d) to process, in pipe\n", frame, slot, symbol, nbSymb);
     }
   } // symbol loop
 
-  while (gNB->nbSymb > 0) {
+  while (nbSymb) {
     notifiedFIFO_elt_t *req = pullTpool(&gNB->respPuschSymb, &gNB->threadPool);
-    gNB->nbSymb--;
+    nbSymb--;
     delNotifiedFIFO_elt(req);
   }
 

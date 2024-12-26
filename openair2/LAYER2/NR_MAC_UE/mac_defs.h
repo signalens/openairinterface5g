@@ -68,8 +68,16 @@
 // NR UE defs
 // ==========
 
+#define NR_BSR_TRIGGER_NONE      (0) /* No BSR Trigger */
+#define NR_BSR_TRIGGER_REGULAR   (1) /* For Regular and ReTxBSR Expiry Triggers */
+#define NR_BSR_TRIGGER_PERIODIC  (2) /* For BSR Periodic Timer Expiry Trigger */
+#define NR_BSR_TRIGGER_PADDING   (4) /* For Padding BSR Trigger */
+
+#define NR_INVALID_LCGID (NR_MAX_NUM_LCGID)
+
 #define MAX_NUM_BWP_UE 5
 #define NUM_SLOT_FRAME 10
+#define NR_MAX_SR_ID 8  // SchedulingRequestId ::= INTEGER (0..7)
 
 /*!\brief value for indicating BSR Timer is not running */
 #define NR_MAC_UE_BSR_TIMER_NOT_RUNNING   (0xFFFF)
@@ -156,12 +164,25 @@
 #define PRACH_MASK_INDEX                54
 #define RESERVED_NR_DCI                 55
 
+// Define the UE L2 states with X-Macro
+#define NR_UE_L2_STATES \
+  UE_STATE(UE_NOT_SYNC) \
+  UE_STATE(UE_SYNC) \
+  UE_STATE(UE_PERFORMING_RA) \
+  UE_STATE(UE_CONNECTED) \
+  UE_STATE(UE_DETACHING)
+
+typedef enum {
+  phr_cause_prohibit_timer = 0,
+  phr_cause_periodic_timer,
+  phr_cause_phr_config,
+} NR_UE_PHR_Reporting_cause_t;
+
 /*!\brief UE layer 2 status */
 typedef enum {
-  UE_NOT_SYNC = 0,
-  UE_SYNC,
-  UE_PERFORMING_RA,
-  UE_CONNECTED
+#define UE_STATE(state) state,
+  NR_UE_L2_STATES
+#undef UE_STATE
 } NR_UE_L2_STATE_t;
 
 typedef enum {
@@ -185,6 +206,7 @@ typedef struct {
   long LCGID;
   // Bj bucket usage per lcid
   int32_t Bj;
+  NR_timer_t Bj_timer;
 } NR_LC_SCHEDULING_INFO;
 
 typedef struct {
@@ -194,57 +216,69 @@ typedef struct {
   int32_t BSR_bytes;
 } NR_LCG_SCHEDULING_INFO;
 
-// LTE structure, might need to be adapted for NR
 typedef struct {
-  // lcs scheduling info
-  NR_LC_SCHEDULING_INFO lc_sched_info[NR_MAX_NUM_LCID];
-  // lcg scheduling info
-  NR_LCG_SCHEDULING_INFO lcg_sched_info[NR_MAX_NUM_LCGID];
+  bool active_SR_ID;
   /// SR pending as defined in 38.321
-  uint8_t  SR_pending;
+  bool pending;
   /// SR_COUNTER as defined in 38.321
-  uint16_t SR_COUNTER;
-  /// retxBSR-Timer, default value is sf2560
-  uint16_t retxBSR_Timer;
-  /// retxBSR_SF, number of subframe before triggering a regular BSR
-  uint16_t retxBSR_SF;
-  /// periodicBSR-Timer, default to infinity
-  uint16_t periodicBSR_Timer;
-  /// periodicBSR_SF, number of subframe before triggering a periodic BSR
-  uint16_t periodicBSR_SF;
-  /// default value is 0: not configured
-  uint16_t sr_ProhibitTimer;
-  /// sr ProhibitTime running
-  uint8_t sr_ProhibitTimer_Running;
+  uint32_t counter;
+  /// sr ProhibitTimer
+  NR_timer_t prohibitTimer;
   // Maximum number of SR transmissions
-  uint32_t sr_TransMax;
-  int sr_id;
+  uint32_t maxTransmissions;
+} nr_sr_info_t;
+
+typedef struct {
+  bool is_configured;
   ///timer before triggering a periodic PHR
-  uint16_t periodicPHR_Timer;
+  NR_timer_t periodicPHR_Timer;
   ///timer before triggering a prohibit PHR
-  uint16_t prohibitPHR_Timer;
+  NR_timer_t prohibitPHR_Timer;
   ///DL Pathloss change value
-  uint16_t PathlossChange;
+  uint16_t PathlossLastValue;
   ///number of subframe before triggering a periodic PHR
   int16_t periodicPHR_SF;
   ///number of subframe before triggering a prohibit PHR
   int16_t prohibitPHR_SF;
   ///DL Pathloss Change in db
   uint16_t PathlossChange_db;
-  /// default value is false
-  uint16_t extendedBSR_Sizes_r10;
-  /// default value is false
-  uint16_t extendedPHR_r10;
+  int phr_reporting;
+  bool was_mac_reset;
+} nr_phr_info_t;
+
+// LTE structure, might need to be adapted for NR
+typedef struct {
+  // lcs scheduling info
+  NR_LC_SCHEDULING_INFO lc_sched_info[NR_MAX_NUM_LCID];
+  // lcg scheduling info
+  NR_LCG_SCHEDULING_INFO lcg_sched_info[NR_MAX_NUM_LCGID];
+  // SR INFO
+  nr_sr_info_t sr_info[NR_MAX_SR_ID];
+  /// BSR report flag management
+  uint8_t BSR_reporting_active;
+  // LCID triggering BSR
+  NR_LogicalChannelIdentity_t regularBSR_trigger_lcid;
+  // logicalChannelSR-DelayTimer
+  NR_timer_t sr_DelayTimer;
+  /// retxBSR-Timer
+  NR_timer_t retxBSR_Timer;
+  /// periodicBSR-Timer
+  NR_timer_t periodicBSR_Timer;
+
+  nr_phr_info_t phr_info;
 } NR_UE_SCHEDULING_INFO;
 
 typedef enum {
-  RA_UE_IDLE = 0,
-  GENERATE_PREAMBLE = 1,
-  WAIT_RAR = 2,
-  WAIT_CONTENTION_RESOLUTION = 3,
-  RA_SUCCEEDED = 4,
-  RA_FAILED = 5
-} RA_state_t;
+  nrRA_UE_IDLE = 0,
+  nrRA_GENERATE_PREAMBLE = 1,
+  nrRA_WAIT_RAR = 2,
+  nrRA_WAIT_CONTENTION_RESOLUTION = 3,
+  nrRA_SUCCEEDED = 4,
+  nrRA_FAILED = 5
+} nrRA_UE_state_t;
+
+static const char *const nrra_ue_text[] =
+    {"UE_IDLE", "GENERATE_PREAMBLE", "WAIT_RAR", "WAIT_CONTENTION_RESOLUTION", "RA_SUCCEEDED", "RA_FAILED"};
 
 typedef struct {
   /// PRACH format retrieved from prach_ConfigIndex
@@ -276,7 +310,7 @@ typedef struct {
   // pointer to RACH config dedicated
   NR_RACH_ConfigDedicated_t *rach_ConfigDedicated;
   /// state of RA procedure
-  RA_state_t ra_state;
+  nrRA_UE_state_t ra_state;
   /// RA contention type
   uint8_t cfra;
   /// RA rx frame offset: compensate RA rx offset introduced by OAI gNB.
@@ -288,7 +322,7 @@ typedef struct {
   /// number of attempt for rach
   uint8_t RA_attempt_number;
   /// Random-access procedure flag
-  uint8_t RA_active;
+  bool RA_active;
   /// Random-access preamble index
   int ra_PreambleIndex;
   // When multiple SSBs per RO is configured, this indicates which one is selected in this RO -> this is used to properly compute the PRACH preamble
@@ -320,6 +354,8 @@ typedef struct {
   uint8_t Msg3_size;
   /// Msg3 buffer
   uint8_t *Msg3_buffer;
+
+  bool msg3_C_RNTI;
 
   /// Random-access Contention Resolution Timer
   NR_timer_t contention_resolution_timer;
@@ -372,7 +408,6 @@ typedef struct {
   int n_harq;
   int n_CCE;
   int N_CCE;
-  int delta_pucch;
   int initial_pucch_id;
 } PUCCH_sched_t;
 
@@ -423,24 +458,27 @@ typedef struct prach_association_pattern {
 
 // SSB details
 typedef struct ssb_info {
-  bool transmitted; // True if the SSB index is transmitted according to the SSB positions map configuration
   prach_occasion_info_t *mapped_ro[MAX_NB_RO_PER_SSB_IN_ASSOCIATION_PATTERN]; // List of mapped RACH Occasions to this SSB index
   uint32_t nb_mapped_ro; // Total number of mapped ROs to this SSB index
 } ssb_info_t;
 
 // List of all the possible SSBs and their details
 typedef struct ssb_list_info {
-  ssb_info_t tx_ssb[MAX_NB_SSB];
-  uint8_t   nb_tx_ssb;
+  ssb_info_t *tx_ssb;
+  int nb_tx_ssb;
+  int nb_ssb_per_index[MAX_NB_SSB];
 } ssb_list_info_t;
 
 typedef struct nr_lcordered_info_s {
   // logical channels ids ordered as per priority
   NR_LogicalChannelIdentity_t lcid;
+  int sr_id;
   long priority;
-  long prioritisedBitRate;
+  uint32_t pbr; // in B/s (UINT_MAX = infinite)
   // Bucket size per lcid
   uint32_t bucket_size;
+  bool sr_DelayTimerApplied;
+  bool lc_SRMask;
 } nr_lcordered_info_t;
 
 
@@ -456,6 +494,19 @@ typedef struct {
   A_SEQUENCE_OF(NR_ControlResourceSet_t) list_Coreset;
   A_SEQUENCE_OF(NR_SearchSpace_t) list_SS;
 } NR_BWP_PDCCH_t;
+
+typedef struct csi_payload {
+  uint32_t part1_payload;
+  uint32_t part2_payload;
+  int p1_bits;
+  int p2_bits;
+} csi_payload_t;
+
+typedef enum {
+  WIDEBAND_ON_PUCCH,
+  SUBBAND_ON_PUCCH,
+  ON_PUSCH
+} CSI_mapping_t;
 
 /*!\brief Top level UE MAC structure */
 typedef struct NR_UE_MAC_INST_s {
@@ -518,16 +569,10 @@ typedef struct NR_UE_MAC_INST_s {
   nr_phy_config_t         phy_config;
   nr_synch_request_t      synch_request;
 
-  /// BSR report flag management
-  uint8_t BSR_reporting_active;
-
   // order lc info
   A_SEQUENCE_OF(nr_lcordered_info_t) lc_ordered_list;
-
   NR_UE_SCHEDULING_INFO scheduling_info;
-
-  /// PHR
-  uint8_t PHR_reporting_active;
+  NR_timer_t *data_inactivity_timer;
 
   int dmrs_TypeA_Position;
   int p_Max;
@@ -556,7 +601,11 @@ typedef struct NR_UE_MAC_INST_s {
 
   //SIDELINK MAC PARAMETERS
   sl_nr_ue_mac_params_t *SL_MAC_PARAMS;
-
+  // PUCCH closed loop power control state
+  int G_b_f_c;
+  bool pucch_power_control_initialized;
+  int f_b_f_c;
+  bool pusch_power_control_initialized;
 } NR_UE_MAC_INST_t;
 
 /*@}*/

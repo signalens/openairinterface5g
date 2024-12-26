@@ -202,8 +202,8 @@ With the nvIPC sources in the project directory, the docker image can be built.
 In order to build the final image, there is an intermediary image to be built (ran-base)
 ```bash
 ~$ cd ~/openairinterface5g/
-~/openairinterface5g$ docker build . -f docker/Dockerfile.base.ubuntu20 --tag ran-base:latest
-~/openairinterface5g$ docker build . -f docker/Dockerfile.gNB.aerial.ubuntu20 --tag oai-gnb-aerial:latest
+~/openairinterface5g$ docker build . -f docker/Dockerfile.base.ubuntu22 --tag ran-base:latest
+~/openairinterface5g$ docker build . -f docker/Dockerfile.gNB.aerial.ubuntu22 --tag oai-gnb-aerial:latest
 ```
 
 
@@ -228,11 +228,10 @@ Edit the sample OAI gNB configuration file and check following parameters:
 * `gNBs` section
   * The PLMN section shall match the one defined in the AMF
   * `amf_ip_address` shall be the correct AMF IP address in your system
-  * `GNB_INTERFACE_NAME_FOR_NG_AMF` and `GNB_IPV4_ADDRESS_FOR_NG_AMF` shall match your DU N2 interface name and IP address
-  * `GNB_INTERFACE_NAME_FOR_NGU` and `GNB_IPV4_ADDRESS_FOR_NGU` shall match your DU N3 interface name and IP address
+  * `GNB_IPV4_ADDRESS_FOR_NG_AMF` shall match your DU N2 interface IP address
+  * `GNB_IPV4_ADDRESS_FOR_NGU` shall match your DU N3 interface IP address
   
 The default amf_ip_address:ipv4 value is 192.168.70.132, when installing the CN5G following [this tutorial](https://gitlab.eurecom.fr/oai/openairinterface5g/-/blob/develop/doc/NR_SA_Tutorial_OAI_CN5G.md)
-Both 'GNB_INTERFACE_NAME_FOR_NG_AMF' and 'GNB_INTERFACE_NAME_FOR_NGU' need to be set to the network interface name used by the gNB host to connect to the CN5G.
 Both 'GNB_IPV4_ADDRESS_FOR_NG_AMF' and 'GNB_IPV4_ADDRESS_FOR_NGU' need to be set to the IP address of the NIC referenced previously.
 
 
@@ -255,6 +254,16 @@ The gNB logs can be followed with:
 ```bash
 docker logs -f oai-gnb-aerial
 ```
+#### Running with multiple L2s
+One L1 instance can support multiple L2 instances. See also the [aerial documentation](https://developer.nvidia.com/docs/gputelecom/aerial-sdk/text/cubb_quickstart/running_cubb-end-to-end.html#run-multiple-l2-instances-with-single-l1-instance) for more details.
+
+In OAI the share memory prefix must be configured in the configuration file.
+
+```bash
+        tr_s_preference = "aerial";
+	tr_s_shm_prefix = "nvipc";
+```
+
 
 ### Stopping the setup
 

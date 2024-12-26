@@ -268,10 +268,11 @@ def GetParametersFromXML(action):
 	elif action == 'Iperf':
 		CiTestObj.iperf_args = test.findtext('iperf_args')
 		CiTestObj.ue_ids = test.findtext('id').split(' ')
-		CiTestObj.iperf_direction = test.findtext('direction')
+		CiTestObj.svr_id = test.findtext('svr_id') or None
 		CiTestObj.iperf_packetloss_threshold = test.findtext('iperf_packetloss_threshold')
 		CiTestObj.iperf_bitrate_threshold = test.findtext('iperf_bitrate_threshold') or '90'
 		CiTestObj.iperf_profile = test.findtext('iperf_profile') or 'balanced'
+		CiTestObj.iperf_tcp_rate_target = test.findtext('iperf_tcp_rate_target') or None
 		if CiTestObj.iperf_profile != 'balanced' and CiTestObj.iperf_profile != 'unbalanced' and CiTestObj.iperf_profile != 'single-ue':
 			logging.error(f'test-case has wrong profile {CiTestObj.iperf_profile}, forcing balanced')
 			CiTestObj.iperf_profile = 'balanced'
@@ -279,6 +280,14 @@ def GetParametersFromXML(action):
 		if CiTestObj.iperf_options != 'check' and CiTestObj.iperf_options != 'sink':
 			logging.error('test-case has wrong option ' + CiTestObj.iperf_options)
 			CiTestObj.iperf_options = 'check'
+
+	elif action == 'Iperf2_Unidir':
+		CiTestObj.iperf_args = test.findtext('iperf_args')
+		CiTestObj.ue_ids = test.findtext('id').split(' ')
+		CiTestObj.svr_id = test.findtext('svr_id') or None
+		CiTestObj.iperf_packetloss_threshold = test.findtext('iperf_packetloss_threshold')
+		CiTestObj.iperf_bitrate_threshold = test.findtext('iperf_bitrate_threshold') or '90'
+		CiTestObj.iperf_profile = test.findtext('iperf_profile') or 'balanced'
 
 	elif action == 'IdleSleep':
 		string_field = test.findtext('idle_sleep_time_in_sec')
@@ -328,11 +337,13 @@ def GetParametersFromXML(action):
 		string_field = test.findtext('args')
 		if (string_field is not None):
 			EPC.cfgDeploy = string_field	
+		EPC.cnID = test.findtext('cn_id')
 
 	elif action == 'Terminate_5GCN':
 		string_field = test.findtext('args')
 		if (string_field is not None):
 			EPC.cfgUnDeploy = string_field	
+		EPC.cnID = test.findtext('cn_id')
 
 	elif action == 'Deploy_Object' or action == 'Undeploy_Object':
 		eNB_instance=test.findtext('eNB_instance')
@@ -375,22 +386,10 @@ def GetParametersFromXML(action):
 		if (string_field is not None):
 			CONTAINERS.ran_checkers['u_retx_th'] = [float(x) for x in string_field.split(',')]
 
-	elif action == 'IperfFromContainer':
-		string_field = test.findtext('server_container_name')
-		if (string_field is not None):
-			CONTAINERS.svrContName = string_field
-		string_field = test.findtext('server_options')
-		if (string_field is not None):
-			CONTAINERS.svrOptions = string_field
-		string_field = test.findtext('client_container_name')
-		if (string_field is not None):
-			CONTAINERS.cliContName = string_field
-		string_field = test.findtext('client_options')
-		if (string_field is not None):
-			CONTAINERS.cliOptions = string_field
-
-	elif action == 'Run_LDPCTest' or action == 'Run_NRulsimTest' or action == 'Run_LDPCt1Test':
+	elif action == 'Run_CUDATest' or action == 'Run_NRulsimTest' or action == 'Run_T2Test':
 		ldpc.runargs = test.findtext('physim_run_args')
+		ldpc.runsim = test.findtext('physim_run')
+		ldpc.timethrs = test.findtext('physim_time_threshold')
 
 	elif action == 'LicenceAndFormattingCheck':
 		pass
@@ -592,8 +591,8 @@ elif re.match('^InitiateHtml$', mode, re.IGNORECASE):
 		if (os.path.isfile(xml_test_file)):
 			try:
 				xmlTree = ET.parse(xml_test_file)
-			except:
-				print("Error while parsing file: " + xml_test_file)
+			except Exception as e:
+				print(f"Error: {e} while parsing file: {xml_test_file}.")
 			xmlRoot = xmlTree.getroot()
 			HTML.htmlTabRefs.append(xmlRoot.findtext('htmlTabRef',default='test-tab-' + str(count)))
 			HTML.htmlTabNames.append(xmlRoot.findtext('htmlTabName',default='test-tab-' + str(count)))
@@ -624,10 +623,6 @@ elif re.match('^TesteNB$', mode, re.IGNORECASE) or re.match('^TestUE$', mode, re
 			if RAN.eNBIPAddress == ''  or RAN.eNBUserName == '' or RAN.eNBPassword == '' or RAN.eNBSourceCodePath == '':
 				HELP.eNBSrvHelp(RAN.eNBIPAddress, RAN.eNBUserName, RAN.eNBPassword, RAN.eNBSourceCodePath)
 			sys.exit('Insufficient Parameter')
-
-		if (EPC.IPAddress!= '') and (EPC.IPAddress != 'none'):
-			SSH.copyout(EPC.IPAddress, EPC.UserName, EPC.Password, cwd + "/tcp_iperf_stats.awk", "/tmp")
-			SSH.copyout(EPC.IPAddress, EPC.UserName, EPC.Password, cwd + "/active_net_interfaces.awk", "/tmp")
 	else:
 		if CiTestObj.UEIPAddress == '' or CiTestObj.ranRepository == '' or CiTestObj.ranBranch == '' or CiTestObj.UEUserName == '' or CiTestObj.UEPassword == '' or CiTestObj.UESourceCodePath == '':
 			HELP.GenericHelp(CONST.Version)
@@ -785,6 +780,8 @@ elif re.match('^TesteNB$', mode, re.IGNORECASE) or re.match('^TestUE$', mode, re
 						CiTestObj.Ping(HTML,RAN,EPC,CONTAINERS)
 					elif action == 'Iperf':
 						CiTestObj.Iperf(HTML,RAN,EPC,CONTAINERS)
+					elif action == 'Iperf2_Unidir':
+						CiTestObj.Iperf2_Unidir(HTML,RAN,EPC,CONTAINERS)
 					elif action == 'Initialize_HSS':
 						EPC.InitializeHSS(HTML)
 					elif action == 'Terminate_HSS':
@@ -813,12 +810,12 @@ elif re.match('^TesteNB$', mode, re.IGNORECASE) or re.match('^TestUE$', mode, re
 						HTML=ldpc.Build_PhySim(HTML,CONST)
 						if ldpc.exitStatus==1:
 							RAN.prematureExit = True
-					elif action == 'Run_LDPCTest':
-						HTML=ldpc.Run_LDPCTest(HTML,CONST,id)
+					elif action == 'Run_CUDATest':
+						HTML=ldpc.Run_CUDATest(HTML,CONST,id)
 						if ldpc.exitStatus==1:
 							RAN.prematureExit = True
-					elif action == 'Run_LDPCt1Test':
-						HTML=ldpc.Run_LDPCt1Test(HTML,CONST,id)
+					elif action == 'Run_T2Test':
+						HTML=ldpc.Run_T2Test(HTML,CONST,id)
 						if ldpc.exitStatus==1:
 							RAN.prematureExit = True
 					elif action == 'Run_NRulsimTest':

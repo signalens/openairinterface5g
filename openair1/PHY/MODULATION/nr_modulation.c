@@ -112,7 +112,7 @@ const char nr_W_4l_4p[5][4][4] = {
     {{'1', '1', '1', '1'}, {'1', 'n', '1', 'n'}, {'j', 'j', 'o', 'o'}, {'j', 'o', 'o', 'j'}} // pmi 4
 };
 
-void nr_modulation(uint32_t *in,
+void nr_modulation(const uint32_t *in,
                    uint32_t length,
                    uint16_t mod_order,
                    int16_t *out)
@@ -120,10 +120,10 @@ void nr_modulation(uint32_t *in,
   uint16_t mask = ((1<<mod_order)-1);
   int32_t* nr_mod_table32;
   int32_t* out32 = (int32_t*) out;
-  uint8_t* in_bytes = (uint8_t*) in;
-  uint64_t* in64 = (uint64_t*) in;
+  const uint8_t *in_bytes = (const uint8_t *)in;
+  const uint64_t *in64 = (const uint64_t *)in;
   int64_t* out64 = (int64_t*) out;
-  uint32_t i;
+  uint32_t i=0;
 
 #if defined(__SSE2__)
   simde__m128i *nr_mod_table128;
@@ -173,47 +173,49 @@ void nr_modulation(uint32_t *in,
     return;
 
   case 6:
-    for (i = 0; i < length - 3 * 64; i += 3 * 64) {
-      uint64_t x = *in64++;
-      uint64_t x1 = x & 0xfff;
-      *out64++ = nr_64qam_mod_table[x1];
-      x1 = (x >> 12) & 0xfff;
-      *out64++ = nr_64qam_mod_table[x1];
-      x1 = (x >> 24) & 0xfff;
-      *out64++ = nr_64qam_mod_table[x1];
-      x1 = (x >> 36) & 0xfff;
-      *out64++ = nr_64qam_mod_table[x1];
-      x1 = (x >> 48) & 0xfff;
-      *out64++ = nr_64qam_mod_table[x1];
-      uint64_t x2 = (x >> 60);
-      x = *in64++;
-      x2 |= x<<4;
-      x1 = x2 & 0xfff;
-      *out64++ = nr_64qam_mod_table[x1];
-      x1 = (x2 >> 12) & 0xfff;
-      *out64++ = nr_64qam_mod_table[x1];
-      x1 = (x2 >> 24) & 0xfff;
-      *out64++ = nr_64qam_mod_table[x1];
-      x1 = (x2 >> 36) & 0xfff;
-      *out64++ = nr_64qam_mod_table[x1];
-      x1 = (x2 >> 48) & 0xfff;
-      *out64++ = nr_64qam_mod_table[x1];
-      x2 = ((x>>56)&0xf0) | (x2>>60);
-      x = *in64++;
-      x2 |= x<<8;
-      x1 = x2 & 0xfff;
-      *out64++ = nr_64qam_mod_table[x1];
-      x1 = (x2 >> 12) & 0xfff;
-      *out64++ = nr_64qam_mod_table[x1];
-      x1 = (x2 >> 24) & 0xfff;
-      *out64++ = nr_64qam_mod_table[x1];
-      x1 = (x2 >> 36) & 0xfff;
-      *out64++ = nr_64qam_mod_table[x1];
-      x1 = (x2 >> 48) & 0xfff;
-      *out64++ = nr_64qam_mod_table[x1];
-      x2 = ((x>>52)&0xff0) | (x2>>60);
-      *out64++ = nr_64qam_mod_table[x2];
-    }
+    if (length > (3*64))
+      for (i = 0; i < length - 3 * 64; i += 3 * 64) {
+        uint64_t x = *in64++;
+        uint64_t x1 = x & 0xfff;
+        *out64++ = nr_64qam_mod_table[x1];
+        x1 = (x >> 12) & 0xfff;
+        *out64++ = nr_64qam_mod_table[x1];
+        x1 = (x >> 24) & 0xfff;
+        *out64++ = nr_64qam_mod_table[x1];
+        x1 = (x >> 36) & 0xfff;
+        *out64++ = nr_64qam_mod_table[x1];
+        x1 = (x >> 48) & 0xfff;
+        *out64++ = nr_64qam_mod_table[x1];
+        uint64_t x2 = (x >> 60);
+        x = *in64++;
+        x2 |= x<<4;
+        x1 = x2 & 0xfff;
+        *out64++ = nr_64qam_mod_table[x1];
+        x1 = (x2 >> 12) & 0xfff;
+        *out64++ = nr_64qam_mod_table[x1];
+        x1 = (x2 >> 24) & 0xfff;
+        *out64++ = nr_64qam_mod_table[x1];
+        x1 = (x2 >> 36) & 0xfff;
+        *out64++ = nr_64qam_mod_table[x1];
+        x1 = (x2 >> 48) & 0xfff;
+        *out64++ = nr_64qam_mod_table[x1];
+        x2 = ((x>>56)&0xf0) | (x2>>60);
+        x = *in64++;
+        x2 |= x<<8;
+        x1 = x2 & 0xfff;
+        *out64++ = nr_64qam_mod_table[x1];
+        x1 = (x2 >> 12) & 0xfff;
+        *out64++ = nr_64qam_mod_table[x1];
+        x1 = (x2 >> 24) & 0xfff;
+        *out64++ = nr_64qam_mod_table[x1];
+        x1 = (x2 >> 36) & 0xfff;
+        *out64++ = nr_64qam_mod_table[x1];
+        x1 = (x2 >> 48) & 0xfff;
+        *out64++ = nr_64qam_mod_table[x1];
+        x2 = ((x>>52)&0xff0) | (x2>>60);
+        *out64++ = nr_64qam_mod_table[x2];
+      }
+    
     while (i + 24 <= length) {
       uint32_t xx = 0;
       memcpy(&xx, in_bytes + i / 8, 3);
@@ -249,67 +251,65 @@ void nr_layer_mapping(int nbCodes,
                       uint8_t n_layers,
                       int layerSz,
                       uint32_t n_symbs,
-                      c16_t tx_layers[n_layers][layerSz])
+                      c16_t tx_layer[layerSz],
+                      int layer)
 {
   LOG_D(PHY,"Doing layer mapping for %d layers, %d symbols\n",n_layers,n_symbs);
 
   switch (n_layers) {
 
     case 1:
-    memcpy(tx_layers[0], mod_symbs[0], n_symbs * sizeof(**mod_symbs));
-    break;
+      memcpy(tx_layer, mod_symbs[0], n_symbs * sizeof(**mod_symbs));
+      break;
 
     case 2:
     case 3:
     case 4:
     for (int i = 0; i < n_symbs / n_layers; i++) {
       const c16_t *base = mod_symbs[0] + n_layers * i;
-      for (int l = 0; l < n_layers; l++)
-        tx_layers[l][i] = base[l];
+      tx_layer[i] = base[layer];
     }
       break;
 
     case 5:
-      for (int i = 0; i < n_symbs; i += 2) {
-      const int txIdx = i / 2;
-      for (int l = 0; l < 2; l++)
-        tx_layers[l][txIdx] = mod_symbs[0][i + l];
-      }
-      for (int i = 0; i < n_symbs; i += 3) {
-      const int txIdx = i / 3;
-      for (int l = 2; l < 5; l++)
-        tx_layers[l][txIdx] = mod_symbs[1][i + l];
-      }
+      if (layer < 2)
+        for (int i = 0; i < n_symbs; i += 2) {
+          const int txIdx = i / 2;
+          tx_layer[txIdx] = mod_symbs[0][i + layer];
+        }
+      else
+        for (int i = 0; i < n_symbs; i += 3) {
+          const int txIdx = i / 3;
+          tx_layer[txIdx] = mod_symbs[1][i + layer];
+        }
       break;
 
     case 6:
       for (int q=0; q<2; q++)
-      for (int i = 0; i < n_symbs; i += 3) {
-        const int txIdx = i / 3;
-        for (int l = 0; l < 3; l++)
-          tx_layers[l][txIdx] = mod_symbs[q][i + l];
-      }
+        for (int i = 0; i < n_symbs; i += 3) {
+          const int txIdx = i / 3;
+          tx_layer[txIdx] = mod_symbs[q][i + layer];
+        }
       break;
 
     case 7:
-      for (int i = 0; i < n_symbs; i += 3) {
-      const int txIdx = i / 3;
-      for (int l = 0; l < 3; l++)
-        tx_layers[l][txIdx] = mod_symbs[1][i + l];
-      }
-      for (int i = 0; i < n_symbs; i += 4) {
-      const int txIdx = i / 4;
-      for (int l = 3; l < 7; l++)
-        tx_layers[l][txIdx] = mod_symbs[0][i + l];
-      }
+      if (layer < 3)
+        for (int i = 0; i < n_symbs; i += 3) {
+          const int txIdx = i / 3;
+          tx_layer[txIdx] = mod_symbs[1][i + layer];
+        }
+      else
+        for (int i = 0; i < n_symbs; i += 4) {
+          const int txIdx = i / 4;
+          tx_layer[txIdx] = mod_symbs[0][i + layer];
+        }
       break;
 
     case 8:
       for (int q=0; q<2; q++)
       for (int i = 0; i < n_symbs; i += 4) {
         const int txIdx = i / 4;
-        for (int l = 0; l < 3; l++)
-          tx_layers[l][txIdx] = mod_symbs[q][i + l];
+        tx_layer[txIdx] = mod_symbs[q][i + layer];
       }
       break;
 
@@ -318,24 +318,19 @@ void nr_layer_mapping(int nbCodes,
   }
 }
 
-void nr_ue_layer_mapping(int16_t *mod_symbs,
-                         uint8_t n_layers,
-                         uint32_t n_symbs,
-                         int16_t **tx_layers) {
-
+void nr_ue_layer_mapping(const c16_t *mod_symbs, const int n_layers, const int n_symbs, int sz, c16_t tx_layers[][sz])
+{
   for (int i=0; i<n_symbs/n_layers; i++) {
     for (int l=0; l<n_layers; l++) {
-      tx_layers[l][i<<1] = (mod_symbs[(n_layers*i+l)<<1]*AMP)>>15;
-      tx_layers[l][(i<<1)+1] = (mod_symbs[((n_layers*i+l)<<1)+1]*AMP)>>15;
+      tx_layers[l][i] = c16mulRealShift(mod_symbs[n_layers * i + l], AMP, 15);
     }
   }
 }
 
-
-void nr_dft(int32_t *z, int32_t *d, uint32_t Msc_PUSCH)
+void nr_dft(c16_t *z, c16_t *d, uint32_t Msc_PUSCH)
 {
-  simde__m128i dft_in128[1][3240], dft_out128[1][3240];
-  uint32_t *dft_in0 = (uint32_t*)dft_in128[0], *dft_out0 = (uint32_t*)dft_out128[0];
+  simde__m128i dft_in128[3240], dft_out128[3240];
+  c16_t *dft_in0 = (c16_t *)dft_in128, *dft_out0 = (c16_t *)dft_out128;
 
   uint32_t i, ip;
 
@@ -583,61 +578,59 @@ void nr_dft(int32_t *z, int32_t *d, uint32_t Msc_PUSCH)
 
 }
 
-
-void init_symbol_rotation(NR_DL_FRAME_PARMS *fp) {
-
-  uint64_t dl_CarrierFreq = fp->dl_CarrierFreq;
-  uint64_t ul_CarrierFreq = fp->ul_CarrierFreq;
-  uint64_t sl_CarrierFreq = fp->sl_CarrierFreq;
-  double f[2] = {(double)dl_CarrierFreq, (double)ul_CarrierFreq};
-
+void perform_symbol_rotation(NR_DL_FRAME_PARMS *fp, double f0, c16_t *symbol_rotation)
+{
   const int nsymb = fp->symbols_per_slot * fp->slots_per_frame/10;
   const double Tc=(1/480e3/4096);
   const double Nu=2048*64*(1/(float)(1<<fp->numerology_index));
   const double Ncp0=16*64 + (144*64*(1/(float)(1<<fp->numerology_index)));
   const double Ncp1=(144*64*(1/(float)(1<<fp->numerology_index)));
 
-  for (uint8_t ll = 0; ll < 2; ll++){
+  LOG_I(PHY, "Doing symbol rotation calculation for TX/RX, f0 %f Hz, Nsymb %d\n", f0, nsymb);
 
+  double tl = 0.0;
+  double poff = 0.0;
+  double exp_re = 0.0;
+  double exp_im = 0.0;
+
+  for (int l = 0; l < nsymb; l++) {
+    double Ncp;
+    if (l == 0 || l == (7 * (1 << fp->numerology_index))) {
+      Ncp = Ncp0;
+    } else {
+      Ncp = Ncp1;
+    }
+
+    poff = 2 * M_PI * (tl + (Ncp * Tc)) * f0;
+    exp_re = cos(poff);
+    exp_im = sin(-poff);
+    symbol_rotation[l].r = (int16_t)floor(exp_re * 32767);
+    symbol_rotation[l].i = (int16_t)floor(exp_im * 32767);
+
+    LOG_D(PHY,
+          "Symbol rotation %d/%d => tl %f (%d,%d) (%f)\n",
+          l,
+          nsymb,
+          tl,
+          symbol_rotation[l].r,
+          symbol_rotation[l].i,
+          (poff / 2 / M_PI) - floor(poff / 2 / M_PI));
+
+    tl += (Nu + Ncp) * Tc;
+  }
+}
+
+void init_symbol_rotation(NR_DL_FRAME_PARMS *fp)
+{
+  double f[2] = {(double)fp->dl_CarrierFreq, (double)fp->ul_CarrierFreq};
+
+  for (int ll = 0; ll < 2; ll++) {
     double f0 = f[ll];
-    LOG_D(PHY, "Doing symbol rotation calculation for gNB TX/RX, f0 %f Hz, Nsymb %d\n", f0, nsymb);
-    c16_t *symbol_rotation = fp->symbol_rotation[ll];
-    if (get_softmodem_params()->sl_mode == 2) {
-      f0 = (double)sl_CarrierFreq;
-      symbol_rotation = fp->symbol_rotation[link_type_sl];
-    }
+    if (f0 == 0)
+      continue;
+    c16_t *rot = fp->symbol_rotation[ll];
 
-    double tl = 0.0;
-    double poff = 0.0;
-    double exp_re = 0.0;
-    double exp_im = 0.0;
-
-    for (int l = 0; l < nsymb; l++) {
-
-      double Ncp;
-      if (l == 0 || l == (7 * (1 << fp->numerology_index))) {
-        Ncp = Ncp0;
-      } else {
-        Ncp = Ncp1;
-      }
-
-      poff = 2 * M_PI * (tl + (Ncp * Tc)) * f0;
-      exp_re = cos(poff);
-      exp_im = sin(-poff);
-      symbol_rotation[l].r = (int16_t)floor(exp_re * 32767);
-      symbol_rotation[l].i = (int16_t)floor(exp_im * 32767);
-
-      LOG_D(PHY, "Symbol rotation %d/%d => tl %f (%d,%d) (%f)\n",
-        l,
-        nsymb,
-        tl,
-        symbol_rotation[l].r,
-        symbol_rotation[l].i,
-        (poff / 2 / M_PI) - floor(poff / 2 / M_PI));
-
-      tl += (Nu + Ncp) * Tc;
-
-    }
+    perform_symbol_rotation(fp, f0, rot);
   }
 }
 
@@ -659,36 +652,32 @@ void init_timeshift_rotation(NR_DL_FRAME_PARMS *fp)
   }
 }
 
-int nr_layer_precoder(int16_t **datatx_F_precoding, const char *prec_matrix, uint8_t n_layers, int32_t re_offset)
+c16_t nr_layer_precoder(int sz, c16_t datatx_F_precoding[][sz], const char *prec_matrix, uint8_t n_layers, int32_t re_offset)
 {
-  int32_t precodatatx_F = 0;
+  c16_t precodatatx_F = {0};
 
   for (int al = 0; al<n_layers; al++) {
-    int16_t antenna_re = datatx_F_precoding[al][re_offset<<1];
-    int16_t antenna_im = datatx_F_precoding[al][(re_offset<<1) +1];
-
+    c16_t antenna = datatx_F_precoding[al][re_offset];
     switch (prec_matrix[al]) {
       case '0': //multiply by zero
         break;
 
       case '1': //multiply by 1
-        ((int16_t *) &precodatatx_F)[0] += antenna_re;
-        ((int16_t *) &precodatatx_F)[1] += antenna_im;
+        precodatatx_F = c16add(precodatatx_F, antenna);
         break;
 
       case 'n': // multiply by -1
-        ((int16_t *) &precodatatx_F)[0] -= antenna_re;
-        ((int16_t *) &precodatatx_F)[1] -= antenna_im;
+        precodatatx_F = c16sub(precodatatx_F, antenna);
         break;
 
       case 'j': //
-        ((int16_t *) &precodatatx_F)[0] -= antenna_im;
-        ((int16_t *) &precodatatx_F)[1] += antenna_re;
+        precodatatx_F.r -= antenna.i;
+        precodatatx_F.i += antenna.r;
         break;
 
       case 'o': // -j
-        ((int16_t *) &precodatatx_F)[0] += antenna_im;
-        ((int16_t *) &precodatatx_F)[1] -= antenna_re;
+        precodatatx_F.r += antenna.i;
+        precodatatx_F.i -= antenna.r;
         break;
     }
   }
@@ -814,8 +803,28 @@ void nr_layer_precoder_simd(const int n_layers,
 
     #ifdef DEBUG_DLSCH_PRECODING_PRINT_WITH_TRIVIAL // Print simd and trivial result, TODO: To be removed
       c16_t *y_simd = (c16_t*) &y;
-      printf("debug_to_be_removed re_cnt=%d, sc=%d, y_simd=(%+4d,%+4d), (%+4d,%+4d), (%+4d,%+4d), (%+4d,%+4d)\n", re_cnt, sc, y_simd[0].r, y_simd[0].i, y_simd[1].r, y_simd[1].i, y_simd[2].r, y_simd[2].i, y_simd[3].r, y_simd[3].i);
-      printf("debug_to_be_removed re_cnt=%d, sc=%d, y_triv=(%+4d,%+4d), (%+4d,%+4d), (%+4d,%+4d), (%+4d,%+4d)\n", re_cnt, sc, y_triv[0].r, y_triv[0].i, y_triv[1].r, y_triv[1].i, y_triv[2].r, y_triv[2].i, y_triv[3].r, y_triv[3].i);
+      printf("debug_to_be_removed re_cnt=%d, sc=%u, y_simd=(%+4d,%+4d), (%+4d,%+4d), (%+4d,%+4d), (%+4d,%+4d)\n",
+             re_cnt,
+             sc,
+             y_simd[0].r,
+             y_simd[0].i,
+             y_simd[1].r,
+             y_simd[1].i,
+             y_simd[2].r,
+             y_simd[2].i,
+             y_simd[3].r,
+             y_simd[3].i);
+      printf("debug_to_be_removed re_cnt=%d, sc=%u, y_triv=(%+4d,%+4d), (%+4d,%+4d), (%+4d,%+4d), (%+4d,%+4d)\n",
+             re_cnt,
+             sc,
+             y_triv[0].r,
+             y_triv[0].i,
+             y_triv[1].r,
+             y_triv[1].i,
+             y_triv[2].r,
+             y_triv[2].i,
+             y_triv[3].r,
+             y_triv[3].i);
     #endif
   }
 }

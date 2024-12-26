@@ -57,6 +57,7 @@
 
 #define NR_RRC_MAC_RA_IND(mSGpTR)               (mSGpTR)->ittiMsg.nr_rrc_mac_ra_ind
 #define NR_RRC_MAC_MSG3_IND(mSGpTR)             (mSGpTR)->ittiMsg.nr_rrc_mac_msg3_ind
+#define NR_RRC_MAC_INAC_IND(mSGpTR)             (mSGpTR)->ittiMsg.nr_rrc_mac_inac_ind
 
 #define RRC_MAC_DRX_CONFIG_REQ(mSGpTR)          (mSGpTR)->ittiMsg.rrc_mac_drx_config_req
 
@@ -76,8 +77,13 @@ typedef struct NRRrcMacRaInd_s {
 } NRRrcMacRaInd;
 
 typedef struct NRRrcMacMsg3Ind_s {
-  uint16_t  rnti;
+  uint16_t rnti;
+  int gnb_id;
 } NRRrcMacMsg3Ind;
+
+typedef struct NRRrcMacInacInd_s {
+  bool inactivity_timer_expired; // not to leave the struct empty
+} NRRrcMacInacInd;
 
 typedef struct RrcMacInSyncInd_s {
   uint32_t  frame;
@@ -118,6 +124,8 @@ typedef struct NRRrcMacBcchDataInd_s {
   bool      is_bch;
   uint8_t   rsrq;
   uint8_t   rsrp;
+  uint32_t  phycellid;
+  long      ssb_arfcn;
 } NRRrcMacBcchDataInd;
 
 typedef struct NRRrcMacSBcchDataInd_s {

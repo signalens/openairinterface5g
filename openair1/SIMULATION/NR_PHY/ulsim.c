@@ -93,6 +93,9 @@ nfapi_ue_release_request_body_t release_rntis;
 instance_t DUuniqInstance=0;
 instance_t CUuniqInstance=0;
 
+// NTN cellSpecificKoffset-r17, but in slots for DL SCS
+unsigned int NTN_UE_Koffset = 0;
+
 void nr_derive_key_ng_ran_star(uint16_t pci, uint64_t nr_arfcn_dl, const uint8_t key[32], uint8_t *key_ng_ran_star)
 {
 }
@@ -117,8 +120,6 @@ int DU_send_INITIAL_UL_RRC_MESSAGE_TRANSFER(module_id_t     module_idP,
                                             sdu_size_t      sdu2_lenP) {
   return 0;
 }
-
-nr_bler_struct nr_bler_data[NR_NUM_MCS];
 
 void nr_derive_key(int alg_type, uint8_t alg_id, const uint8_t key[32], uint8_t out[16])
 {
@@ -223,7 +224,13 @@ int main(int argc, char *argv[])
   /* initialize the sin-cos table */
   InitSinLUT();
 
-  while ((c = getopt(argc, argv, "a:b:c:d:ef:g:h:i:k:m:n:op:q:r:s:t:u:v:w:y:z:C:F:G:H:I:M:N:PR:S:T:U:L:ZW:E:X:")) != -1) {
+  while ((c = getopt(argc, argv, "--:O:a:b:c:d:ef:g:h:i:k:m:n:op:q:r:s:t:u:v:w:y:z:C:F:G:H:I:M:N:PR:S:T:U:L:ZW:E:X:")) != -1) {
+
+    /* ignore long options starting with '--', option '-O' and their arguments that are handled by configmodule */
+    /* with this opstring getopt returns 1 for non-option arguments, refer to 'man 3 getopt' */
+    if (c == 1 || c == '-' || c == 'O')
+      continue;
+
     printf("handling optarg %c\n",c);
     switch (c) {
 
@@ -601,7 +608,17 @@ int main(int argc, char *argv[])
                                 .minRXTXTIME = 0,
                                 .do_CSIRS = 0,
                                 .do_SRS = 0,
-                                .force_256qam_off = false};
+                                .force_256qam_off = false,
+                                .timer_config.sr_ProhibitTimer = 0,
+                                .timer_config.sr_TransMax = 64,
+                                .timer_config.sr_ProhibitTimer_v1700 = 0,
+                                .timer_config.t300 = 400,
+                                .timer_config.t301 = 400,
+                                .timer_config.t310 = 2000,
+                                .timer_config.n310 = 10,
+                                .timer_config.t311 = 3000,
+                                .timer_config.n311 = 1,
+                                .timer_config.t319 = 400};
 
   RC.nb_nr_macrlc_inst = 1;
   RC.nb_nr_mac_CC = (int*)malloc(RC.nb_nr_macrlc_inst*sizeof(int));
@@ -611,15 +628,14 @@ int main(int argc, char *argv[])
 
   NR_ServingCellConfig_t *scd = calloc(1,sizeof(NR_ServingCellConfig_t));
   prepare_scd(scd);
+  /* removes unnecessary BWPs, if any */
+  fix_scd(scd);
 
   NR_UE_NR_Capability_t* UE_Capability_nr = CALLOC(1,sizeof(NR_UE_NR_Capability_t));
   prepare_sim_uecap(UE_Capability_nr,scc,mu,
                     N_RB_UL,0,mcs_table);
 
   NR_CellGroupConfig_t *secondaryCellGroup = get_default_secondaryCellGroup(scc, scd, UE_Capability_nr, 0, 1, &conf, 0);
-
-  /* RRC parameter validation for secondaryCellGroup */
-  fix_scd(scd);
 
   NR_BCCH_BCH_Message_t *mib = get_new_MIB_NR(scc);
 
@@ -686,11 +702,6 @@ int main(int argc, char *argv[])
   }
 
   init_nr_ue_transport(UE);
-
-  for(int n_scid = 0; n_scid<2; n_scid++) {
-    UE->scramblingID_ulsch[n_scid] = frame_parms->Nid_cell;
-    nr_init_pusch_dmrs(UE, frame_parms->Nid_cell, n_scid);
-  }
 
   //Configure UE
   nr_l2_init_ue(1);
@@ -759,8 +770,7 @@ int main(int argc, char *argv[])
 
   uint8_t  length_dmrs = pusch_len1;
   uint16_t l_prime_mask = get_l_prime(nb_symb_sch, mapping_type, add_pos, length_dmrs, start_symbol, NR_MIB__dmrs_TypeA_Position_pos2);
-  uint16_t number_dmrs_symbols = get_dmrs_symbols_in_slot(l_prime_mask, nb_symb_sch);
-  printf("num dmrs sym %d\n",number_dmrs_symbols);
+  uint16_t number_dmrs_symbols = get_dmrs_symbols_in_slot(l_prime_mask, nb_symb_sch, start_symbol);
   uint8_t  nb_re_dmrs = (dmrs_config_type == pusch_dmrs_type1) ? 6 : 4;
 
   uint32_t tbslbrm = 0;
@@ -776,7 +786,7 @@ int main(int argc, char *argv[])
 
     AssertFatal(enable_ptrs == 0, "PTRS NOT SUPPORTED IF TRANSFORM PRECODING IS ENABLED\n");
 
-    int8_t index = get_index_for_dmrs_lowpapr_seq((NR_NB_SC_PER_RB/2) * nb_rb);
+    int index = get_index_for_dmrs_lowpapr_seq((NR_NB_SC_PER_RB / 2) * nb_rb);
     AssertFatal(index >= 0, "Num RBs not configured according to 3GPP 38.211 section 6.3.1.4. For PUSCH with transform precoding, num RBs cannot be multiple of any other primenumber other than 2,3,5\n");
 
     dmrs_config_type = pusch_dmrs_type1;
@@ -788,8 +798,18 @@ int main(int argc, char *argv[])
   nb_re_dmrs = nb_re_dmrs * num_dmrs_cdm_grps_no_data;
   unsigned int TBS = nr_compute_tbs(mod_order, code_rate, nb_rb, nb_symb_sch, nb_re_dmrs * number_dmrs_symbols, 0, 0, precod_nbr_layers);
   
-  printf("[ULSIM]: length_dmrs: %u, l_prime_mask: %u	number_dmrs_symbols: %u, mapping_type: %u add_pos: %d \n", length_dmrs, l_prime_mask, number_dmrs_symbols, mapping_type, add_pos);
-  printf("[ULSIM]: CDM groups: %u, dmrs_config_type: %d, num_rbs: %u, nb_symb_sch: %u\n", num_dmrs_cdm_grps_no_data, dmrs_config_type, nb_rb, nb_symb_sch);
+  printf("[ULSIM]: length_dmrs: %u, l_prime_mask: %u	number_dmrs_symbols: %u, mapping_type: %u add_pos: %d \n",
+         length_dmrs,
+         l_prime_mask,
+         number_dmrs_symbols,
+         mapping_type,
+         add_pos);
+  printf("[ULSIM]: CDM groups: %u, dmrs_config_type: %d, num_rbs: %u, nb_symb_sch: %u, start_symbol %u\n",
+         num_dmrs_cdm_grps_no_data,
+         dmrs_config_type,
+         nb_rb,
+         nb_symb_sch,
+         start_symbol);
   printf("[ULSIM]: MCS: %d, mod order: %u, code_rate: %u\n", Imcs, mod_order, code_rate);
 
   uint8_t ulsch_input_buffer[TBS/8];
@@ -902,6 +922,10 @@ int main(int argc, char *argv[])
     csv_file = fopen(filename_csv, "a");
     if (csv_file == NULL) {
       printf("Can't open file \"%s\", errno %d\n", filename_csv, errno);
+      free(s_re);
+      free(s_im);
+      free(r_re);
+      free(r_im);
       return 1;
     }
     // adding name of parameters into file
@@ -924,11 +948,8 @@ int main(int argc, char *argv[])
     reset_meas(&gNB->rx_pusch_stats);
     reset_meas(&gNB->rx_pusch_init_stats);
     reset_meas(&gNB->rx_pusch_symbol_processing_stats);
+    reset_meas(&gNB->ulsch_decoding_stats);
     reset_meas(&gNB->ulsch_channel_estimation_stats);
-    reset_meas(&UE->ulsch_ldpc_encoding_stats);
-    reset_meas(&UE->ulsch_rate_matching_stats);
-    reset_meas(&UE->ulsch_interleaving_stats);
-    reset_meas(&UE->ulsch_encoding_stats);
     reset_meas(&gNB->rx_srs_stats);
     reset_meas(&gNB->generate_srs_stats);
     reset_meas(&gNB->get_srs_signal_stats);
@@ -937,6 +958,7 @@ int main(int argc, char *argv[])
     reset_meas(&gNB->srs_report_tlv_stats);
     reset_meas(&gNB->srs_beam_report_stats);
     reset_meas(&gNB->srs_iq_matrix_stats);
+    init_nr_ue_phy_cpu_stats(&UE->phy_cpu_stats);
 
     uint32_t errors_scrambling[16] = {0};
     int n_errors[16] = {0};
@@ -1082,7 +1104,7 @@ int main(int argc, char *argv[])
         ul_config0->pdu_type = FAPI_NR_UL_CONFIG_TYPE_PUSCH;
         nfapi_nr_ue_pusch_pdu_t *pusch_config_pdu = &ul_config0->pusch_config_pdu;
         // Config UL TX PDU
-        pusch_config_pdu->tx_request_body.pdu = ulsch_input_buffer;
+        pusch_config_pdu->tx_request_body.fapiTxPdu = ulsch_input_buffer;
         pusch_config_pdu->tx_request_body.pdu_length = TBS / 8;
         pusch_config_pdu->rnti = n_rnti;
         pusch_config_pdu->pdu_bit_map = pdu_bit_map;
@@ -1098,7 +1120,6 @@ int main(int argc, char *argv[])
         pusch_config_pdu->num_dmrs_cdm_grps_no_data = num_dmrs_cdm_grps_no_data;
         pusch_config_pdu->nrOfLayers = precod_nbr_layers;
         pusch_config_pdu->dmrs_ports = ((1 << precod_nbr_layers) - 1);
-        pusch_config_pdu->absolute_delta_PUSCH = 0;
         pusch_config_pdu->target_code_rate = code_rate;
         pusch_config_pdu->tbslbrm = tbslbrm;
         pusch_config_pdu->ldpcBaseGraph = get_BG(TBS, code_rate);
@@ -1136,7 +1157,7 @@ int main(int argc, char *argv[])
         }
 
         for (int i = 0; i < (TBS / 8); i++)
-          UE->ul_harq_processes[harq_pid].a[i] = i & 0xff;
+          UE->ul_harq_processes[harq_pid].payload_AB[i] = i & 0xff;
 
         if (input_fd == NULL) {
           // set FAPI parameters for UE, put them in the scheduled response and call
@@ -1452,8 +1473,8 @@ int main(int argc, char *argv[])
 
       for (i = 0; i < TBS; i++) {
         uint8_t estimated_output_bit = (ulsch_gNB->harq_process->b[i / 8] & (1 << (i & 7))) >> (i & 7);
-        uint8_t test_input_bit = (UE->ul_harq_processes[harq_pid].b[i / 8] & (1 << (i & 7))) >> (i & 7);
-      
+        uint8_t test_input_bit = (UE->ul_harq_processes[harq_pid].payload_AB[i / 8] & (1 << (i & 7))) >> (i & 7);
+
         if (estimated_output_bit != test_input_bit) {
           /*if(errors_decoding == 0)
               printf("\x1B[34m""[frame %d][trial %d]\t1st bit in error in decoding     = %d\n" "\x1B[0m", frame, trial, i);*/
@@ -1548,13 +1569,12 @@ int main(int argc, char *argv[])
       printStatIndent2(&gNB->ulsch_channel_estimation_stats, "ULSCH channel estimation time");
       printStatIndent2(&gNB->rx_pusch_init_stats, "RX PUSCH Initialization time");
       printStatIndent2(&gNB->rx_pusch_symbol_processing_stats, "RX PUSCH Symbol Processing time");
+      printStatIndent(&gNB->ulsch_decoding_stats,"ULSCH total decoding time");
 
       printf("\nUE TX\n");
-      printStatIndent(&UE->ulsch_encoding_stats,"ULSCH total encoding time");
-      printStatIndent2(&UE->ulsch_segmentation_stats,"ULSCH segmentation time");
-      printStatIndent2(&UE->ulsch_ldpc_encoding_stats,"ULSCH LDPC encoder time");
-      printStatIndent2(&UE->ulsch_rate_matching_stats,"ULSCH rate-matching time");
-      printStatIndent2(&UE->ulsch_interleaving_stats,"ULSCH interleaving time");
+      for (int i = PHY_PROC_TX; i <= ULSCH_ENCODING_STATS; i++) {
+        printStatIndent(&UE->phy_cpu_stats.cpu_time_stats[i], UE->phy_cpu_stats.cpu_time_stats[i].meas_name);
+      }
       printStatIndent(&gNB->rx_srs_stats,"RX SRS time");
       printStatIndent2(&gNB->generate_srs_stats,"Generate SRS sequence time");
       printStatIndent2(&gNB->get_srs_signal_stats,"Get SRS signal time");

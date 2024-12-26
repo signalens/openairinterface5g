@@ -137,11 +137,6 @@ NR_gNB_DLSCH_t new_gNB_dlsch(NR_DL_FRAME_PARMS *frame_parms, uint16_t N_RB)
   return(dlsch);
 }
 
-void clean_gNB_dlsch(NR_gNB_DLSCH_t *dlsch) {
-  AssertFatal(dlsch!=NULL,"dlsch is null\n");
-  dlsch->active = 0;
-}
-
 void ldpc8blocks(void *p)
 {
   encoder_implemparams_t *impp=(encoder_implemparams_t *) p;
@@ -365,6 +360,7 @@ int nr_dlsch_encoding(PHY_VARS_gNB *gNB,
   impp.harq = harq;
   if (gNB->ldpc_offload_flag) {
     impp.Qm = rel15->qamModOrder[0];
+    impp.Tbslbrm = rel15->maintenance_parms_v3.tbSizeLbrmBytes;
     impp.rv = rel15->rvIndex[0];
     int nb_re_dmrs =
         (rel15->dmrsConfigType == NFAPI_NR_DMRS_TYPE1) ? (6 * rel15->numDmrsCdmGrpsNoData) : (4 * rel15->numDmrsCdmGrpsNoData);
@@ -375,13 +371,10 @@ int nr_dlsch_encoding(PHY_VARS_gNB *gNB,
                       harq->unav_res,
                       rel15->qamModOrder[0],
                       rel15->nrOfLayers);
-    int r_offset = 0;
     for (int r = 0; r < impp.n_segments; r++) {
-      impp.E = nr_get_E(impp.G, impp.n_segments, impp.Qm, rel15->nrOfLayers, r);
-      uint8_t *f = impp.output + r_offset;
-      ldpc_interface_offload.LDPCencoder(&harq->c[r], &f, &impp);
-      r_offset += impp.E;
+      impp.perCB[r].E_cb = nr_get_E(impp.G, impp.n_segments, impp.Qm, rel15->nrOfLayers, r);
     }
+    ldpc_interface_offload.LDPCencoder(harq->c, &impp.output, &impp);
   } else {
     notifiedFIFO_t nf;
     initNotifiedFIFO(&nf);

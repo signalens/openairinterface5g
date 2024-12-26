@@ -59,6 +59,8 @@
 #include "common/ran_context.h"
 #include "nfapi/oai_integration/vendor_ext.h"
 
+#include "common/utils/alg/find.h"
+
 //#define DEBUG_DCI
 
 extern RAN_CONTEXT_t RC;
@@ -130,6 +132,46 @@ uint8_t get_dl_nrOfLayers(const NR_UE_sched_ctrl_t *sched_ctrl,
 
 }
 
+// Table 5.2.2.2.1-3 and Table 5.2.2.2.1-4 in 38.214
+void get_k1_k2_indices(const int layers, const int N1, const int N2, const int i13, int *k1, int *k2)
+{
+  AssertFatal(layers > 0 && layers < 5, "Number of layers %d not supported\n", layers);
+  *k1 = 0;
+  *k2 = 0;
+  if (layers == 2) {
+    if (N2 == 1)
+      *k1 = i13;
+    else if (N1 == N2) {
+      *k1 = i13 & 1;
+      *k2 = i13 >> 1;
+    }
+    else {
+      *k1 = (i13 & 1) + (i13 == 3);
+      *k2 = (i13 == 2);
+    }
+  }
+  if (layers == 3 || layers == 4) {
+    if (N2 == 1)
+      *k1 = i13 + 1;
+    else if (N1 == 2 && N2 == 2) {
+      *k1 = !(i13 & 1);
+      *k2 = (i13 > 0);
+    }
+    else {
+      if (i13 == 0)
+        *k1 = 1;
+      if (i13 == 1)
+        *k2 = 1;
+      if (i13 == 2) {
+        *k1 = 1;
+        *k2 = 1;
+      }
+      if (i13 == 3)
+        *k1 = 2;
+    }
+  }
+}
+
 uint16_t get_pm_index(const gNB_MAC_INST *nrmac,
                       const NR_UE_info_t *UE,
                       nr_dci_format_t dci_format,
@@ -138,14 +180,16 @@ uint16_t get_pm_index(const gNB_MAC_INST *nrmac,
 {
   if (dci_format == NR_DL_DCI_FORMAT_1_0 || nrmac->identity_pm || xp_pdsch_antenna_ports == 1)
     return 0; //identity matrix (basic 5G configuration handled by PMI report is with XP antennas)
-
   const NR_UE_sched_ctrl_t *sched_ctrl = &UE->UE_sched_ctrl;
   const int report_id = sched_ctrl->CSI_report.cri_ri_li_pmi_cqi_report.csi_report_id;
   const nr_csi_report_t *csi_report = &UE->csi_report_template[report_id];
   const int N1 = csi_report->N1;
   const int N2 = csi_report->N2;
   const int antenna_ports = (N1 * N2) << 1;
-  const int x1 = sched_ctrl->CSI_report.cri_ri_li_pmi_cqi_report.pmi_x1;
+  if (antenna_ports < 2)
+    return 0; // single antenna port
+
+  int x1 = sched_ctrl->CSI_report.cri_ri_li_pmi_cqi_report.pmi_x1;
   const int x2 = sched_ctrl->CSI_report.cri_ri_li_pmi_cqi_report.pmi_x2;
   LOG_D(NR_MAC,"PMI report: x1 %d x2 %d layers: %d\n", x1, x2, layers);
 
@@ -160,8 +204,37 @@ uint16_t get_pm_index(const gNB_MAC_INST *nrmac,
   // elements from n+1 to m for 2 layers etc.
   if (antenna_ports == 2)
     return 1 + prev_layers_size + x2;  // 0 for identity matrix
-  else
-    AssertFatal(1==0,"More than 2 antenna ports not yet supported\n");
+  else {
+    int idx = layers - 1;
+    // the order of i1x in X1 report needs to be verified
+    // the standard is not very clear (Table 6.3.1.1.2-7 in 38.212)
+    // it says: PMI wideband information fields X1 , from left to right
+    int bitlen = csi_report->csi_meas_bitlen.pmi_i13_bitlen[idx];
+    if (layers == 1 && bitlen != 0) {
+      LOG_E(NR_MAC, "Invalid i13 bit length %d for single layer! It should be 0\n", bitlen);
+      return 0;
+    }
+    const int i13 = x1 & ((1 << bitlen) - 1);
+    x1 >>= bitlen;
+    bitlen = csi_report->csi_meas_bitlen.pmi_i12_bitlen[idx];
+    const int i12 = x1 & ((1 << bitlen) - 1);
+    x1 >>= bitlen;
+    bitlen = csi_report->csi_meas_bitlen.pmi_i11_bitlen[idx];
+    const int i11 = x1 & ((1 << bitlen) - 1);
+    const int i2 = x2;
+    int k1, k2;
+    get_k1_k2_indices(layers, N1, N2, i13, &k1, &k2); // get indices k1 and k2 for PHY matrix (not actual k1 and k2 values)
+    const int O2 = N2 == 1 ? 1 : 4;
+    int O1 = 4; //Horizontal beam oversampling = 4 for more than 2 antenna ports
+    int max_i2 = 0;
+    int lay_index = 0;
+    max_i2 = layers == 1 ? 4 : 2;
+    int K1, K2;
+    get_K1_K2(N1, N2, &K1, &K2, layers);
+    // computing precoding matrix index according to rule set in allocation function init_codebook_gNB
+    lay_index = i2 + (i11 * max_i2) + (i12 * max_i2 * N1 * O1) + (k1 * max_i2 * N1 * O1 * N2 * O2) + (k2 * max_i2 * N1 * O1 * N2 * O2 * K1);
+    return 1 + prev_layers_size + lay_index;
+  }
 }
 
 uint8_t get_mcs_from_cqi(int mcs_table, int cqi_table, int cqi_idx)
@@ -678,24 +751,24 @@ int get_mcs_from_bler(const NR_bler_options_t *bler_options,
     return old_mcs; // no update
 
   // last update is longer than x frames ago
-  const int dtx = (int)(stats->rounds[0] - bler_stats->rounds[0]);
-  const int dretx = (int)(stats->rounds[1] - bler_stats->rounds[1]);
-  const float bler_window = dtx > 0 ? (float) dretx / dtx : bler_stats->bler;
+  const int num_dl_sched = (int)(stats->rounds[0] - bler_stats->rounds[0]);
+  const int num_dl_retx = (int)(stats->rounds[1] - bler_stats->rounds[1]);
+  const float bler_window = num_dl_sched > 0 ? (float) num_dl_retx / num_dl_sched : bler_stats->bler;
   bler_stats->bler = BLER_FILTER * bler_stats->bler + (1 - BLER_FILTER) * bler_window;
 
   int new_mcs = old_mcs;
-  if (bler_stats->bler < bler_options->lower && old_mcs < max_mcs && dtx > 9)
+  if (bler_stats->bler < bler_options->lower && old_mcs < max_mcs && num_dl_sched > 3)
     new_mcs += 1;
   else if ((bler_stats->bler > bler_options->upper && old_mcs > 6) // above threshold
-      || (dtx <= 3 && old_mcs > 9))                                // no activity
+      || (num_dl_sched <= 3 && old_mcs > 9))                                // no activity
     new_mcs -= 1;
   // else we are within threshold boundaries
 
   bler_stats->last_frame = frame;
   bler_stats->mcs = new_mcs;
   memcpy(bler_stats->rounds, stats->rounds, sizeof(stats->rounds));
-  LOG_D(MAC, "frame %4d MCS %d -> %d (dtx %d, dretx %d, BLER wnd %.3f avg %.6f)\n",
-        frame, old_mcs, new_mcs, dtx, dretx, bler_window, bler_stats->bler);
+  LOG_D(MAC, "frame %4d MCS %d -> %d (num_dl_sched %d, num_dl_retx %d, BLER wnd %.3f avg %.6f)\n",
+        frame, old_mcs, new_mcs, num_dl_sched, num_dl_retx, bler_window, bler_stats->bler);
   return new_mcs;
 }
 
@@ -1236,6 +1309,8 @@ void fill_dci_pdu_rel15(const NR_UE_ServingCell_Info_t *servingCellInfo,
                              ss->searchSpaceType->present,
                              cset0_bwp_size,
                              alt_size);
+  if (dci_size == 0)
+    return;
   pdcch_dci_pdu->PayloadSizeBits = dci_size;
   AssertFatal(dci_size <= 64, "DCI sizes above 64 bits not yet supported");
   if (dci_format == NR_DL_DCI_FORMAT_1_1 || dci_format == NR_UL_DCI_FORMAT_0_1)
@@ -2000,23 +2075,6 @@ NR_UE_info_t *find_nr_UE(NR_UEs_t *UEs, rnti_t rntiP)
   return NULL;
 }
 
-int find_nr_RA_id(module_id_t mod_idP, int CC_idP, rnti_t rntiP)
-{
-  NR_RA_t *ra = &RC.nrmac[mod_idP]->common_channels[CC_idP].ra[0];
-
-  for (int RA_id = 0; RA_id < NR_NB_RA_PROC_MAX; RA_id++) {
-    LOG_D(NR_MAC, "Checking RA_id %d for %x : state %d\n",
-          RA_id,
-          rntiP,
-          ra[RA_id].state);
-
-    if (ra[RA_id].state != RA_IDLE && ra[RA_id].rnti == rntiP)
-      return RA_id;
-  }
-
-  return -1;
-}
-
 int get_nrofHARQ_ProcessesForPDSCH(e_NR_PDSCH_ServingCellConfig__nrofHARQ_ProcessesForPDSCH n)
 {
   switch (n) {
@@ -2043,6 +2101,7 @@ void delete_nr_ue_data(NR_UE_info_t *UE, NR_COMMON_channels_t *ccPtr, uid_alloca
   ASN_STRUCT_FREE(asn_DEF_NR_CellGroupConfig, UE->reconfigCellGroup);
   ASN_STRUCT_FREE(asn_DEF_NR_UE_NR_Capability, UE->capability);
   NR_UE_sched_ctrl_t *sched_ctrl = &UE->UE_sched_ctrl;
+  seq_arr_free(&sched_ctrl->lc_config, NULL);
   destroy_nr_list(&sched_ctrl->available_dl_harq);
   destroy_nr_list(&sched_ctrl->feedback_dl_harq);
   destroy_nr_list(&sched_ctrl->retrans_dl_harq);
@@ -2288,6 +2347,9 @@ void configure_UE_BWP(gNB_MAC_INST *nr_mac,
         sc_info->nrofHARQ_ProcessesForPDSCH = pdsch_servingcellconfig->nrofHARQ_ProcessesForPDSCH;
         if (pdsch_servingcellconfig->ext1)
           sc_info->maxMIMO_Layers_PDSCH = pdsch_servingcellconfig->ext1->maxMIMO_Layers;
+        if (pdsch_servingcellconfig->ext3 &&
+            pdsch_servingcellconfig->ext3->downlinkHARQ_FeedbackDisabled_r17)
+          sc_info->downlinkHARQ_FeedbackDisabled_r17 = &pdsch_servingcellconfig->ext3->downlinkHARQ_FeedbackDisabled_r17->choice.setup;
         if (pdsch_servingcellconfig->codeBlockGroupTransmission
             && pdsch_servingcellconfig->codeBlockGroupTransmission->choice.setup)
           sc_info->pdsch_CGB_Transmission = pdsch_servingcellconfig->codeBlockGroupTransmission->choice.setup;
@@ -2436,6 +2498,9 @@ NR_UE_info_t *add_new_nr_ue(gNB_MAC_INST *nr_mac, rnti_t rntiP, NR_CellGroupConf
   sched_ctrl->sched_srs.frame = -1;
   sched_ctrl->sched_srs.slot = -1;
 
+  // initialize LCID structure
+  seq_arr_init(&sched_ctrl->lc_config, sizeof(nr_lc_config_t));
+
   // initialize UE BWP information
   NR_UE_DL_BWP_t *dl_bwp = &UE->current_DL_BWP;
   memset(dl_bwp, 0, sizeof(*dl_bwp));
@@ -2486,15 +2551,16 @@ NR_UE_info_t *add_new_nr_ue(gNB_MAC_INST *nr_mac, rnti_t rntiP, NR_CellGroupConf
 
 void set_sched_pucch_list(NR_UE_sched_ctrl_t *sched_ctrl,
                           const NR_UE_UL_BWP_t *ul_bwp,
-                          const NR_ServingCellConfigCommon_t *scc) {
-
+                          const NR_ServingCellConfigCommon_t *scc)
+{
+  const int NTN_gNB_Koffset = get_NTN_Koffset(scc);
   const NR_TDD_UL_DL_Pattern_t *tdd = scc->tdd_UL_DL_ConfigurationCommon ? &scc->tdd_UL_DL_ConfigurationCommon->pattern1 : NULL;
   const int n_slots_frame = nr_slots_per_frame[ul_bwp->scs];
   const int nr_slots_period = tdd ? n_slots_frame / get_nb_periods_per_frame(tdd->dl_UL_TransmissionPeriodicity) : n_slots_frame;
   const int n_ul_slots_period = tdd ? tdd->nrofUplinkSlots + (tdd->nrofUplinkSymbols > 0 ? 1 : 0) : n_slots_frame;
   // PUCCH list size is given by the number of UL slots in the PUCCH period
   // the length PUCCH period is determined by max_fb_time since we may need to prepare PUCCH for ACK/NACK max_fb_time slots ahead
-  const int list_size = n_ul_slots_period << (ul_bwp->max_fb_time/nr_slots_period);
+  const int list_size = n_ul_slots_period << (int)ceil(log2((ul_bwp->max_fb_time + NTN_gNB_Koffset) / nr_slots_period + 1));
   if(!sched_ctrl->sched_pucch) {
     sched_ctrl->sched_pucch = calloc(list_size, sizeof(*sched_ctrl->sched_pucch));
     sched_ctrl->sched_pucch_size = list_size;
@@ -2613,9 +2679,12 @@ void mac_remove_nr_ue(gNB_MAC_INST *nr_mac, rnti_t rnti)
   delete_nr_ue_data(UE, nr_mac->common_channels, &UE_info->uid_allocator);
 }
 
-uint8_t nr_get_tpc(int target, int snrx10, int incr)
+// all values passed to this function are in dB x10
+uint8_t nr_get_tpc(int target, uint8_t cqi, int incr, int tx_power)
 {
-  // all values passed to this function are in dB x10
+  // al values passed to this function are x10
+  int snrx10 = (cqi * 5) - 640 - (tx_power * 10);
+  LOG_D(NR_MAC, "tpc : target %d, cqi %d, snrx10 %d, tx_power %d\n", target, ((int)cqi * 5) - 640, snrx10, tx_power);
   if (snrx10 > target + incr) return 0; // decrease 1dB
   if (snrx10 < target - (3*incr)) return 3; // increase 3dB
   if (snrx10 < target - incr) return 2; // increase 1dB
@@ -2907,7 +2976,6 @@ static void nr_mac_apply_cellgroup(gNB_MAC_INST *mac, NR_UE_info_t *UE, frame_t 
 
   NR_ServingCellConfigCommon_t *scc = mac->common_channels[0].ServingCellConfigCommon;
 
-  /* Note! we already did process_CellGroup(), so no need to do this again */
   NR_UE_sched_ctrl_t *sched_ctrl = &UE->UE_sched_ctrl;
   configure_UE_BWP(mac, scc, sched_ctrl, NULL, UE, -1, -1);
 
@@ -2943,8 +3011,32 @@ int nr_mac_enable_ue_rrc_processing_timer(gNB_MAC_INST *mac, NR_UE_info_t *UE, b
   // frames, after RRC processing timer.
   UE->UE_sched_ctrl.ta_frame = (mac->frame - 1 + 1024) % 1024;
 
-  LOG_D(NR_MAC, "%4d.%2d UE %04x: Activate RRC processing timer (%d ms)\n", mac->frame, mac->slot, UE->rnti, delay);
+  LOG_D(NR_MAC, "UE %04x: Activate RRC processing timer (%d ms)\n", UE->rnti, delay);
   return 0;
+}
+
+void nr_mac_trigger_release_complete(gNB_MAC_INST *mac, int rnti)
+{
+  // the CU might not know such UE, e.g., because we never sent a message to
+  // it, so there might not be a corresponding entry for such UE in the look up
+  // table. This can happen, e.g., on Msg.3 with C-RNTI, where we create a UE
+  // MAC context, decode the PDU, find the C-RNTI MAC CE, and then throw the
+  // newly created context away. See also in _nr_rx_sdu() and commit 93f59a3c6e56f
+  if (!du_exists_f1_ue_data(rnti)) 
+    return;
+
+  // unlock the scheduler temporarily to prevent possible deadlocks with
+  // du_remove_f1_ue_data() (and also while sending the message to RRC)
+  NR_SCHED_UNLOCK(&mac->sched_lock);
+  f1_ue_data_t ue_data = du_get_f1_ue_data(rnti);
+  f1ap_ue_context_release_complete_t complete = {
+    .gNB_CU_ue_id = ue_data.secondary_ue,
+    .gNB_DU_ue_id = rnti,
+  };
+  mac->mac_rrc.ue_context_release_complete(&complete);
+
+  du_remove_f1_ue_data(rnti);
+  NR_SCHED_LOCK(&mac->sched_lock);
 }
 
 void nr_mac_release_ue(gNB_MAC_INST *mac, int rnti)
@@ -2953,26 +3045,6 @@ void nr_mac_release_ue(gNB_MAC_INST *mac, int rnti)
 
   nr_rlc_remove_ue(rnti);
   mac_remove_nr_ue(mac, rnti);
-
-  // the CU might not know such UE, e.g., because we never sent a message to
-  // it, so there might not be a corresponding entry for such UE in the look up
-  // table. This can happen, e.g., on Msg.3 with C-RNTI, where we create a UE
-  // MAC context, decode the PDU, find the C-RNTI MAC CE, and then throw the
-  // newly created context away. See also in _nr_rx_sdu() and commit 93f59a3c6e56f
-  if (du_exists_f1_ue_data(rnti)) {
-    // unlock the scheduler temporarily to prevent possible deadlocks with
-    // du_remove_f1_ue_data() (and also while sending the message to RRC)
-    NR_SCHED_UNLOCK(&mac->sched_lock);
-    f1_ue_data_t ue_data = du_get_f1_ue_data(rnti);
-    f1ap_ue_context_release_complete_t complete = {
-      .gNB_CU_ue_id = ue_data.secondary_ue,
-      .gNB_DU_ue_id = rnti,
-    };
-    mac->mac_rrc.ue_context_release_complete(&complete);
-
-    du_remove_f1_ue_data(rnti);
-    NR_SCHED_LOCK(&mac->sched_lock);
-  }
 }
 
 void nr_mac_update_timers(module_id_t module_id,
@@ -2989,6 +3061,8 @@ void nr_mac_update_timers(module_id_t module_id,
     NR_UE_sched_ctrl_t *sched_ctrl = &UE->UE_sched_ctrl;
 
     if (nr_mac_check_release(sched_ctrl, UE->rnti)) {
+      // trigger release first as nr_mac_release_ue() invalidates UE ptr
+      nr_mac_trigger_release_complete(mac, UE->rnti);
       nr_mac_release_ue(mac, UE->rnti);
       // go back to examine the next UE, which is at the position the
       // current UE was
@@ -3013,26 +3087,19 @@ int ul_buffer_index(int frame, int slot, int scs, int size)
   return abs_slot % size;
 }
 
-void UL_tti_req_ahead_initialization(gNB_MAC_INST * gNB, NR_ServingCellConfigCommon_t *scc, int n, int CCid, frame_t frameP, int slotP, int scs)
+void UL_tti_req_ahead_initialization(gNB_MAC_INST *gNB, int n, int CCid, frame_t frameP, int slotP)
 {
 
-  if(gNB->UL_tti_req_ahead[CCid])
+  if(gNB->UL_tti_req_ahead[CCid][1].Slot == 1)
     return;
 
-  int size = n;
-  if (scs == 0)
-    size <<= 1; // to have enough room for feedback possibly beyond the frame we need a larger array at 15kHz SCS
-
-  gNB->UL_tti_req_ahead_size = size;
-  gNB->UL_tti_req_ahead[CCid] = calloc(size, sizeof(nfapi_nr_ul_tti_request_t));
-  AssertFatal(gNB->UL_tti_req_ahead[CCid], "could not allocate memory for RC.nrmac[]->UL_tti_req_ahead[]\n");
   /* fill in slot/frame numbers: slot is fixed, frame will be updated by scheduler
    * consider that scheduler runs sl_ahead: the first sl_ahead slots are
    * already "in the past" and thus we put frame 1 instead of 0! */
-  for (int i = 0; i < size; ++i) {
+  for (int i = 0; i < gNB->UL_tti_req_ahead_size; ++i) {
     int abs_slot = frameP * n + slotP + i;
-    nfapi_nr_ul_tti_request_t *req = &gNB->UL_tti_req_ahead[CCid][abs_slot % size];
-    req->SFN = abs_slot / n;
+    nfapi_nr_ul_tti_request_t *req = &gNB->UL_tti_req_ahead[CCid][abs_slot % gNB->UL_tti_req_ahead_size];
+    req->SFN = (abs_slot / n) % MAX_FRAME_NUMBER;
     req->Slot = abs_slot % n;
   }
 }
@@ -3066,12 +3133,12 @@ void prepare_initial_ul_rrc_message(gNB_MAC_INST *mac, NR_UE_info_t *UE)
   NR_SCHED_ENSURE_LOCKED(&mac->sched_lock);
   /* create this UE's initial CellGroup */
   int CC_id = 0;
+  int srb_id = 1;
   const NR_ServingCellConfigCommon_t *scc = mac->common_channels[CC_id].ServingCellConfigCommon;
   const NR_ServingCellConfig_t *sccd = mac->common_channels[CC_id].pre_ServingCellConfig;
   NR_CellGroupConfig_t *cellGroupConfig = get_initial_cellGroupConfig(UE->uid, scc, sccd, &mac->radio_config);
 
   UE->CellGroup = cellGroupConfig;
-  process_CellGroup(cellGroupConfig, UE);
 
   /* activate SRB0 */
   nr_rlc_activate_srb0(UE->rnti, UE, send_initial_ul_rrc_message);
@@ -3079,8 +3146,12 @@ void prepare_initial_ul_rrc_message(gNB_MAC_INST *mac, NR_UE_info_t *UE)
   /* the cellGroup sent to CU specifies there is SRB1, so create it */
   DevAssert(cellGroupConfig->rlc_BearerToAddModList->list.count == 1);
   const NR_RLC_BearerConfig_t *bearer = cellGroupConfig->rlc_BearerToAddModList->list.array[0];
-  DevAssert(bearer->servedRadioBearer->choice.srb_Identity == 1);
+  DevAssert(bearer->servedRadioBearer->choice.srb_Identity == srb_id);
   nr_rlc_add_srb(UE->rnti, bearer->servedRadioBearer->choice.srb_Identity, bearer);
+
+  int priority = bearer->mac_LogicalChannelConfig->ul_SpecificParameters->priority;
+  nr_lc_config_t c = {.lcid = bearer->logicalChannelIdentity, .priority = priority};
+  nr_mac_add_lcid(&UE->UE_sched_ctrl, &c);
 }
 
 void nr_mac_trigger_release_timer(NR_UE_sched_ctrl_t *sched_ctrl, NR_SubcarrierSpacing_t subcarrier_spacing)
@@ -3155,4 +3226,81 @@ void nr_mac_trigger_reconfiguration(const gNB_MAC_INST *nrmac, const NR_UE_info_
     .cause_value = F1AP_CauseRadioNetwork_action_desirable_for_radio_reasons,
   };
   nrmac->mac_rrc.ue_context_modification_required(&required);
+}
+
+/* \brief add bearers from CellGroupConfig.
+ *
+ * This is a kind of hack, as this should be processed through a F1 UE Context
+ * setup request, but some modes do not use that (NSA/do-ra/phy_test).  */
+void process_addmod_bearers_cellGroupConfig(NR_UE_sched_ctrl_t *sched_ctrl, const struct NR_CellGroupConfig__rlc_BearerToAddModList *addmod)
+{
+  if (addmod == NULL)
+    return; /* nothing to do */
+
+  for (int i = 0; i < addmod->list.count; ++i) {
+    const NR_RLC_BearerConfig_t *conf = addmod->list.array[i];
+    int lcid = conf->logicalChannelIdentity;
+    nr_lc_config_t c = {.lcid = lcid};
+    nr_mac_add_lcid(sched_ctrl, &c);
+  }
+}
+
+long get_lcid_from_drbid(int drb_id)
+{
+  return drb_id + 3; /* LCID is DRB + 3 */
+}
+
+long get_lcid_from_srbid(int srb_id)
+{
+  return srb_id;
+}
+
+static bool eq_lcid_config(const void *vval, const void *vit)
+{
+  const nr_lc_config_t *val = (const nr_lc_config_t *)vval;
+  const nr_lc_config_t *it = (const nr_lc_config_t *)vit;
+  return it->lcid == val->lcid;
+}
+
+static int cmp_lc_config(const void *va, const void *vb)
+{
+  const nr_lc_config_t *a = (const nr_lc_config_t *)va;
+  const nr_lc_config_t *b = (const nr_lc_config_t *)vb;
+
+  if (a->priority < b->priority)
+    return -1;
+  if (a->priority == b->priority)
+    return 0;
+  return 1;
+}
+
+bool nr_mac_add_lcid(NR_UE_sched_ctrl_t* sched_ctrl, const nr_lc_config_t *c)
+{
+  elm_arr_t elm = find_if(&sched_ctrl->lc_config, (void *) c, eq_lcid_config);
+  if (elm.found) {
+    LOG_I(NR_MAC, "cannot add LCID %d: already present, updating configuration\n", c->lcid);
+    nr_lc_config_t *exist = (nr_lc_config_t *)elm.it;
+    *exist = *c;
+  } else {
+    LOG_D(NR_MAC, "Add LCID %d\n", c->lcid);
+    seq_arr_push_back(&sched_ctrl->lc_config, (void*) c, sizeof(*c));
+  }
+  void *base = seq_arr_front(&sched_ctrl->lc_config);
+  size_t nmemb = seq_arr_size(&sched_ctrl->lc_config);
+  size_t size = sizeof(*c);
+  qsort(base, nmemb, size, cmp_lc_config);
+  return true;
+}
+
+bool nr_mac_remove_lcid(NR_UE_sched_ctrl_t *sched_ctrl, long lcid)
+{
+  nr_lc_config_t c = {.lcid = lcid};
+  elm_arr_t elm = find_if(&sched_ctrl->lc_config, &c, eq_lcid_config);
+  if (!elm.found) {
+    LOG_E(NR_MAC, "can not remove LC: no such LC with ID %ld\n", lcid);
+    return false;
+  }
+
+  seq_arr_erase(&sched_ctrl->lc_config, elm.it);
+  return true;
 }

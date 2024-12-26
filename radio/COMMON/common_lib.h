@@ -195,6 +195,8 @@ typedef struct split7_config {
   struct {
     symbol_direction_t sym_dir[14];
   } slot_dirs[160];
+  /*! this is the exponent in 2^X for the FFT size */
+  uint16_t fftSize;
 } split7_config_t;
 
 /*! \brief RF frontend parameters set by application */
@@ -335,6 +337,11 @@ typedef struct {
 } eth_params_t;
 
 typedef struct {
+  char *nvipc_shm_prefix;
+  int8_t nvipc_poll_core;
+} nvipc_params_t;
+
+typedef struct {
   //! Tx buffer for if device, keep one per subframe now to allow multithreading
   void *tx[10];
   //! Tx buffer (PRACH) for if device
@@ -383,6 +390,22 @@ typedef struct fhstate_s {
   int r[8];
   int active;
 } fhstate_t;
+
+#define WRITE_QUEUE_SZ 20
+typedef struct {
+  bool initDone;
+  pthread_mutex_t mutex_write;
+  pthread_mutex_t mutex_store;
+  openair0_timestamp nextTS;
+  struct {
+    bool active;
+    openair0_timestamp timestamp;
+    void *txp[NB_ANTENNAS_TX];
+    int nsamps;
+    int nbAnt;
+    int flags;
+  } queue[WRITE_QUEUE_SZ];
+} re_order_t;
 
 /*!\brief structure holds the parameters to configure USRP devices */
 struct openair0_device_t {
@@ -551,11 +574,10 @@ struct openair0_device_t {
    * \param idx RU index
    * \param arg pointer to capabilities or configuration
    */
-  void (*configure_rru)(int idx, void *arg);
+  void (*configure_rru)(void *, void *arg);
 
-/*! \brief Pointer to generic RRU private information
+  /*! \brief Pointer to generic RRU private information
    */
-
 
   void *thirdparty_priv;
 
@@ -586,6 +608,7 @@ struct openair0_device_t {
   /* \brief timing statistics for TX fronthaul (ethernet)
    */
   time_stats_t tx_fhaul;
+  re_order_t reOrder;
 };
 
 /* type of device init function, implemented in shared lib */
@@ -654,7 +677,8 @@ extern int read_recplayconfig(recplay_conf_t **recplay_conf, recplay_state_t **r
 /*! \brief store recorded iqs from memory to file. */
 extern void iqrecorder_end(openair0_device *device);
 
-
+int openair0_write_reorder(openair0_device *device, openair0_timestamp timestamp, void **txp, int nsamps, int nbAnt, int flags);
+void openair0_write_reorder_clear_context(openair0_device *device);
 #include <unistd.h>
 #ifndef gettid
 #define gettid() syscall(__NR_gettid)

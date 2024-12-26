@@ -41,29 +41,13 @@
 //#define DEBUG_DCI
 //#define DEBUG_CHANNEL_CODING
 
-void nr_pdcch_scrambling(uint32_t *in,
-                         uint32_t size,
-                         uint32_t Nid,
-                         uint32_t scrambling_RNTI,
-                         uint32_t *out) {
-  uint8_t reset;
-  uint32_t x1 = 0, x2 = 0, s = 0;
-  reset = 1;
-  x2 = (scrambling_RNTI<<16) + Nid;
-  LOG_D(NR_PHY_DCI, "PDCCH Scrambling x2 %x : scrambling_RNTI %x \n", x2, scrambling_RNTI);
-  for (int i=0; i<size; i++) {
-    if ((i&0x1f)==0) {
-      s = lte_gold_generic(&x1, &x2, reset);
-      reset = 0;
-
-      if (i) {
-        in++;
-        out++;
-      }
-    }
-
-    (*out) ^= ((((*in)>>(i&0x1f))&1) ^ ((s>>(i&0x1f))&1))<<(i&0x1f);
-  }
+static void nr_pdcch_scrambling(uint32_t *in, uint32_t size, uint32_t Nid, uint32_t scrambling_RNTI, uint32_t *out)
+{
+  int roundedSz = ((size + 31) / 32);
+  uint32_t *seq = gold_cache((scrambling_RNTI << 16) + Nid, roundedSz);
+  LOG_D(NR_PHY_DCI, "PDCCH scrambling_RNTI %x \n", scrambling_RNTI);
+  for (int i = 0; i < roundedSz; i++)
+    out[i] = in[i] ^ seq[i];
 }
 
 void nr_generate_dci(PHY_VARS_gNB *gNB,
@@ -95,13 +79,6 @@ void nr_generate_dci(PHY_VARS_gNB *gNB,
      * in time: by its first slot and its first symbol*/
     const nfapi_nr_dl_dci_pdu_t *dci_pdu = &pdcch_pdu_rel15->dci_pdu[d];
 
-    if(dci_pdu->ScramblingId != gNB->pdcch_gold_init) {
-      gNB->pdcch_gold_init = dci_pdu->ScramblingId;
-      nr_init_pdcch_dmrs(gNB, dci_pdu->ScramblingId);
-    }
-
-    uint32_t **gold_pdcch_dmrs = gNB->nr_gold_pdcch_dmrs[slot];
-
     cset_start_symb = pdcch_pdu_rel15->StartSymbolIndex;
     cset_nsymb = pdcch_pdu_rel15->DurationSymbols;
     dci_idx = 0;
@@ -131,9 +108,10 @@ void nr_generate_dci(PHY_VARS_gNB *gNB,
       
     /// DMRS QPSK modulation
     for (int symb=cset_start_symb; symb<cset_start_symb + pdcch_pdu_rel15->DurationSymbols; symb++) {
+      const uint32_t *gold = nr_gold_pdcch(frame_parms->N_RB_DL, frame_parms->symbols_per_slot, dci_pdu->ScramblingId, slot, symb);
+      nr_modulation(gold, dmrs_length, DMRS_MOD_ORDER,
+                    mod_dmrs[symb]); // Qm = 2 as DMRS is QPSK modulated
 
-      nr_modulation(gold_pdcch_dmrs[symb], dmrs_length, DMRS_MOD_ORDER, mod_dmrs[symb]); //Qm = 2 as DMRS is QPSK modulated
-      
 #ifdef DEBUG_PDCCH_DMRS
       if(dci_pdu->RNTI!=0xFFFF) {
         for (int i=0; i<dmrs_length>>1; i++)

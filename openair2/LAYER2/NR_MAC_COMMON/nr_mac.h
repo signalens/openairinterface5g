@@ -63,11 +63,6 @@
 #define RAR_PAYLOAD_SIZE_MAX  128
 #define MAX_CSI_REPORTCONFIG  48
 
-#define NR_BSR_TRIGGER_NONE      (0) /* No BSR Trigger */
-#define NR_BSR_TRIGGER_REGULAR   (1) /* For Regular and ReTxBSR Expiry Triggers */
-#define NR_BSR_TRIGGER_PERIODIC  (2) /* For BSR Periodic Timer Expiry Trigger */
-#define NR_BSR_TRIGGER_PADDING   (4) /* For Padding BSR Trigger */
-
 //  For both DL/UL-SCH
 //  Except:
 //   - UL/DL-SCH: fixed-size MAC CE(known by LCID)
@@ -112,12 +107,13 @@ typedef struct {
   uint8_t R: 2;       // octet 1 [7:6]
 } __attribute__ ((__packed__)) NR_MAC_SUBHEADER_FIXED;
 
-static inline int get_mac_len(uint8_t* pdu, int pdu_len, uint16_t *mac_ce_len, uint16_t *mac_subheader_len) {
-  if ( pdu_len < (int)sizeof(NR_MAC_SUBHEADER_SHORT))
+static inline int get_mac_len(uint8_t *pdu, uint32_t pdu_len, uint16_t *mac_ce_len, uint16_t *mac_subheader_len)
+{
+  if (pdu_len < sizeof(NR_MAC_SUBHEADER_SHORT))
     return false;
-  NR_MAC_SUBHEADER_SHORT *s = (NR_MAC_SUBHEADER_SHORT*) pdu;
-  NR_MAC_SUBHEADER_LONG *l = (NR_MAC_SUBHEADER_LONG*) pdu;
-  if (s->F && pdu_len < (int)sizeof(NR_MAC_SUBHEADER_LONG))
+  NR_MAC_SUBHEADER_SHORT *s = (NR_MAC_SUBHEADER_SHORT *)pdu;
+  NR_MAC_SUBHEADER_LONG *l = (NR_MAC_SUBHEADER_LONG *)pdu;
+  if (s->F && pdu_len < sizeof(NR_MAC_SUBHEADER_LONG))
     return false;
   if (s->F) {
     *mac_subheader_len = sizeof(*l);
@@ -128,7 +124,7 @@ static inline int get_mac_len(uint8_t* pdu, int pdu_len, uint16_t *mac_ce_len, u
   }
   return true;
 }
-    
+
 // BSR MAC CEs
 // TS 38.321 ch. 6.1.3.1
 // Short BSR for a specific logical channel group ID
@@ -430,7 +426,7 @@ typedef struct prach_occasion_info {
 // PRACH occasion slot details
 // A PRACH occasion slot is a series of PRACH occasions in time (symbols) and frequency
 typedef struct prach_occasion_slot {
-  prach_occasion_info_t prach_occasion[MAX_TDM][MAX_FDM]; // Starting symbol of each PRACH occasions in a slot
+  prach_occasion_info_t *prach_occasion; // Starting symbol of each PRACH occasions in a slot
   uint8_t nb_of_prach_occasion_in_time;
   uint8_t nb_of_prach_occasion_in_freq;
 } prach_occasion_slot_t;
@@ -499,10 +495,14 @@ typedef struct{
   uint8_t li_bitlen[8];
   uint8_t pmi_x1_bitlen[8];
   uint8_t pmi_x2_bitlen[8];
+  uint8_t pmi_i11_bitlen[8];
+  uint8_t pmi_i12_bitlen[8];
+  uint8_t pmi_i13_bitlen[8];
   uint8_t cqi_bitlen[8];
 } CSI_Meas_bitlen_t;
 
 typedef struct nr_csi_report {
+  NR_CSI_ReportConfigId_t reportConfigId;
   NR_CSI_ReportConfig__reportQuantity_PR reportQuantity_type;
   long periodicity;
   uint16_t offset;
@@ -563,6 +563,7 @@ typedef struct NR_UE_UL_BWP {
   NR_PUSCH_TimeDomainResourceAllocationList_t *tdaList_Common;
   NR_ConfiguredGrantConfig_t *configuredGrantConfig;
   NR_PUSCH_Config_t *pusch_Config;
+  NR_UCI_OnPUSCH_t *uci_onPusch;
   NR_PUCCH_Config_t *pucch_Config;
   NR_PUCCH_ConfigCommon_t *pucch_ConfigCommon;
   NR_SRS_Config_t *srs_Config;
@@ -571,6 +572,11 @@ typedef struct NR_UE_UL_BWP {
   uint8_t mcs_table;
   nr_dci_format_t dci_format;
   int max_fb_time;
+  long *p0_NominalWithGrant;
+  // UE Channel bandwidth according to 38.101 5.3.2
+  int channel_bandwidth;
+  // Minimum transmission power according to 38.101 6.3.1
+  float P_CMIN;
 } NR_UE_UL_BWP_t;
 
 // non-BWP serving cell configuration
@@ -596,6 +602,8 @@ typedef struct {
   int n_ul_bwp;
   int dl_bw_tbslbrm;
   int ul_bw_tbslbrm;
+  NR_NTN_Config_r17_t *ntn_Config_r17;
+  NR_DownlinkHARQ_FeedbackDisabled_r17_t *downlinkHARQ_FeedbackDisabled_r17;
 } NR_UE_ServingCell_Info_t;
 
 typedef enum {
@@ -614,6 +622,7 @@ typedef struct NR_tda_info {
   int startSymbolIndex;
   int nrOfSymbols;
   long k2;
+  bool valid_tda;
 } NR_tda_info_t;
 
 #endif /*__LAYER2_MAC_H__ */

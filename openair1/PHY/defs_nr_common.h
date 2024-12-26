@@ -96,6 +96,8 @@
 
 #define MAX_DELAY_COMP 20
 
+#define PBCH_MAX_RE_PER_SYMBOL (20 * 12)
+
 typedef enum {
   NR_MU_0=0,
   NR_MU_1,
@@ -115,13 +117,11 @@ typedef enum{
 typedef struct {
   uint8_t k_0_p[MAX_NUM_NR_SRS_AP][MAX_NUM_NR_SRS_SYMBOLS];
   uint8_t srs_generated_signal_bits;
-  int32_t **srs_generated_signal;
+  c16_t **srs_generated_signal;
   nfapi_nr_srs_pdu_t srs_pdu;
 } nr_srs_info_t;
 
 typedef struct {
-  uint16_t csi_gold_init;
-  uint32_t ***nr_gold_csi_rs;
   uint8_t csi_rs_generated_signal_bits;
   int32_t **csi_rs_generated_signal;
   bool csi_im_meas_computed;
@@ -133,11 +133,11 @@ typedef struct NR_DL_FRAME_PARMS NR_DL_FRAME_PARMS;
 typedef uint32_t (*get_samples_per_slot_t)(int slot, const NR_DL_FRAME_PARMS *fp);
 typedef uint32_t (*get_slot_from_timestamp_t)(openair0_timestamp timestamp_rx, const NR_DL_FRAME_PARMS *fp);
 
-typedef uint32_t (*get_samples_slot_timestamp_t)(int slot, const NR_DL_FRAME_PARMS *fp, uint8_t sl_ahead);
+typedef uint32_t (*get_samples_slot_timestamp_t)(int slot, const NR_DL_FRAME_PARMS *fp, unsigned int sl_ahead);
 
 struct NR_DL_FRAME_PARMS {
   /// frequency range
-  nr_frequency_range_e freq_range;
+  frequency_range_t freq_range;
   //  /// Placeholder to replace overlapping fields below
   //  nfapi_nr_rf_config_t rf_config;
   /// Placeholder to replace SSB overlapping fields below
@@ -168,8 +168,6 @@ struct NR_DL_FRAME_PARMS {
   /// Frame type (0 FDD, 1 TDD)
   frame_type_t frame_type;
   uint8_t tdd_config;
-  /// Sidelink Cell ID
-  uint16_t Nid_SL;
   /// Cell ID
   uint16_t Nid_cell;
   /// subcarrier spacing (15,30,60,120)
@@ -261,6 +259,7 @@ struct NR_DL_FRAME_PARMS {
   uint32_t ofdm_offset_divisor;
   uint16_t tdd_slot_config;
   uint8_t tdd_period;
+  bool print_ue_help_cmdline_log;
 };
 
 // PRS config structures

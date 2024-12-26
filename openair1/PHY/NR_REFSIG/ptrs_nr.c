@@ -191,7 +191,7 @@ void nr_ptrs_cpe_estimation(uint8_t K_ptrs,
                             unsigned char symbol,
                             uint16_t ofdm_symbol_size,
                             int16_t *rxF_comp,
-                            uint32_t *gold_seq,
+                            const uint32_t *gold_seq,
                             int16_t *error_est,
                             int32_t *ptrs_sc)
 {

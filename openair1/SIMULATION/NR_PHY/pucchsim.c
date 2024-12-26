@@ -155,7 +155,14 @@ int main(int argc, char **argv)
   randominit(0);
   logInit();
 
-  while ((c = getopt (argc, argv, "f:hA:f:g:i:I:P:B:b:t:T:m:n:r:o:s:S:x:y:z:N:F:GR:IL:q:cd:")) != -1) {
+  while ((c = getopt (argc, argv, "--:O:f:hA:f:g:i:I:P:B:b:t:T:m:n:r:o:s:S:x:y:z:N:F:GR:IL:q:cd:")) != -1) {
+
+    /* ignore long options starting with '--', option '-O' and their arguments that are handled by configmodule */
+    /* with this opstring getopt returns 1 for non-option arguments, refer to 'man 3 getopt' */
+    if (c == 1 || c == '-' || c == 'O')
+      continue;
+
+    printf("handling optarg %c\n",c);
     switch (c) {
     case 'f':
       //write_output_file=1;
@@ -347,36 +354,35 @@ int main(int argc, char **argv)
     default:
     case 'h':
       printf("%s -h(elp) -p(extended_prefix) -N cell_id -f output_filename -F input_filename -g channel_model -n n_frames -t Delayspread -s snr0 -S snr1 -x transmission_mode -y TXant -z RXant -i Intefrence0 -j Interference1 -A interpolation_file -C(alibration offset dB) -N CellId\n", argv[0]);
-      printf("-h This message\n");
-      printf("-p Use extended prefix mode\n");
+      //printf("-C Generate Calibration information for Abstraction (effective SNR adjustment to remove Pe bias w.r.t. AWGN)\n");
+      printf("-A Interpolation_filname Run with Abstraction to generate Scatter plot using interpolation polynomial in file\n");
+      printf("-b number of HARQ bits (1-2)\n");
+      printf("-B payload to be transmitted on PUCCH\n");
+      printf("-c Activate scheduling request\n");
       printf("-d Use TDD\n");
+      printf("-f Output filename (.txt format) for Pe/SNR results\n");
+      printf("-F Input filename (.txt format) for RX conformance testing\n");
+      printf("-g [A,B,C,D,E,F,G] Use 3GPP SCM (A,B,C,D) or 36-101 (E-EPA,F-EVA,G-ETU) models (ignores delay spread and Ricean factor)\n");
+      printf("-i Enter number of ofdm symbols for pucch\n");
+      printf("-I Starting symbol index for pucch\n");
+      printf("-h This message\n");
+      printf("-m initial cyclic shift m0\n");
       printf("-n Number of frames to simulate\n");
+      printf("-N Nid_cell\n");
+      printf("-o Carrier frequency offset in Hz\n");
+      printf("-O oversampling factor (1,2,4,8,16)\n");
+      printf("-p Use extended prefix mode\n");
+      printf("-P Enter the format of PUCCH\n");
+      printf("-q PUCCH number of PRB\n");
+      printf("-r PUCCH starting PRB\n");
+      printf("-R N_RB_DL\n");
       printf("-s Starting SNR, runs from SNR0 to SNR0 + 5 dB.  If n_frames is 1 then just SNR is simulated\n");
       printf("-S Ending SNR, runs from SNR0 to SNR1\n");
       printf("-t Delay spread for multipath channel\n");
-      printf("-g [A,B,C,D,E,F,G] Use 3GPP SCM (A,B,C,D) or 36-101 (E-EPA,F-EVA,G-ETU) models (ignores delay spread and Ricean factor)\n");
+      printf("-T to check nacktoack miss for format 1\n");
       printf("-x Transmission mode (1,2,6 for the moment)\n");
       printf("-y Number of TX antennas used in eNB\n");
       printf("-z Number of RX antennas used in UE\n");
-      printf("-i Relative strength of first intefering eNB (in dB) - cell_id mod 3 = 1\n");
-      printf("-j Relative strength of second intefering eNB (in dB) - cell_id mod 3 = 2\n");
-      printf("-o Carrier frequency offset in Hz\n");
-      printf("-N Nid_cell\n");
-      printf("-R N_RB_DL\n");
-      printf("-O oversampling factor (1,2,4,8,16)\n");
-      printf("-A Interpolation_filname Run with Abstraction to generate Scatter plot using interpolation polynomial in file\n");
-      //printf("-C Generate Calibration information for Abstraction (effective SNR adjustment to remove Pe bias w.r.t. AWGN)\n");
-      printf("-f Output filename (.txt format) for Pe/SNR results\n");
-      printf("-F Input filename (.txt format) for RX conformance testing\n");
-      printf("-i Enter number of ofdm symbols for pucch\n");
-      printf("-I Starting symbol index for pucch\n");
-      printf("-r PUCCH starting PRB\n");
-      printf("-q PUCCH number of PRB\n");
-      printf("-P Enter the format of PUCCH\n");
-      printf("-b number of HARQ bits (1-2)\n");
-      printf("-B payload to be transmitted on PUCCH\n");
-      printf("-m initial cyclic shift m0\n");
-      printf("-T to check nacktoack miss for format 1\n");
       exit (-1);
       break;
     }
@@ -533,7 +539,7 @@ int main(int argc, char **argv)
   }
 
   pucch_GroupHopping_t PUCCH_GroupHopping = pucch_tx_pdu.group_hop_flag + (pucch_tx_pdu.sequence_hop_flag<<1);
-
+  double tx_level_fp = 100.0;
   for(SNR=snr0;SNR<=snr1;SNR+=1){
     ack_nack_errors=0;
     sr_errors=0;
@@ -572,8 +578,8 @@ int main(int argc, char **argv)
             for (int aarx=0;aarx<n_rx;aarx++) {
               double nr = sqrt(sigma2/2)*gaussdouble(0.0,1.0);
               double ni = sqrt(sigma2/2)*gaussdouble(0.0,1.0);
-              rxdataF[aarx][i].r = (int16_t)(100.0*(nr)/sqrt((double)txlev));
-              rxdataF[aarx][i].i = (int16_t)(100.0*(ni)/sqrt((double)txlev));
+              rxdataF[aarx][i].r = (int16_t)(tx_level_fp * (nr) / sqrt((double)txlev));
+              rxdataF[aarx][i].i = (int16_t)(tx_level_fp * (ni) / sqrt((double)txlev));
             }
           }
         }
@@ -601,8 +607,8 @@ int main(int argc, char **argv)
             rxr = rxr_tmp;
             double nr = sqrt(sigma2/2)*gaussdouble(0.0,1.0);
             double ni = sqrt(sigma2/2)*gaussdouble(0.0,1.0);
-            rxdataF[aarx][i].r = (int16_t)(100.0*(rxr + nr)/sqrt((double)txlev));
-            rxdataF[aarx][i].i=(int16_t)(100.0*(rxi + ni)/sqrt((double)txlev));
+            rxdataF[aarx][i].r = (int16_t)(tx_level_fp * (rxr + nr) / sqrt((double)txlev));
+            rxdataF[aarx][i].i = (int16_t)(tx_level_fp * (rxi + ni) / sqrt((double)txlev));
 
             if (n_trials==1 && fabs(txr) > 0) printf("symb %d, re %d , aarx %d : txr %f, txi %f, chr %f, chi %f, nr %f, ni %f, rxr %f, rxi %f => %d,%d\n",
                                                     symb, re, aarx, txr,txi,
@@ -623,16 +629,17 @@ int main(int argc, char **argv)
                                                            12);
 
       // set UL mask for pucch allocation
+      uint32_t rb_mask_ul[14][9] = {0};
       for (int s=0;s<frame_parms->symbols_per_slot;s++){
         if (s>=startingSymbolIndex && s<(startingSymbolIndex+nrofSymbols))
           for (int rb=0; rb<N_RB; rb++) {
             int rb2 = rb+startingPRB;
-            gNB->rb_mask_ul[s][rb2>>5] |= (1<<(rb2&31));
+            rb_mask_ul[s][rb2 >> 5] |= (1 << (rb2 & 31));
           }
       }
 
       // noise measurement (all PRBs)
-      gNB_I0_measurements(gNB, nr_slot_tx, 0, gNB->frame_parms.symbols_per_slot);
+      gNB_I0_measurements(gNB, nr_slot_tx, 0, gNB->frame_parms.symbols_per_slot, rb_mask_ul);
 
       if (n_trials==1) printf("noise rxlev %d (%d dB), rxlev pucch %d dB sigma2 %f dB, SNR %f, TX %f, I0 (pucch) %d, I0 (avg) %d\n",rxlev,dB_fixed(rxlev),dB_fixed(rxlev_pucch),sigma2_dB,SNR,10*log10((double)txlev*UE->frame_parms.ofdm_symbol_size/12),gNB->measurements.n0_subband_power_tot_dB[startingPRB],gNB->measurements.n0_subband_power_avg_dB);
       if(format==0){

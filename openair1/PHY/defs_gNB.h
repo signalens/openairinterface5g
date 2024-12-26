@@ -343,13 +343,13 @@ typedef struct {
   /// \f$\log_2(\max|H_i|^2)\f$
   int16_t log2_maxh;
   /// measured RX power based on DRS
-  int ulsch_power[8];
+  uint32_t ulsch_power[8];
   /// total signal over antennas
-  int ulsch_power_tot;
+  uint32_t ulsch_power_tot;
   /// measured RX noise power
   int ulsch_noise_power[8];
   /// total noise over antennas
-  int ulsch_noise_power_tot;
+  uint32_t ulsch_noise_power_tot;
   /// \brief llr values.
   /// - first index: ? [0..1179743] (hard coded)
   int16_t *llr;
@@ -519,7 +519,7 @@ typedef struct {
   //! estimated avg subband noise power (dB)
   unsigned int n0_subband_power_avg_dB;
   //! estimated avg subband noise power per antenna (dB)
-  unsigned int n0_subband_power_avg_perANT_dB[NB_ANTENNAS_RX];
+  unsigned int n0_subband_power_avg_perANT_dB[MAX_ANT];
   //! estimated avg noise power per RB (dB)
   int n0_subband_power_tot_dB[275];
   //! estimated avg noise power per RB (dBm)
@@ -531,7 +531,6 @@ typedef struct {
 
 
 #define MAX_NUM_NR_RX_RACH_PDUS 4
-#define MAX_NUM_NR_RX_PRACH_PREAMBLES 4
 #define MAX_UL_PDUS_PER_SLOT 8
 #define MAX_NUM_NR_SRS_PDUS 8
 // the current RRC resource allocation is that each UE gets its
@@ -546,7 +545,6 @@ typedef struct PHY_VARS_gNB_s {
   uint8_t              CC_id;
   uint8_t              configured;
   gNB_L1_proc_t        proc;
-  int                  single_thread_flag;
   int                  abstraction_flag;
   int                  num_RU;
   RU_t                 *RU_list[MAX_NUM_RU_PER_gNB];
@@ -573,8 +571,6 @@ typedef struct PHY_VARS_gNB_s {
   nfapi_nr_uci_t uci_pdu_list[MAX_NUM_NR_UCI_PDUS];
   /// NFAPI PRACH information
   nfapi_nr_prach_indication_pdu_t prach_pdu_indication_list[MAX_NUM_NR_RX_RACH_PDUS];
-  /// NFAPI PRACH information
-  nfapi_nr_prach_indication_preamble_t preamble_list[MAX_NUM_NR_RX_PRACH_PREAMBLES];
 
   nfapi_nr_ul_tti_request_t     UL_tti_req;
   nfapi_nr_uci_indication_t uci_indication;
@@ -610,26 +606,8 @@ typedef struct PHY_VARS_gNB_s {
   // PUCCH0 Look-up table for cyclic-shifts
   NR_gNB_PUCCH0_LUT_t pucch0_lut;
 
-  /// PBCH DMRS sequence
-  uint32_t nr_gold_pbch_dmrs[2][64][NR_PBCH_DMRS_LENGTH_DWORD];
-
   /// PBCH interleaver
   uint8_t nr_pbch_interleaver[NR_POLAR_PBCH_PAYLOAD_BITS];
-
-  /// PDCCH DMRS sequence
-  uint32_t ***nr_gold_pdcch_dmrs;
-
-  /// PDSCH DMRS sequence
-  uint32_t ****nr_gold_pdsch_dmrs;
-
-  /// PUSCH DMRS
-  uint32_t ****nr_gold_pusch_dmrs;
-
-  // Mask of occupied RBs, per symbol and PRB
-  uint32_t rb_mask_ul[14][9];
-
-  /// PRS sequence
-  uint32_t ****nr_gold_prs;
 
   /// PRACH root sequence
   c16_t X_u[64][839];
@@ -647,10 +625,6 @@ typedef struct PHY_VARS_gNB_s {
 
   /// counter to average prach energh over first 100 prach opportunities
   int prach_energy_counter;
-
-  int pdcch_gold_init;
-  int pdsch_gold_init[2];
-  int pusch_gold_init[2];
 
   int ap_N1;
   int ap_N2;
@@ -676,7 +650,6 @@ typedef struct PHY_VARS_gNB_s {
   time_stats_t dlsch_modulation_stats;
   time_stats_t dlsch_scrambling_stats;
   time_stats_t dlsch_resource_mapping_stats;
-  time_stats_t dlsch_layer_mapping_stats;
   time_stats_t dlsch_precoding_stats;
   time_stats_t tinput;
   time_stats_t tprep;
@@ -693,6 +666,7 @@ typedef struct PHY_VARS_gNB_s {
   time_stats_t ul_indication_stats;
   time_stats_t slot_indication_stats;
   time_stats_t schedule_response_stats;
+  time_stats_t ulsch_decoding_stats;
   time_stats_t ulsch_ldpc_decoding_stats;
   time_stats_t ulsch_deinterleaving_stats;
   time_stats_t ulsch_channel_estimation_stats;
@@ -719,7 +693,6 @@ typedef struct PHY_VARS_gNB_s {
   notifiedFIFO_t L1_rx_out;
   notifiedFIFO_t resp_RU_tx;
   tpool_t threadPool;
-  int nbSymb;
   int num_pusch_symbols_per_thread;
   pthread_t L1_rx_thread;
   int L1_rx_thread_core;
@@ -730,20 +703,6 @@ typedef struct PHY_VARS_gNB_s {
   /// structure for analyzing high-level RT measurements
   rt_L1_profiling_t rt_L1_profiling; 
 } PHY_VARS_gNB;
-
-typedef struct puschSymbolProc_s {
-  PHY_VARS_gNB *gNB;
-  NR_DL_FRAME_PARMS *frame_parms;
-  nfapi_nr_pusch_pdu_t *rel15_ul;
-  int ulsch_id;
-  int slot;
-  int startSymbol;
-  int numSymbols;
-  int16_t *llr;
-  int16_t **llr_layers;
-  int16_t *s;
-  uint32_t nvar;
-} puschSymbolProc_t;
 
 struct puschSymbolReqId {
   uint16_t ulsch_id;

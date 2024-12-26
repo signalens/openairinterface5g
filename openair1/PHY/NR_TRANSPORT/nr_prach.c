@@ -73,8 +73,8 @@ int16_t find_nr_prach(PHY_VARS_gNB *gNB,int frame, int slot, find_type_t type) {
 void nr_fill_prach(PHY_VARS_gNB *gNB,
 		   int SFN,
 		   int Slot,
-		   nfapi_nr_prach_pdu_t *prach_pdu) {
-
+		   nfapi_nr_prach_pdu_t *prach_pdu)
+{
   int prach_id = find_nr_prach(gNB,SFN,Slot,SEARCH_EXIST_OR_FREE);
   AssertFatal(((prach_id >= 0) && (prach_id < NUMBER_OF_NR_PRACH_MAX)), "illegal or no prach_id found!!! prach_id %d\n", prach_id);
 
@@ -316,6 +316,12 @@ void rx_nr_prach_ru(RU_t *ru,
     dftlen >>= 1;
     break;
 
+  case 23040:
+    // 20 MHz @ 23.04 Ms/s
+    Ncp = (Ncp * 3) / 4;
+    dftlen = (dftlen * 3) / 4;
+    break;
+
   case 30720:
     // 20, 25, 30 MHz @ 30.72 Ms/s
     break;
@@ -348,6 +354,12 @@ void rx_nr_prach_ru(RU_t *ru,
     // 100 MHz @ 184.32 Ms/s
     Ncp = Ncp*6;
     dftlen = dftlen*6;
+    break;
+
+  case 245760:
+    // 200 MHz @ 245.76 Ms/s
+    Ncp <<= 3;
+    dftlen <<= 3;
     break;
 
   default:

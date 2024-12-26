@@ -42,6 +42,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <pthread.h>
+#include "common/utils/ds/seq_arr.h"
 
 #define NR_SCHED_LOCK(lock)                                        \
   do {                                                             \
@@ -85,6 +86,7 @@
 /* MAC */
 #include "LAYER2/NR_MAC_COMMON/nr_mac_extern.h"
 #include "LAYER2/NR_MAC_COMMON/nr_mac_common.h"
+#include "NR_TAG.h"
 
 #include <openair3/UICC/usim_interface.h>
 
@@ -111,20 +113,33 @@ typedef struct {
 } NR_list_t;
 
 typedef enum {
-  RA_IDLE = 0,
-  Msg2 = 1,
-  WAIT_Msg3 = 2,
-  Msg3_retransmission = 3,
-  Msg3_dcch_dtch = 4,
-  Msg4 = 5,
-  WAIT_Msg4_ACK = 6
+  nrRA_gNB_IDLE = 0,
+  nrRA_Msg2 = 1,
+  nrRA_WAIT_Msg3 = 2,
+  nrRA_Msg3_retransmission = 3,
+  nrRA_Msg4 = 4,
+  nrRA_WAIT_Msg4_ACK = 5,
 } RA_gNB_state_t;
-
+static const char *const nrra_text[] =
+    {"IDLE", "Msg2", "WAIT_Msg3", "Msg3_retransmission", "Msg3_dcch_dtch", "Msg4", "WAIT_Msg4_ACK"};
 typedef struct nr_pdsch_AntennaPorts_t {
   int N1;
   int N2;
   int XP;
 } nr_pdsch_AntennaPorts_t;
+
+typedef struct nr_mac_timers {
+  int sr_ProhibitTimer;
+  int sr_TransMax;
+  int sr_ProhibitTimer_v1700;
+  int t300;
+  int t301;
+  int t310;
+  int n310;
+  int t311;
+  int n311;
+  int t319;
+} nr_mac_timers_t;
 
 typedef struct nr_mac_config_t {
   int sib1_tda;
@@ -134,13 +149,18 @@ typedef struct nr_mac_config_t {
   int do_CSIRS;
   int do_SRS;
   bool force_256qam_off;
+  bool force_UL256qam_off;
+  bool use_deltaMCS;
+  int maxMIMO_layers;
+  bool disable_harq;
   //int pusch_TargetSNRx10;
   //int pucch_TargetSNRx10;
+  nr_mac_timers_t timer_config;
 } nr_mac_config_t;
 
 typedef struct NR_preamble_ue {
   uint8_t num_preambles;
-  uint8_t *preamble_list;
+  uint8_t preamble_list[MAX_NUM_NR_PRACH_PREAMBLES];
 } NR_preamble_ue_t;
 
 typedef struct NR_sched_pdcch {
@@ -160,11 +180,17 @@ typedef struct NR_sched_pdcch {
 /*! \brief gNB template for the Random access information */
 typedef struct {
   /// Flag to indicate this process is active
-  RA_gNB_state_t state;
+  RA_gNB_state_t ra_state;
   /// CORESET0 configured flag
   int coreset0_configured;
+  /// Frame where preamble was received
+  int preamble_frame;
   /// Slot where preamble was received
   uint8_t preamble_slot;
+  /// Received preamble_index
+  uint8_t preamble_index;
+  /// Timing offset indicated by PHY
+  int16_t timing_offset;
   /// Subframe where Msg2 is to be sent
   uint8_t Msg2_slot;
   /// Frame where Msg2 is to be sent
@@ -174,41 +200,27 @@ typedef struct {
   /// Frame where Msg3 is to be sent
   frame_t Msg3_frame;
   /// Msg3 time domain allocation index
-  uint8_t Msg3_tda_id;
+  int Msg3_tda_id;
   /// harq_pid used for Msg4 transmission
   uint8_t harq_pid;
   /// UE RNTI allocated during RAR
   rnti_t rnti;
   /// RA RNTI allocated from received PRACH
   uint16_t RA_rnti;
-  /// Received preamble_index
-  uint8_t preamble_index;
   /// Received UE Contention Resolution Identifier
   uint8_t cont_res_id[6];
-  /// Timing offset indicated by PHY
-  int16_t timing_offset;
-  /// Timeout for RRC connection
-  int16_t RRC_timer;
   /// Msg3 first RB
-  uint8_t msg3_first_rb;
+  int msg3_first_rb;
   /// Msg3 number of RB
-  uint8_t msg3_nb_rb;
+  int msg3_nb_rb;
   /// Msg3 BWP start
-  uint8_t msg3_bwp_start;
+  int msg3_bwp_start;
   /// Msg3 TPC command
   uint8_t msg3_TPC;
-  /// Msg3 ULdelay command
-  uint8_t msg3_ULdelay;
-  /// Msg3 cqireq command
-  uint8_t msg3_cqireq;
   /// Round of Msg3 HARQ
   uint8_t msg3_round;
   int msg3_startsymb;
-  int msg3_nrsymb;
-  /// TBS used for Msg4
-  int msg4_TBsize;
-  /// MCS used for Msg4
-  int msg4_mcs;
+  int msg3_nbSymb;
   /// MAC PDU length for Msg4
   int mac_pdu_length;
   /// RA search space
@@ -233,17 +245,12 @@ typedef struct {
 
 /*! \brief gNB common channels */
 typedef struct {
-  int Ncp;
-  int nr_band;
   frame_type_t frame_type;
-  uint64_t dl_CarrierFreq;
   NR_BCCH_BCH_Message_t *mib;
   NR_BCCH_DL_SCH_Message_t *sib1;
   NR_ServingCellConfigCommon_t *ServingCellConfigCommon;
   /// pre-configured ServingCellConfig that is default for every UE
   NR_ServingCellConfig_t *pre_ServingCellConfig;
-  NR_ARFCN_ValueEUTRA_t ul_CarrierFreq;
-  long ul_Bandwidth;
   /// Outgoing MIB PDU for PHY
   uint8_t MIB_pdu[3];
   /// Outgoing BCCH pdu for PHY
@@ -256,22 +263,19 @@ typedef struct {
   /// VRB map for common channels and PUSCH, dynamically allocated because
   /// length depends on number of slots and RBs
   uint16_t *vrb_map_UL;
-  /// number of subframe allocation pattern available for MBSFN sync area
-  uint8_t num_sf_allocation_pattern;
   ///Number of active SSBs
-  uint8_t num_active_ssb;
+  int num_active_ssb;
   //Total available prach occasions per configuration period
-  uint32_t total_prach_occasions_per_config_period;
+  int total_prach_occasions_per_config_period;
   //Total available prach occasions
-  uint32_t total_prach_occasions;
+  int total_prach_occasions;
   //Max Association period
-  uint8_t max_association_period;
+  int max_association_period;
   //SSB index
   uint8_t ssb_index[MAX_NUM_OF_SSB];
   //CB preambles for each SSB
-  uint8_t cb_preambles_per_ssb;
+  int cb_preambles_per_ssb;
 } NR_COMMON_channels_t;
-
 
 // SP ZP CSI-RS Resource Set Activation/Deactivation MAC CE
 typedef struct sp_zp_csirs {
@@ -398,6 +402,7 @@ typedef struct NR_sched_pusch {
   int time_domain_allocation;
   NR_tda_info_t tda_info;
   NR_pusch_dmrs_t dmrs_info;
+  int phr_txpower_calc;
 } NR_sched_pusch_t;
 
 typedef struct NR_sched_srs {
@@ -432,7 +437,7 @@ typedef struct NR_sched_pdsch {
   int8_t dl_harq_pid;
 
   // pucch format allocation
-  uint8_t pucch_allocation;
+  int16_t pucch_allocation;
 
   uint16_t pm_index;
   uint8_t nrOfLayers;
@@ -530,9 +535,19 @@ typedef struct NR_UE_ul_harq {
 } NR_UE_ul_harq_t;
 
 typedef struct NR_QoS_config_s {
-  uint64_t fiveQI;
-  uint64_t priority;
+  int fiveQI;
+  int priority;
 } NR_QoS_config_t;
+
+typedef struct nr_lc_config {
+  uint8_t lcid;
+  /// priority as specified in 38.321
+  int priority;
+  /// associated NSSAI for DRB
+  nssai_t nssai;
+  /// QoS config for DRB
+  NR_QoS_config_t qos_config[NR_MAX_NUM_QFI];
+} nr_lc_config_t;
 
 /*! \brief scheduling control information set through an API */
 #define MAX_CSI_REPORTS 48
@@ -566,6 +581,9 @@ typedef struct {
 
   /// PHR info: power headroom level (dB)
   int ph;
+  /// PHR info: power headroom level (dB) for 1 PRB
+  int ph0;
+
   /// PHR info: nominal UE transmit power levels (dBm)
   int pcmax;
 
@@ -622,20 +640,15 @@ typedef struct {
   /// UL HARQ processes that await retransmission
   NR_list_t retrans_ul_harq;
   NR_UE_mac_ce_ctrl_t UE_mac_ce_ctrl; // MAC CE related information
-  /// number of active DL LCs
-  uint8_t dl_lc_num;
-  /// order in which DLSCH scheduler should allocate LCs
-  uint8_t dl_lc_ids[NR_MAX_NUM_LCID];
 
   /// Timer for RRC processing procedures
   uint32_t rrc_processing_timer;
 
   /// sri, ul_ri and tpmi based on SRS
   nr_srs_feedback_t srs_feedback;
-  nssai_t dl_lc_nssai[NR_MAX_NUM_LCID];
 
-  // Information about the QoS configuration for each LCID/DRB
-  NR_QoS_config_t qos_config[NR_MAX_NUM_LCID - 4][NR_MAX_NUM_QFI]; // 0 -CCCH and 1- 3 SRBs(0,1,2)
+  /// per-LC configuration
+  seq_arr_t lc_config;
 } NR_UE_sched_ctrl_t;
 
 typedef struct {
@@ -664,6 +677,9 @@ typedef struct NR_mac_stats {
   int cumul_rsrp;
   uint8_t num_rsrp_meas;
   char srs_stats[50]; // Statistics may differ depending on SRS usage
+  int pusch_snrx10;
+  int deltaMCS;
+  int NPRB;
 } NR_mac_stats_t;
 
 typedef struct NR_bler_options {
@@ -674,7 +690,10 @@ typedef struct NR_bler_options {
 } NR_bler_options_t;
 
 typedef struct nr_mac_rrc_ul_if_s {
+  f1_reset_du_initiated_func_t f1_reset;
+  f1_reset_acknowledge_cu_initiated_func_t f1_reset_acknowledge;
   f1_setup_request_func_t f1_setup_request;
+  gnb_du_configuration_update_t gnb_du_configuration_update;
   ue_context_setup_response_func_t ue_context_setup_response;
   ue_context_modification_response_func_t ue_context_modification_response;
   ue_context_modification_required_func_t ue_context_modification_required;
@@ -698,6 +717,8 @@ typedef struct {
   NR_CellGroupConfig_t *CellGroup;
   /// CellGroupConfig that is to be activated after the next reconfiguration
   bool expect_reconfiguration;
+  /// reestablishRLC has to be signaled in RRCreconfiguration
+  bool reestablish_rlc;
   NR_CellGroupConfig_t *reconfigCellGroup;
   bool apply_cellgroup;
   NR_UE_NR_Capability_t *capability;
@@ -738,8 +759,12 @@ typedef struct f1_config_t {
 typedef struct gNB_MAC_INST_s {
   /// Ethernet parameters for northbound midhaul interface
   eth_params_t                    eth_params_n;
+  /// address for F1U to bind, ports in eth_params_n
+  char *f1u_addr;
   /// Ethernet parameters for fronthaul interface
   eth_params_t                    eth_params_s;
+  /// Nvipc parameters for FAPI interface with Aerial
+  nvipc_params_t nvipc_params_s;
   /// Module
   module_id_t                     Mod_id;
   /// timing advance group
@@ -847,9 +872,7 @@ typedef struct gNB_MAC_INST_s {
 
   nr_mac_rrc_ul_if_t mac_rrc;
   f1_config_t f1_config;
-
   int16_t frame;
-  int16_t slot;
 
   pthread_mutex_t sched_lock;
 

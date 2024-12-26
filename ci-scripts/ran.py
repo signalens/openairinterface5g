@@ -264,7 +264,7 @@ class RANManagement():
 		cmd = cls_cmd.getConnection(self.node)
 		ret = cmd.run(self.command)
 		cmd.close()
-		logging.debug(f"Custum command : {self.command} on node : {self.node} returnCode : {ret.returncode}")
+		logging.debug(f"CustomCommand: {self.command} on node: {self.node} - {'OK, command succeeded' if ret.returncode == 0 else f'Error, return code: {ret.returncode}'}")
 		status = 'OK'
 		message = []
 		if ret.returncode != 0 and not self.command_fail:
@@ -366,7 +366,6 @@ class RANManagement():
 		self.testCase_id = HTML.testCase_id
 		mySSH = SSH.SSHConnection()
 		cwd = os.getcwd()
-		mySSH.copyout(lIpAddr,lUserName,lPassWord, cwd + "/active_net_interfaces.awk", "/tmp")
 		
 		#Get pcap on enb and/or gnb if enabled in the xml 
 		if self.eNB_Trace=='yes':

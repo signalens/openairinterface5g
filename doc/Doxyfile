@@ -866,6 +866,8 @@ INPUT                  = \
 @CMAKE_CURRENT_SOURCE_DIR@/../common/config/config_cmdline.c \
 @CMAKE_CURRENT_SOURCE_DIR@/../common/utils/time_meas.c \
 @CMAKE_CURRENT_SOURCE_DIR@/../common/utils/time_meas.h \
+@CMAKE_CURRENT_SOURCE_DIR@/../common/utils/tun_if.h \
+@CMAKE_CURRENT_SOURCE_DIR@/../common/utils/tun_if.c \
 @CMAKE_CURRENT_SOURCE_DIR@/../common/utils/utils.c \
 @CMAKE_CURRENT_SOURCE_DIR@/../common/utils/oai_asn1.h \
 @CMAKE_CURRENT_SOURCE_DIR@/../common/utils/system.h \
@@ -1874,10 +1876,6 @@ INPUT                  = \
 @CMAKE_CURRENT_SOURCE_DIR@/../openair2/RRC/NR_UE/rrc_defs.h \
 @CMAKE_CURRENT_SOURCE_DIR@/../openair2/RRC/NR_UE/L2_interface_ue.c \
 @CMAKE_CURRENT_SOURCE_DIR@/../openair2/RRC/L2_INTERFACE/openair_rrc_L2_interface.h \
-@CMAKE_CURRENT_SOURCE_DIR@/../openair2/RRC/NAS/rb_config.h \
-@CMAKE_CURRENT_SOURCE_DIR@/../openair2/RRC/NAS/rb_config.c \
-@CMAKE_CURRENT_SOURCE_DIR@/../openair2/RRC/NAS/nas_config.h \
-@CMAKE_CURRENT_SOURCE_DIR@/../openair2/RRC/NAS/nas_config.c \
 @CMAKE_CURRENT_SOURCE_DIR@/../openair2/RRC/NR/rrc_gNB_internode.c \
 @CMAKE_CURRENT_SOURCE_DIR@/../openair2/RRC/NR/nr_rrc_defs.h \
 @CMAKE_CURRENT_SOURCE_DIR@/../openair2/RRC/NR/cucp_cuup_if.h \
@@ -2217,7 +2215,6 @@ INPUT                  = \
 @CMAKE_CURRENT_SOURCE_DIR@/../openair1/PHY/CODING/nrLDPC_encoder/ldpc_BG2_Zc352_byte_128.c \
 @CMAKE_CURRENT_SOURCE_DIR@/../openair1/PHY/CODING/nrPolar_tools/nr_polar_defs.h \
 @CMAKE_CURRENT_SOURCE_DIR@/../openair1/PHY/CODING/nrPolar_tools/nr_polar_uci_defs.h \
-@CMAKE_CURRENT_SOURCE_DIR@/../openair1/PHY/CODING/nrPolar_tools/nr_polar_crc.c \
 @CMAKE_CURRENT_SOURCE_DIR@/../openair1/PHY/CODING/nrPolar_tools/nr_polar_interleaving_pattern.c \
 @CMAKE_CURRENT_SOURCE_DIR@/../openair1/PHY/CODING/nrPolar_tools/nr_polar_decoder.c \
 @CMAKE_CURRENT_SOURCE_DIR@/../openair1/PHY/CODING/nrPolar_tools/nr_bitwise_operations.c \
@@ -2292,7 +2289,6 @@ INPUT                  = \
 @CMAKE_CURRENT_SOURCE_DIR@/../openair1/PHY/TOOLS/nr_phy_scope.c \
 @CMAKE_CURRENT_SOURCE_DIR@/../openair1/PHY/TOOLS/nr_phy_scope.h \
 @CMAKE_CURRENT_SOURCE_DIR@/../openair1/PHY/TOOLS/lte_phy_scope.c \
-@CMAKE_CURRENT_SOURCE_DIR@/../openair1/PHY/TOOLS/nr_phy_qt_scope.h \
 @CMAKE_CURRENT_SOURCE_DIR@/../openair1/PHY/TOOLS/cadd_vv.c \
 @CMAKE_CURRENT_SOURCE_DIR@/../openair1/PHY/TOOLS/phy_scope.h \
 @CMAKE_CURRENT_SOURCE_DIR@/../openair1/PHY/TOOLS/signal_energy.c \
@@ -2310,13 +2306,6 @@ INPUT                  = \
 @CMAKE_CURRENT_SOURCE_DIR@/../openair1/PHY/NR_ESTIMATION/nr_freq_equalization.c \
 @CMAKE_CURRENT_SOURCE_DIR@/../openair1/PHY/NR_ESTIMATION/nr_measurements_gNB.c \
 @CMAKE_CURRENT_SOURCE_DIR@/../openair1/PHY/NR_ESTIMATION/nr_ul_channel_estimation.c \
-@CMAKE_CURRENT_SOURCE_DIR@/../openair1/SIMULATION/ETH_TRANSPORT/proto.h \
-@CMAKE_CURRENT_SOURCE_DIR@/../openair1/SIMULATION/ETH_TRANSPORT/multicast_link.h \
-@CMAKE_CURRENT_SOURCE_DIR@/../openair1/SIMULATION/ETH_TRANSPORT/netlink_init.c \
-@CMAKE_CURRENT_SOURCE_DIR@/../openair1/SIMULATION/ETH_TRANSPORT/multicast_link.c \
-@CMAKE_CURRENT_SOURCE_DIR@/../openair1/SIMULATION/ETH_TRANSPORT/socket.h \
-@CMAKE_CURRENT_SOURCE_DIR@/../openair1/SIMULATION/ETH_TRANSPORT/socket.c \
-@CMAKE_CURRENT_SOURCE_DIR@/../openair1/SIMULATION/ETH_TRANSPORT/defs.h \
 @CMAKE_CURRENT_SOURCE_DIR@/../openair1/SIMULATION/RF/adc.c \
 @CMAKE_CURRENT_SOURCE_DIR@/../openair1/SIMULATION/RF/dac.c \
 @CMAKE_CURRENT_SOURCE_DIR@/../openair1/SIMULATION/RF/rf.h \

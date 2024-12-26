@@ -38,7 +38,6 @@ Running the  [build_oai](../cmake_targets/build_oai) script also generates some 
 
 - `conf2uedata`: a binary used to build the (4G) UE data from a configuration file. The created file emulates the sim card  of a 3GPP compliant phone.
 - `nvram`: a binary used to build (4G) UE (IMEI...) and EMM (IMSI, registered PLMN) non volatile data.
-- `rb_tool`: radio bearer utility for (4G) UE
 - `genids` T Tracer utility, used at build time to generate `T_IDs.h` include file. This binary is located in the [T Tracer source file directory](../common/utils/T) .
 
 The build system for OAI uses [cmake](https://cmake.org/) which is a  tool to generate makefiles. The `build_oai` script is a wrapper using `cmake` and `make`/`ninja` to ease the oai build and use. It logs the `cmake` and `ninja`/`make` commands it executes. The file describing how to build the executables from source files is the [CMakeLists.txt](../CMakeLists.txt), it is used as input by cmake to generate the makefiles.
@@ -149,7 +148,7 @@ cd openairinterface5g/cmake_targets/
 
 After completing the build, the binaries are available in the `cmake_targets/ran_build/build` directory.
 
-Detailed information about these simulators can be found [in this dedicated page](https://gitlab.eurecom.fr/oai/openairinterface5g/wikis/OpenAirLTEPhySimul)
+Detailed information about these simulators can be found [in the dedicated page](./physical-simulators.md)
 
 ## Building UEs, eNodeB and gNodeB Executables
 
@@ -174,16 +173,14 @@ Using the help option of the build script you can get the list of available opti
 ```bash
 ./build_oai --build-lib all # build all
 ./build_oai --build-lib telnetsrv  # build only telnetsrv
-./build_oai --build-lib "telnetsrv enbscope uescope nrscope nrqtscope"
-./build_oai --build-lib telnetsrv --build-lib nrqtscope
+./build_oai --build-lib "telnetsrv enbscope uescope nrscope"
 ```
 
 The following libraries are build in CI and should always work: `telnetsrv`,
-`enbscope`, `uescope`, `nrscope`, `nrqtscope`.
+`enbscope`, `uescope`, `nrscope`.
 
 Some libraries have further dependencies and might not build on every system:
 - `enbscope`, `uescope`, `nrscope`: libforms/X
-- `nrqtscope`: Qt5
 - `ldpc_cuda`: CUDA
 - `websrv`: npm and others
 - `ldpc_t2`: DPDK with patch

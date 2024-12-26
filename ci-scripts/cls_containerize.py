@@ -58,7 +58,7 @@ import cls_oaicitest
 # Helper functions used here and in other classes
 # (e.g., cls_cluster.py)
 #-----------------------------------------------------------
-IMAGES = ['oai-enb', 'oai-lte-ru', 'oai-lte-ue', 'oai-gnb', 'oai-nr-cuup', 'oai-gnb-aw2s', 'oai-nr-ue', 'oai-gnb-asan', 'oai-nr-ue-asan', 'oai-nr-cuup-asan', 'oai-gnb-aerial']
+IMAGES = ['oai-enb', 'oai-lte-ru', 'oai-lte-ue', 'oai-gnb', 'oai-nr-cuup', 'oai-gnb-aw2s', 'oai-nr-ue', 'oai-gnb-asan', 'oai-nr-ue-asan', 'oai-nr-cuup-asan', 'oai-gnb-aerial', 'oai-gnb-fhi72']
 
 def CreateWorkspace(sshSession, sourcePath, ranRepository, ranCommitID, ranTargetBranch, ranAllowMerge):
 	if ranCommitID == '':
@@ -169,97 +169,27 @@ def AnalyzeBuildLogs(buildRoot, images, globalStatus):
 		collectInfo[image] = files
 	return collectInfo
 
-def AnalyzeIperf(cliOptions, clientReport, serverReport):
-	req_bw = 1.0 # default iperf throughput, in Mbps
-	result = re.search('-b *(?P<iperf_bandwidth>[0-9\.]+)(?P<magnitude>[kKMG])', cliOptions)
-	if result is not None:
-		req_bw = float(result.group('iperf_bandwidth'))
-		magn = result.group('magnitude')
-		if magn == "k" or magn == "K":
-			req_bw /= 1000
-		elif magn == "G":
-			req_bw *= 1000
-	req_dur = 10 # default iperf send duration
-	result = re.search('-t *(?P<duration>[0-9]+)', cliOptions)
-	if result is not None:
-		req_dur = int(result.group('duration'))
+# pyshark livecapture launches 2 processes:
+# * One using dumpcap -i lIfs -w - (ie redirecting the packets to STDOUT)
+# * One using tshark -i - -w loFile (ie capturing from STDIN from previous process)
+# but in fact the packets are read by the following loop before being in fact
+# really written to loFile.
+# So it is mandatory to keep the loop
+def LaunchPySharkCapture(lIfs, lFilter, loFile):
+	capture = pyshark.LiveCapture(interface=lIfs, bpf_filter=lFilter, output_file=loFile, debug=False)
+	for packet in capture.sniff_continuously():
+		pass
 
-	reportLine = None
-	# find server report in client status
-	clientReportLines = clientReport.split('\n')
-	for l in range(len(clientReportLines)):
-		res = re.search('read failed: Connection refused', clientReportLines[l])
-		if res is not None:
-			message = 'iperf connection refused by server!'
-			logging.error(f'\u001B[1;37;41mIperf Test FAIL: {message}\u001B[0m')
-			return (False, message)
-		res = re.search('Server Report:', clientReportLines[l])
-		if res is not None and l + 1 < len(clientReportLines):
-			reportLine = clientReportLines[l+1]
-			logging.debug(f'found server report: "{reportLine}"')
-
-	statusTemplate = '(?:|\[ *\d+\].*) +0\.0-\s*(?P<duration>[0-9\.]+) +sec +[0-9\.]+ [kKMG]Bytes +(?P<bitrate>[0-9\.]+) (?P<magnitude>[kKMG])bits\/sec +(?P<jitter>[0-9\.]+) ms +(\d+\/ *\d+) +(\((?P<packetloss>[0-9\.]+)%\))'
-	# if we do not find a server report in the client logs, check the server logs
-	# and use the last line which is typically close/identical to server report
-	if reportLine is None:
-		for l in serverReport.split('\n'):
-			res = re.search(statusTemplate, l)
-			if res is not None:
-				reportLine = l
-		if reportLine is None:
-			logging.warning('no report in server status found!')
-			return (False, 'could not parse iperf logs')
-		logging.debug(f'found client status: {reportLine}')
-
-	result = re.search(statusTemplate, reportLine)
-	if result is None:
-		logging.error('could not analyze report from statusTemplate')
-		return (False, 'could not parse iperf logs')
-
-	duration = float(result.group('duration'))
-	bitrate = float(result.group('bitrate'))
-	magn = result.group('magnitude')
-	if magn == "k" or magn == "K":
-		bitrate /= 1000
-	elif magn == "G": # we assume bitrate in Mbps, therefore it must be G now
-		bitrate *= 1000
-	jitter = float(result.group('jitter'))
-	packetloss = float(result.group('packetloss'))
-
-	logging.debug('\u001B[1;37;44m iperf result \u001B[0m')
-	msg = f'Req Bitrate: {req_bw}'
-	logging.debug(f'\u001B[1;34m{msg}\u001B[0m')
-
-	br_loss = bitrate/req_bw
-	bmsg = f'Bitrate    : {bitrate} (perf {br_loss})'
-	logging.debug(f'\u001B[1;34m{bmsg}\u001B[0m')
-	msg += '\n' + bmsg
-	if br_loss < 0.9:
-		msg += '\nBitrate performance too low (<90%)'
-		logging.debug(f'\u001B[1;37;41mBitrate performance too low (<90%)\u001B[0m')
-		return (False, msg)
-
-	plmsg = f'Packet Loss: {packetloss}%'
-	logging.debug(f'\u001B[1;34m{plmsg}\u001B[0m')
-	msg += '\n' + plmsg
-	if packetloss > 5.0:
-		msg += '\nPacket Loss too high!'
-		logging.debug(f'\u001B[1;37;41mPacket Loss too high \u001B[0m')
-		return (False, msg)
-
-	dmsg = f'Duration   : {duration} (req {req_dur})'
-	logging.debug(f'\u001B[1;34m{dmsg}\u001B[0m')
-	msg += '\n' + dmsg
-	if duration < float(req_dur):
-		msg += '\nDuration of iperf too short!'
-		logging.debug(f'\u001B[1;37;41mDuration of iperf too short\u001B[0m')
-		return (False, msg)
-
-	jmsg = f'Jitter     : {jitter}'
-	logging.debug(f'\u001B[1;34m{jmsg}\u001B[0m')
-	msg += '\n' + jmsg
-	return (True, msg)
-
+def StopPySharkCapture(testcase):
+	with cls_cmd.LocalCmd() as myCmd:
+		cmd = 'killall tshark'
+		myCmd.run(cmd, reportNonZero=False)
+		cmd = 'killall dumpcap'
+		myCmd.run(cmd, reportNonZero=False)
+		time.sleep(5)
+		cmd = f'mv /tmp/capture_{testcase}.pcap ../cmake_targets/log/{testcase}/.'
+		myCmd.run(cmd, timeout=100, reportNonZero=False)
+	return False
 #-----------------------------------------------------------
 # Class Declaration
 #-----------------------------------------------------------
@@ -356,7 +286,7 @@ class Containerize():
 		self.host = result.group(0)
 		if self.host == 'Ubuntu':
 			self.cli = 'docker'
-			self.dockerfileprefix = '.ubuntu20'
+			self.dockerfileprefix = '.ubuntu22'
 			self.cliBuildOptions = ''
 		elif self.host == 'Red Hat':
 			self.cli = 'sudo podman'
@@ -389,9 +319,11 @@ class Containerize():
 				imageNames.append(('oai-gnb', 'gNB', 'oai-gnb-asan', '--build-arg "BUILD_OPTION=--sanitize"'))
 				imageNames.append(('oai-nr-ue', 'nrUE', 'oai-nr-ue-asan', '--build-arg "BUILD_OPTION=--sanitize"'))
 				imageNames.append(('oai-nr-cuup', 'nr-cuup', 'oai-nr-cuup-asan', '--build-arg "BUILD_OPTION=--sanitize"'))
+				imageNames.append(('ran-build-fhi72', 'build.fhi72', 'ran-build-fhi72', ''))
+				imageNames.append(('oai-gnb', 'gNB.fhi72', 'oai-gnb-fhi72', ''))
 		result = re.search('build_cross_arm64', self.imageKind)
 		if result is not None:
-			self.dockerfileprefix = '.ubuntu20.cross-arm64'
+			self.dockerfileprefix = '.ubuntu22.cross-arm64'
 		
 		# Workaround for some servers, we need to erase completely the workspace
 		if self.forcedWorkspaceCleanup:
@@ -479,13 +411,15 @@ class Containerize():
 			# target images should use the proper ran-build image
 			if image != 'ran-build' and "-asan" in name:
 				cmd.run(f'sed -i -e "s#ran-build:latest#ran-build-asan:{imageTag}#" docker/Dockerfile.{pattern}{self.dockerfileprefix}')
+			elif "fhi72" in name:
+				cmd.run(f'sed -i -e "s#ran-build-fhi72:latest#ran-build-fhi72:{imageTag}#" docker/Dockerfile.{pattern}{self.dockerfileprefix}')
 			elif image != 'ran-build':
 				cmd.run(f'sed -i -e "s#ran-build:latest#ran-build:{imageTag}#" docker/Dockerfile.{pattern}{self.dockerfileprefix}')
 			if image == 'oai-gnb-aerial':
-				cmd.run('cp -f /opt/nvidia-ipc/nvipc_src.2023.11.28.tar.gz .')
+				cmd.run('cp -f /opt/nvidia-ipc/nvipc_src.2024.05.23.tar.gz .')
 			ret = cmd.run(f'{self.cli} build {self.cliBuildOptions} --target {image} --tag {name}:{imageTag} --file docker/Dockerfile.{pattern}{self.dockerfileprefix} {option} . > cmake_targets/log/{name}.log 2>&1', timeout=1200)
 			if image == 'oai-gnb-aerial':
-				cmd.run('rm -f nvipc_src.2023.11.28.tar.gz')
+				cmd.run('rm -f nvipc_src.2024.05.23.tar.gz')
 			if image == 'ran-build' and ret.returncode == 0:
 				cmd.run(f"docker run --name test-log -d {name}:{imageTag} /bin/true")
 				cmd.run(f"docker cp test-log:/oai-ran/cmake_targets/log/ cmake_targets/log/{name}/")
@@ -515,11 +449,15 @@ class Containerize():
 			cmd.run(f"{self.cli} image prune --force")
 
 		# Remove all intermediate build images and clean up
-		cmd.run(f"{self.cli} image rm ran-build:{imageTag} ran-build-asan:{imageTag}")
+		cmd.run(f"{self.cli} image rm ran-build:{imageTag} ran-build-asan:{imageTag} ran-build-fhi72:{imageTag} || true")
 		cmd.run(f"{self.cli} volume prune --force")
-		# Remove any cached artifacts: we don't use the cache for now, prevent
-		# out of diskspace problem
-		cmd.run(f"{self.cli} buildx prune --filter=until=6h --force")
+
+		# Remove some cached artifacts to prevent out of diskspace problem
+		logging.debug(cmd.run("df -h").stdout)
+		logging.debug(cmd.run("docker system df").stdout)
+		cmd.run(f"{self.cli} buildx prune --filter until=1h --force")
+		logging.debug(cmd.run("df -h").stdout)
+		logging.debug(cmd.run("docker system df").stdout)
 
 		# create a zip with all logs
 		build_log_name = f'build_log_{self.testCase_id}'
@@ -734,7 +672,7 @@ class Containerize():
 				cmd.run(f'git diff HEAD..origin/develop -- cmake_targets/build_oai cmake_targets/tools/build_helper docker/Dockerfile.base{self.dockerfileprefix} | grep --colour=never -i INDEX')
 				result = re.search('index', cmd.getBefore())
 				if result is not None:
-					baseTag = 'develop'
+					baseTag = 'ci-temp'
 		ret = cmd.run(f"docker image inspect --format=\'Size = {{{{.Size}}}} bytes\' {baseImage}:{baseTag}")
 		if ret.returncode != 0:
 			logging.error(f'No {baseImage} image present, cannot build tests')
@@ -743,9 +681,11 @@ class Containerize():
 			return False
 
 		# build ran-unittests image
-		dockerfile = "ci-scripts/docker/Dockerfile.unittest.ubuntu20"
+		dockerfile = "ci-scripts/docker/Dockerfile.unittest.ubuntu22"
 		ret = cmd.run(f'docker build --progress=plain --tag ran-unittests:{baseTag} --file {dockerfile} . &> {lSourcePath}/cmake_targets/log/unittest-build.log')
 		if ret.returncode != 0:
+			build_log_name = f'build_log_{self.testCase_id}'
+			CopyLogsToExecutor(cmd, lSourcePath, build_log_name)
 			logging.error(f'Cannot build unit tests')
 			HTML.CreateHtmlTestRow("Unit test build failed", 'KO', [dockerfile])
 			HTML.CreateHtmlTabFooter(False)
@@ -754,8 +694,8 @@ class Containerize():
 		HTML.CreateHtmlTestRowQueue("Build unit tests", 'OK', [dockerfile])
 
 		# it worked, build and execute tests, and close connection
-		ret = cmd.run(f'docker run -a STDOUT --rm ran-unittests:develop ctest --output-on-failure --no-label-summary -j$(nproc)')
-		cmd.run(f'docker rmi ran-unittests:develop')
+		ret = cmd.run(f'docker run -a STDOUT --rm ran-unittests:{baseTag} ctest --output-on-failure --no-label-summary -j$(nproc)')
+		cmd.run(f'docker rmi ran-unittests:{baseTag}')
 		build_log_name = f'build_log_{self.testCase_id}'
 		CopyLogsToExecutor(cmd, lSourcePath, build_log_name)
 		cmd.close()
@@ -963,9 +903,7 @@ class Containerize():
 		mySSH.command(f'docker compose --file ci-docker-compose.yml up -d -- {svcName}', '\$', 30)
 
 		# Checking Status
-		grep = ''
-		if svcName != '': grep = f' | grep -A3 --color=never {svcName}'
-		mySSH.command(f'docker compose --file ci-docker-compose.yml config {grep}', '\$', 5)
+		mySSH.command(f'docker compose --file ci-docker-compose.yml config {svcName}', '\$', 5)
 		result = re.search('container_name: (?P<container_name>[a-zA-Z0-9\-\_]+)', mySSH.getBefore())
 		unhealthyNb = 0
 		healthyNb = 0
@@ -1022,7 +960,6 @@ class Containerize():
 					cnt = 100
 					status = True
 					logging.info('\u001B[1m Deploying OAI object Pass\u001B[0m')
-					time.sleep(10)
 		else:
 			# containers are unhealthy, so we won't start. However, logs are stored at the end
 			# in UndeployObject so we here store the logs of the unhealthy container to report it
@@ -1088,18 +1025,18 @@ class Containerize():
 		for s in allServices:
 			# outputs the hash if the container is running
 			ret = mySSH.run(f'docker compose -f {yamlDir}/ci-docker-compose.yml ps --all --quiet -- {s}')
-			running = ret.stdout.splitlines()
-			logging.debug(f'running services: {running}')
+			c = ret.stdout
+			logging.debug(f'running service {s} with container id {c}')
 			if ret.stdout != "" and ret.returncode == 0: # something is running for that service
-				services.append(s)
-		logging.info(f'stopping services {services}')
+				services.append((s, c))
+		logging.info(f'stopping services {[s for s, _ in services]}')
 
 		mySSH.run(f'docker compose -f {yamlDir}/ci-docker-compose.yml stop -t3')
 		copyin_res = True
-		for svcName in services:
+		for service_name, container_id in services:
 			# head -n -1 suppresses the final "X exited with status code Y"
-			filename = f'{svcName}-{HTML.testCase_id}.log'
-			mySSH.run(f'docker compose -f {yamlDir}/ci-docker-compose.yml logs --no-log-prefix -- {svcName} &> {lSourcePath}/cmake_targets/log/{filename}')
+			filename = f'{service_name}-{HTML.testCase_id}.log'
+			mySSH.run(f'docker logs {container_id} &> {lSourcePath}/cmake_targets/log/{filename}')
 			copyin_res = mySSH.copyin(f'{lSourcePath}/cmake_targets/log/{filename}', f'{filename}') and copyin_res
 
 		mySSH.run(f'docker compose -f {yamlDir}/ci-docker-compose.yml down -v')
@@ -1110,7 +1047,7 @@ class Containerize():
 			HTML.CreateHtmlTestRow('N/A', 'KO', CONST.ENB_PROCESS_NOLOGFILE_TO_ANALYZE)
 			self.exitStatus = 1
 		# use function for UE log analysis, when oai-nr-ue container is used
-		elif 'oai-nr-ue' in services or 'lte_ue0' in services:
+		elif any(service_name == 'oai-nr-ue' or service_name == 'lte_ue0' for service_name, _ in services):
 			self.exitStatus == 0
 			logging.debug(f'Analyzing UE logfile {filename}')
 			logStatus = cls_oaicitest.OaiCiTest().AnalyzeLogFile_UE(f'{filename}', HTML, RAN)
@@ -1120,12 +1057,12 @@ class Containerize():
 			else:
 				HTML.CreateHtmlTestRow('UE log Analysis', 'OK', CONST.ALL_PROCESSES_OK)
 		else:
-			for svcName in services:
-				if svcName == 'nv-cubb':
+			for service_name, _ in services:
+				if service_name == 'nv-cubb':
 					msg = 'Undeploy PNF/Nvidia CUBB'
 					HTML.CreateHtmlTestRow(msg, 'OK', CONST.ALL_PROCESSES_OK)
 				else:
-					filename = f'{svcName}-{HTML.testCase_id}.log'
+					filename = f'{service_name}-{HTML.testCase_id}.log'
 					logging.debug(f'\u001B[1m Analyzing logfile {filename}\u001B[0m')
 					logStatus = RAN.AnalyzeLogFile_eNB(filename, HTML, self.ran_checkers)
 					if (logStatus < 0):
@@ -1271,17 +1208,6 @@ class Containerize():
 			self.UndeployGenObject(HTML, RAN, UE)
 			self.exitStatus = 1
 
-	# pyshark livecapture launches 2 processes:
-	# * One using dumpcap -i lIfs -w - (ie redirecting the packets to STDOUT)
-	# * One using tshark -i - -w loFile (ie capturing from STDIN from previous process)
-	# but in fact the packets are read by the following loop before being in fact
-	# really written to loFile.
-	# So it is mandatory to keep the loop
-	def LaunchPySharkCapture(self, lIfs, lFilter, loFile):
-		capture = pyshark.LiveCapture(interface=lIfs, bpf_filter=lFilter, output_file=loFile, debug=False)
-		for packet in capture.sniff_continuously():
-			pass
-
 	def CaptureOnDockerNetworks(self):
 		myCmd = cls_cmd.LocalCmd(d = self.yamlPath[0])
 		cmd = 'docker-compose -f docker-compose-ci.yml config | grep com.docker.network.bridge.name | sed -e "s@^.*name: @@"'
@@ -1306,7 +1232,7 @@ class Containerize():
 			myCmd.run(cmd, timeout=5, reportNonZero=False)
 			myCmd.close()
 			return
-		x = threading.Thread(target = self.LaunchPySharkCapture, args = (interfaces,capture_filter,output_file,))
+		x = threading.Thread(target = LaunchPySharkCapture, args = (interfaces,capture_filter,output_file,))
 		x.daemon = True
 		x.start()
 
@@ -1395,21 +1321,9 @@ class Containerize():
 						HTML.CreateHtmlTestRow('UE log Analysis', 'KO', logStatus)
 					else:
 						HTML.CreateHtmlTestRow('UE log Analysis', 'OK', CONST.ALL_PROCESSES_OK)
-
-			if self.tsharkStarted:
-				self.tsharkStarted = True
-				cmd = 'killall tshark'
-				myCmd2.run(cmd, reportNonZero=False)
-				cmd = 'killall dumpcap'
-				myCmd2.run(cmd, reportNonZero=False)
-				time.sleep(5)
-				ymlPath = self.yamlPath[0].split('/')
-				# The working dir is still logPath
-				cmd = f'mv /tmp/capture_{ymlPath[1]}.pcap .'
-				myCmd2.run(cmd, timeout=100, reportNonZero=False)
-				self.tsharkStarted = False
 		myCmd2.close()
-
+		if self.tsharkStarted:
+			self.tsharkStarted = StopPySharkCapture(ymlPath[1])
 		logging.debug('\u001B[1m Undeploying \u001B[0m')
 		logging.debug(f'Working dir is back {self.yamlPath[0]}')
 		cmd = 'docker-compose -f docker-compose-ci.yml down -v'
@@ -1462,76 +1376,6 @@ class Containerize():
 		myCmd.close()
 
 		HTML.CreateHtmlTestRowQueue(self.pingOptions, 'OK', [message])
-
-	def PingExit(self, HTML, RAN, UE, status, message):
-		if status:
-			HTML.CreateHtmlTestRowQueue(self.pingOptions, 'OK', [message])
-		else:
-			logging.error('\u001B[1;37;41m ping test FAIL -- ' + message + ' \u001B[0m')
-			HTML.CreateHtmlTestRowQueue(self.pingOptions, 'KO', [message])
-			# Automatic undeployment
-			logging.warning('----------------------------------------')
-			logging.warning('\u001B[1m Starting Automatic undeployment \u001B[0m')
-			logging.warning('----------------------------------------')
-			HTML.testCase_id = 'AUTO-UNDEPLOY'
-			HTML.desc = 'Automatic Un-Deployment'
-			self.UndeployGenObject(HTML, RAN, UE)
-			self.exitStatus = 1
-
-	def IperfFromContainer(self, HTML, RAN, UE):
-		myCmd = cls_cmd.LocalCmd()
-		self.exitStatus = 0
-
-		ymlPath = self.yamlPath[0].split('/')
-		logPath = '../cmake_targets/log/' + ymlPath[1]
-		cmd = f'mkdir -p {logPath}'
-		myCmd.run(cmd, silent=True)
-
-		# Start the server process
-		cmd = f'docker exec -d {self.svrContName} /bin/bash -c "nohup iperf {self.svrOptions} > /tmp/iperf_server.log 2>&1"'
-		myCmd.run(cmd)
-		time.sleep(3)
-
-		# Start the client process
-		cmd = f'docker exec {self.cliContName} /bin/bash -c "iperf {self.cliOptions}" 2>&1 | tee {logPath}/iperf_client_{HTML.testCase_id}.log'
-		clientStatus = myCmd.run(cmd, timeout=100)
-
-		# Stop the server process
-		cmd = f'docker exec {self.svrContName} /bin/bash -c "pkill iperf"'
-		myCmd.run(cmd)
-		time.sleep(3)
-		serverStatusFilename = f'{logPath}/iperf_server_{HTML.testCase_id}.log'
-		cmd = f'docker cp {self.svrContName}:/tmp/iperf_server.log {serverStatusFilename}'
-		myCmd.run(cmd, timeout=60)
-		myCmd.close()
-
-		# clientStatus was retrieved above. The serverStatus was
-		# written in the background, then copied to the local machine
-		with open(serverStatusFilename, 'r') as f:
-			serverStatus = f.read()
-		(iperfStatus, msg) = AnalyzeIperf(self.cliOptions, clientStatus.stdout, serverStatus)
-		if iperfStatus:
-			logging.info('\u001B[1m Iperf Test PASS\u001B[0m')
-		else:
-			logging.error('\u001B[1;37;41m Iperf Test FAIL\u001B[0m')
-		self.IperfExit(HTML, RAN, UE, iperfStatus, msg)
-
-	def IperfExit(self, HTML, RAN, UE, status, message):
-		html_cell = f'UE\n{message}'
-		if status:
-			HTML.CreateHtmlTestRowQueue(self.cliOptions, 'OK', [html_cell])
-		else:
-			logging.error('\u001B[1m Iperf Test FAIL -- ' + message + ' \u001B[0m')
-			HTML.CreateHtmlTestRowQueue(self.cliOptions, 'KO', [html_cell])
-			# Automatic undeployment
-			logging.warning('----------------------------------------')
-			logging.warning('\u001B[1m Starting Automatic undeployment \u001B[0m')
-			logging.warning('----------------------------------------')
-			HTML.testCase_id = 'AUTO-UNDEPLOY'
-			HTML.desc = 'Automatic Un-Deployment'
-			self.UndeployGenObject(HTML, RAN, UE)
-			self.exitStatus = 1
-
 
 	def CheckAndAddRoute(self, svrName, ipAddr, userName, password):
 		logging.debug('Checking IP routing on ' + svrName)

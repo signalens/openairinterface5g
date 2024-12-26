@@ -2,8 +2,8 @@
   - Build_Cluster_Image
   - Pull_Cluster_Image
   - Build_PhySim
-  - Run_LDPCTest
-  - Run_LDPCt1Test
+  - Run_CUDATest
+  - Run_T2Test
   - Run_NRulsimTest
   - Build_eNB
   - WaitEndBuild_eNB
@@ -21,6 +21,7 @@
   - CheckStatusUE
   - Ping
   - Iperf
+  - Iperf2_Unidir
   - Deploy_EPC
   - Undeploy_EPC
   - Initialize_HSS
@@ -41,7 +42,6 @@
   - Deploy_Run_PhySim
   - DeployGenObject
   - UndeployGenObject
-  - IperfFromContainer
   - StatsFromGenObject
   - LicenceAndFormattingCheck
   - Push_Local_Registry

@@ -21,11 +21,11 @@ In this tutorial we describe how to configure and run a 5G end-to-end setup with
 
 Minimum hardware requirements:
 - Laptop/Desktop/Server for OAI CN5G and OAI gNB
-    - Operating System: [Ubuntu 22.04 LTS](https://releases.ubuntu.com/22.04/ubuntu-22.04.3-desktop-amd64.iso)
+    - Operating System: [Ubuntu 22.04 LTS](https://releases.ubuntu.com/22.04/ubuntu-22.04.4-desktop-amd64.iso)
     - CPU: 8 cores x86_64 @ 3.5 GHz
     - RAM: 32 GB
 - Laptop for UE
-    - Operating System: [Ubuntu 22.04 LTS](https://releases.ubuntu.com/22.04/ubuntu-22.04.3-desktop-amd64.iso)
+    - Operating System: [Ubuntu 22.04 LTS](https://releases.ubuntu.com/22.04/ubuntu-22.04.4-desktop-amd64.iso)
     - CPU: 8 cores x86_64 @ 3.5 GHz
     - RAM: 8 GB
 - [USRP B210](https://www.ettus.com/all-products/ub210-kit/), [USRP N300](https://www.ettus.com/all-products/USRP-N300/) or [USRP X300](https://www.ettus.com/all-products/x300-kit/)
@@ -201,6 +201,8 @@ sudo ethtool -G enp1s0f0 tx 4096 rx 4096
 - Sometimes, the nrUE would keep repeating RA procedure because of Msg3 failure at the gNB. If it happens, add the `-A` option at the nrUE and/or gNB side, e.g., `-A 45`. This modifies the timing advance (in samples). Adjust +/-5 if the issue persists.
 - This can be necessary since certain USRPs have larger signal delays than others; it is therefore specific to the used USRP model.
 - The x310 and B210 are found to work with the default configuration; N310 and x410 can benefit from setting this timing advance.
+- For example if the OAI UE uses the X410 and the gNB based on [Nvidia Aerial and Foxconn](./Aerial_FAPI_Split_Tutorial.md) a timing advance of 90 has been found to work well.  
+
 
 ## 6.5 Lower latency on user plane
 - To lower latency on the user plane, you can force the UE to be scheduled constantly in uplink: `--MACRLCs.[0].ulsch_max_frame_inactivity 0` .

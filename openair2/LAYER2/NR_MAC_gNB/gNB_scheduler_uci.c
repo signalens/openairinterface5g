@@ -211,8 +211,12 @@ void nr_csi_meas_reporting(int Mod_idP,
                            frame_t frame,
                            sub_frame_t slot)
 {
-  /* already mutex protected: held in gNB_dlsch_ulsch_scheduler() */
+  const int CC_id = 0;
   gNB_MAC_INST *nrmac = RC.nrmac[Mod_idP];
+  const NR_ServingCellConfigCommon_t *scc = nrmac->common_channels[CC_id].ServingCellConfigCommon;
+  const int NTN_gNB_Koffset = get_NTN_Koffset(scc);
+
+  /* already mutex protected: held in gNB_dlsch_ulsch_scheduler() */
   NR_SCHED_ENSURE_LOCKED(&nrmac->sched_lock);
 
   UE_iterator(nrmac->UE_info.list, UE ) {
@@ -242,8 +246,8 @@ void nr_csi_meas_reporting(int Mod_idP,
       // we schedule CSI reporting max_fb_time slots in advance
       int period, offset;
       csi_period_offset(csirep, NULL, &period, &offset);
-      const int sched_slot = (slot + ul_bwp->max_fb_time) % n_slots_frame;
-      const int sched_frame = (frame + ((slot + ul_bwp->max_fb_time) / n_slots_frame)) % 1024;
+      const int sched_slot = (slot + ul_bwp->max_fb_time + NTN_gNB_Koffset) % n_slots_frame;
+      const int sched_frame = (frame + ((slot + ul_bwp->max_fb_time + NTN_gNB_Koffset) / n_slots_frame)) % MAX_FRAME_NUMBER;
       // prepare to schedule csi measurement reception according to 5.2.1.4 in 38.214
       if ((sched_frame * n_slots_frame + sched_slot - offset) % period != 0)
         continue;
@@ -260,7 +264,6 @@ void nr_csi_meas_reporting(int Mod_idP,
       AssertFatal(res_index < n,
                   "CSI pucch resource %ld not found among PUCCH resources\n", pucchcsires->pucch_Resource);
 
-      const NR_ServingCellConfigCommon_t *scc = nrmac->common_channels[0].ServingCellConfigCommon;
       const NR_TDD_UL_DL_Pattern_t *tdd = scc->tdd_UL_DL_ConfigurationCommon ? &scc->tdd_UL_DL_ConfigurationCommon->pattern1 : NULL;
       AssertFatal(tdd || nrmac->common_channels[0].frame_type == FDD, "Dynamic TDD not handled yet\n");
       const int pucch_index = get_pucch_index(sched_frame, sched_slot, n_slots_frame, tdd, sched_ctrl->sched_pucch_size);
@@ -270,7 +273,7 @@ void nr_csi_meas_reporting(int Mod_idP,
       curr_pucch->frame = sched_frame;
       curr_pucch->ul_slot = sched_slot;
       curr_pucch->resource_indicator = res_index;
-      curr_pucch->csi_bits += nr_get_csi_bitlen(UE->csi_report_template, csi_report_id);
+      curr_pucch->csi_bits += nr_get_csi_bitlen(&UE->csi_report_template[csi_report_id]);
       curr_pucch->active = true;
 
       int bwp_start = ul_bwp->BWPStart;
@@ -382,19 +385,18 @@ static void handle_dl_harq(NR_UE_info_t * UE,
                            bool success,
                            int harq_round_max)
 {
-  NR_UE_harq_t *harq = &UE->UE_sched_ctrl.harq_processes[harq_pid];
+  NR_UE_sched_ctrl_t *sched_ctrl = &UE->UE_sched_ctrl;
+  NR_UE_harq_t *harq = &sched_ctrl->harq_processes[harq_pid];
   harq->feedback_slot = -1;
   harq->is_waiting = false;
   if (success) {
-    add_tail_nr_list(&UE->UE_sched_ctrl.available_dl_harq, harq_pid);
-    harq->round = 0;
-    harq->ndi ^= 1;
+    finish_nr_dl_harq(sched_ctrl, harq_pid);
   } else if (harq->round >= harq_round_max - 1) {
     abort_nr_dl_harq(UE, harq_pid);
     LOG_D(NR_MAC, "retransmission error for UE %04x (total %"PRIu64")\n", UE->rnti, UE->mac_stats.dl.errors);
   } else {
     LOG_D(PHY,"NACK for: pid %d, ue %04x\n",harq_pid, UE->rnti);
-    add_tail_nr_list(&UE->UE_sched_ctrl.retrans_dl_harq, harq_pid);
+    add_tail_nr_list(&sched_ctrl->retrans_dl_harq, harq_pid);
     harq->round++;
   }
 }
@@ -761,12 +763,12 @@ static int evaluate_ri_report(uint8_t *payload,
                               NR_UE_sched_ctrl_t *sched_ctrl)
 {
   uint8_t ri_index = pickandreverse_bits(payload, ri_bitlen, cumul_bits);
-  int count=0;
-  for (int i=0; i<8; i++) {
-     if ((ri_restriction>>i)&0x01) {
+  int count = 0;
+  for (int i = 0; i < 8; i++) {
+     if ((ri_restriction >> i) & 0x01) {
        if(count == ri_index) {
          sched_ctrl->CSI_report.cri_ri_li_pmi_cqi_report.ri = i;
-         LOG_D(MAC,"CSI Reported Rank %d\n", i+1);
+         LOG_D(MAC,"CSI Reported Rank %d\n", i + 1);
          return i;
        }
        count++;
@@ -821,8 +823,8 @@ static uint8_t evaluate_pmi_report(uint8_t *payload,
   //in case of 2 port CSI configuration x1 is empty and the information bits are in x2
   int temp_pmi = pickandreverse_bits(payload, tot_bitlen, cumul_bits);
 
-  sched_ctrl->CSI_report.cri_ri_li_pmi_cqi_report.pmi_x1 = temp_pmi&((1<<x1_bitlen)-1);
-  sched_ctrl->CSI_report.cri_ri_li_pmi_cqi_report.pmi_x2 = (temp_pmi>>x1_bitlen)&((1<<x2_bitlen)-1);
+  sched_ctrl->CSI_report.cri_ri_li_pmi_cqi_report.pmi_x1 = temp_pmi & ((1 << x1_bitlen) - 1);
+  sched_ctrl->CSI_report.cri_ri_li_pmi_cqi_report.pmi_x2 = (temp_pmi >> x1_bitlen) & ((1 << x2_bitlen) - 1);
   LOG_D(MAC,"PMI Report: X1 %d X2 %d\n",
         sched_ctrl->CSI_report.cri_ri_li_pmi_cqi_report.pmi_x1,
         sched_ctrl->CSI_report.cri_ri_li_pmi_cqi_report.pmi_x2);
@@ -974,7 +976,7 @@ static NR_UE_harq_t *find_harq(frame_t frame, sub_frame_t slot, NR_UE_info_t * U
     return NULL;
   NR_UE_harq_t *harq = &sched_ctrl->harq_processes[pid];
   /* old feedbacks we missed: mark for retransmission */
-  while (harq->feedback_frame != frame
+  while ((harq->feedback_frame - frame + 1024 ) % 1024 > 512 // harq->feedback_frame < frame, distance of 512 is boundary to decide if feedback_frame is in the past or future
          || (harq->feedback_frame == frame && harq->feedback_slot < slot)) {
     // LOG_W(NR_MAC,
     //       "expected HARQ pid %d feedback at %d.%d, but is at %d.%d instead (HARQ feedback is in the past)\n",
@@ -991,9 +993,20 @@ static NR_UE_harq_t *find_harq(frame_t frame, sub_frame_t slot, NR_UE_info_t * U
     harq = &sched_ctrl->harq_processes[pid];
   }
   /* feedbacks that we wait for in the future: don't do anything */
-  if (harq->feedback_slot > slot) {
+  // if (harq->feedback_slot > slot) {
     // LOG_W(NR_MAC,
     //       "expected HARQ pid %d feedback at %d.%d, but is at %d.%d instead (HARQ feedback is in the future)\n",
+    //       pid,
+    //       harq->feedback_frame,
+    //       harq->feedback_slot,
+    //       frame,
+    //       slot);
+  if ((frame - harq->feedback_frame + 1024 ) % 1024 > 512 // harq->feedback_frame > frame, distance of 512 is boundary to decide if feedback_frame is in the past or future
+      || (harq->feedback_frame == frame && harq->feedback_slot > slot)) {
+
+    // LOG_W(NR_MAC,
+    //       "UE %04x expected HARQ pid %d feedback at %4d.%2d, but is at %4d.%2d instead (HARQ feedback is in the future)\n",
+    //       UE->rnti,
     //       pid,
     //       harq->feedback_frame,
     //       harq->feedback_slot,
@@ -1042,7 +1055,7 @@ void handle_nr_uci_pucch_0_1(module_id_t mod_id,
     // tpc (power control) only if we received AckNack
     if (uci_01->harq.harq_confidence_level == 0 && uci_01->ul_cqi != 0xff) {
       sched_ctrl->pucch_snrx10 = uci_01->ul_cqi * 5 - 640;
-      sched_ctrl->tpc1 = nr_get_tpc(nrmac->pucch_target_snrx10, sched_ctrl->pucch_snrx10, 30);
+      sched_ctrl->tpc1 = nr_get_tpc(nrmac->pucch_target_snrx10, uci_01->ul_cqi, 30, 0);
     } else
       sched_ctrl->tpc1 = 1;
   }
@@ -1085,7 +1098,7 @@ void handle_nr_uci_pucch_2_3_4(module_id_t mod_id,
   // TODO PUCCH2 SNR computation is not correct -> ignore the following
   if (uci_234->ul_cqi != 0xff) {
     sched_ctrl->pucch_snrx10 = uci_234->ul_cqi * 5 - 640;
-    sched_ctrl->tpc1 = nr_get_tpc(nrmac->pucch_target_snrx10, sched_ctrl->pucch_snrx10, 30);
+    sched_ctrl->tpc1 = nr_get_tpc(nrmac->pucch_target_snrx10, uci_234->ul_cqi, 30, 0);
   }
 
   // TODO: handle SR
@@ -1098,20 +1111,26 @@ void handle_nr_uci_pucch_2_3_4(module_id_t mod_id,
     for (int harq_bit = 0; harq_bit < uci_234->harq.harq_bit_len; harq_bit++) {
       const int acknack = ((uci_234->harq.harq_payload[harq_bit >> 3]) >> harq_bit) & 0x01;
       NR_UE_harq_t *harq = find_harq(frame, slot, UE, RC.nrmac[mod_id]->dl_bler.harq_round_max);
-      if (!harq)
+      if (!harq) {
+        LOG_E(NR_MAC, "UE %04x: Could not find a HARQ process at %4d.%2d!\n", UE->rnti, frame, slot);
         break;
+      }
       DevAssert(harq->is_waiting);
       const int8_t pid = sched_ctrl->feedback_dl_harq.head;
       remove_front_nr_list(&sched_ctrl->feedback_dl_harq);
+      LOG_D(NR_MAC,"%4d.%2d bit %d pid %d ack/nack %d\n",frame, slot, harq_bit, pid, acknack);
       handle_dl_harq(UE, pid, uci_234->harq.harq_crc != 1 && acknack, nrmac->dl_bler.harq_round_max);
     }
     free(uci_234->harq.harq_payload);
   }
-  if ((uci_234->pduBitmap >> 2) & 0x01) {
-    //API to parse the csi report and store it into sched_ctrl
-    extract_pucch_csi_report(csi_MeasConfig, uci_234, frame, slot, UE, nrmac->common_channels->ServingCellConfigCommon);
-    //TCI handling function
-    tci_handling(UE,frame, slot);
+  /* phy-test has hardcoded allocation, so no use to handle CSI reports */
+  if ((uci_234->pduBitmap >> 2) & 0x01 && !get_softmodem_params()->phy_test) {
+    if (uci_234->csi_part1.csi_part1_crc != 1) {
+      // API to parse the csi report and store it into sched_ctrl
+      extract_pucch_csi_report(csi_MeasConfig, uci_234, frame, slot, UE, nrmac->common_channels->ServingCellConfigCommon);
+      // TCI handling function
+      tci_handling(UE, frame, slot);
+    }
     free(uci_234->csi_part1.csi_part1_payload);
   }
   if ((uci_234->pduBitmap >> 3) & 0x01) {
@@ -1234,8 +1253,10 @@ int nr_acknack_scheduling(gNB_MAC_INST *mac,
    * called often, don't try to lock every time */
 
   const int CC_id = 0;
-  const int minfbtime = mac->radio_config.minRXTXTIME;
   const NR_ServingCellConfigCommon_t *scc = mac->common_channels[CC_id].ServingCellConfigCommon;
+  const int NTN_gNB_Koffset = get_NTN_Koffset(scc);
+
+  const int minfbtime = mac->radio_config.minRXTXTIME + NTN_gNB_Koffset;
   const NR_UE_UL_BWP_t *ul_bwp = &UE->current_UL_BWP;
   const int n_slots_frame = nr_slots_per_frame[ul_bwp->scs];
   const NR_TDD_UL_DL_Pattern_t *tdd = scc->tdd_UL_DL_ConfigurationCommon ? &scc->tdd_UL_DL_ConfigurationCommon->pattern1 : NULL;
@@ -1258,13 +1279,13 @@ int nr_acknack_scheduling(gNB_MAC_INST *mac,
 
   for (int f = 0; f < fb_size; f++) {
     // can't schedule ACKNACK before minimum feedback time
-    if(pdsch_to_harq_feedback[f] < minfbtime)
+    if((pdsch_to_harq_feedback[f] + NTN_gNB_Koffset) < minfbtime)
       continue;
-    const int pucch_slot = (slot + pdsch_to_harq_feedback[f]) % n_slots_frame;
+    const int pucch_slot = (slot + pdsch_to_harq_feedback[f] + NTN_gNB_Koffset) % n_slots_frame;
     // check if the slot is UL
     if(pucch_slot%nr_slots_period < first_ul_slot_period)
       continue;
-    const int pucch_frame = (frame + ((slot + pdsch_to_harq_feedback[f]) / n_slots_frame)) & 1023;
+    const int pucch_frame = (frame + ((slot + pdsch_to_harq_feedback[f] + NTN_gNB_Koffset) / n_slots_frame)) % MAX_FRAME_NUMBER;
     // we store PUCCH resources according to slot, TDD configuration and size of the vector containing PUCCH structures
     const int pucch_index = get_pucch_index(pucch_frame, pucch_slot, n_slots_frame, tdd, sched_ctrl->sched_pucch_size);
     NR_sched_pucch_t *curr_pucch = &sched_ctrl->sched_pucch[pucch_index];

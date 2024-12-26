@@ -33,6 +33,7 @@
 
 #include "PHY/NR_REFSIG/ul_ref_seq_nr.h"
 #include "executables/softmodem-common.h"
+#include "nr_phy_common.h"
 
 
 //#define DEBUG_CH
@@ -66,14 +67,15 @@ __attribute__((always_inline)) inline c16_t c32x16cumulVectVectWithSteps(c16_t *
 
 int nr_pusch_channel_estimation(PHY_VARS_gNB *gNB,
                                 unsigned char Ns,
+                                int nl,
                                 unsigned short p,
                                 unsigned char symbol,
                                 int ul_id,
                                 unsigned short bwp_start_subcarrier,
                                 nfapi_nr_pusch_pdu_t *pusch_pdu,
                                 int *max_ch,
-                                uint32_t *nvar) {
-
+                                uint32_t *nvar)
+{
   c16_t pilot[3280] __attribute__((aligned(32)));
   const int chest_freq = gNB->chest_freq;
 
@@ -81,20 +83,17 @@ int nr_pusch_channel_estimation(PHY_VARS_gNB *gNB,
   FILE *debug_ch_est;
   debug_ch_est = fopen("debug_ch_est.txt","w");
 #endif
-  //uint16_t Nid_cell = (eNB_offset == 0) ? gNB->frame_parms.Nid_cell : gNB->measurements.adj_cell_id[eNB_offset-1];
   NR_gNB_PUSCH *pusch_vars = &gNB->pusch_vars[ul_id];
   c16_t **ul_ch_estimates = (c16_t **)pusch_vars->ul_ch_estimates;
   const int symbolSize = gNB->frame_parms.ofdm_symbol_size;
-  const int soffset = (Ns&3)*gNB->frame_parms.symbols_per_slot*symbolSize;
+  const int soffset = (Ns & 3) * gNB->frame_parms.symbols_per_slot*symbolSize;
   const int nushift = (p >> 1) & 1;
-  int ch_offset     = symbolSize*symbol;
+  int ch_offset = symbolSize*symbol;
   const int symbol_offset = symbolSize*symbol;
-
   const int k0 = bwp_start_subcarrier;
   const int nb_rb_pusch = pusch_pdu->rb_size;
 
-  LOG_D(PHY, "In %s: ch_offset %d, soffset %d, symbol_offset %d, OFDM size %d, Ns = %d, k0 = %d, symbol %d\n",
-        __FUNCTION__,
+  LOG_D(PHY, "ch_offset %d, soffset %d, symbol_offset %d, OFDM size %d, Ns = %d, k0 = %d, symbol %d\n",
         ch_offset, soffset,
         symbol_offset,
         symbolSize,
@@ -104,17 +103,19 @@ int nr_pusch_channel_estimation(PHY_VARS_gNB *gNB,
 
   //------------------generate DMRS------------------//
 
-  if(pusch_pdu->ul_dmrs_scrambling_id != gNB->pusch_gold_init[pusch_pdu->scid])  {
-    gNB->pusch_gold_init[pusch_pdu->scid] = pusch_pdu->ul_dmrs_scrambling_id;
-    nr_gold_pusch(gNB, pusch_pdu->scid, pusch_pdu->ul_dmrs_scrambling_id);
-  }
-
   if (pusch_pdu->transform_precoding == transformPrecoder_disabled) {
     // Note: pilot returned by the following function is already the complex conjugate of the transmitted DMRS
+    NR_DL_FRAME_PARMS *fp = &gNB->frame_parms;
+    const uint32_t *gold = nr_gold_pusch(fp->N_RB_UL,
+                                         fp->symbols_per_slot,
+                                         gNB->gNB_config.cell_config.phy_cell_id.value,
+                                         pusch_pdu->scid,
+                                         Ns,
+                                         symbol);
     nr_pusch_dmrs_rx(gNB,
                      Ns,
-                     gNB->nr_gold_pusch_dmrs[pusch_pdu->scid][Ns][symbol],
-                     (int32_t *)pilot,
+                     gold,
+                     pilot,
                      (1000 + p),
                      0,
                      nb_rb_pusch,
@@ -122,14 +123,14 @@ int nr_pusch_channel_estimation(PHY_VARS_gNB *gNB,
                      pusch_pdu->dmrs_config_type);
   } else { // if transform precoding or SC-FDMA is enabled in Uplink
     // NR_SC_FDMA supports type1 DMRS so only 6 DMRS REs per RB possible
-    const uint16_t index = get_index_for_dmrs_lowpapr_seq(nb_rb_pusch * (NR_NB_SC_PER_RB/2));
+    const int index = get_index_for_dmrs_lowpapr_seq(nb_rb_pusch * (NR_NB_SC_PER_RB / 2));
     const uint8_t u = pusch_pdu->dfts_ofdm.low_papr_group_number;
     const uint8_t v = pusch_pdu->dfts_ofdm.low_papr_sequence_number;
-    int16_t *dmrs_seq = gNB_dmrs_lowpaprtype1_sequence[u][v][index];
+    c16_t *dmrs_seq = gNB_dmrs_lowpaprtype1_sequence[u][v][index];
     LOG_D(PHY,"Transform Precoding params. u: %d, v: %d, index for dmrsseq: %d\n", u, v, index);
     AssertFatal(index >= 0, "Num RBs not configured according to 3GPP 38.211 section 6.3.1.4. For PUSCH with transform precoding, num RBs cannot be multiple of any other primenumber other than 2,3,5\n");
     AssertFatal(dmrs_seq != NULL, "DMRS low PAPR seq not found, check if DMRS sequences are generated");
-    nr_pusch_lowpaprtype1_dmrs_rx(gNB, Ns, dmrs_seq, (int32_t *)pilot, 1000, 0, nb_rb_pusch, 0, pusch_pdu->dmrs_config_type);
+    nr_pusch_lowpaprtype1_dmrs_rx(gNB, Ns, dmrs_seq, pilot, 1000, 0, nb_rb_pusch, 0, pusch_pdu->dmrs_config_type);
 #ifdef DEBUG_PUSCH
     printf ("NR_UL_CHANNEL_EST: index %d, u %d,v %d\n", index, u, v);
     LOG_M("gNb_DMRS_SEQ.m","gNb_DMRS_SEQ", dmrs_seq,6*nb_rb_pusch,1,1);
@@ -154,7 +155,7 @@ int nr_pusch_channel_estimation(PHY_VARS_gNB *gNB,
 
   for (int aarx=0; aarx<gNB->frame_parms.nb_antennas_rx; aarx++) {
     c16_t *rxdataF = (c16_t *)&gNB->common_vars.rxdataF[aarx][symbol_offset];
-    c16_t *ul_ch = &ul_ch_estimates[p*gNB->frame_parms.nb_antennas_rx+aarx][ch_offset];
+    c16_t *ul_ch = &ul_ch_estimates[nl * gNB->frame_parms.nb_antennas_rx + aarx][ch_offset];
 
     memset(ul_ch,0,sizeof(*ul_ch)*symbolSize);
 #ifdef DEBUG_PUSCH
@@ -235,7 +236,7 @@ int nr_pusch_channel_estimation(PHY_VARS_gNB *gNB,
 
       // Revert delay
       pilot_cnt = 0;
-      ul_ch = &ul_ch_estimates[p * gNB->frame_parms.nb_antennas_rx + aarx][ch_offset];
+      ul_ch = &ul_ch_estimates[nl * gNB->frame_parms.nb_antennas_rx + aarx][ch_offset];
       int inv_delay_idx = get_delay_idx(-delay->est_delay, MAX_DELAY_COMP);
       c16_t *ul_inv_delay_table = gNB->frame_parms.delay_table[inv_delay_idx];
       for (int n = 0; n < 3 * nb_rb_pusch; n++) {
@@ -450,7 +451,7 @@ int nr_pusch_channel_estimation(PHY_VARS_gNB *gNB,
     }
 
 #ifdef DEBUG_PUSCH
-    ul_ch = &ul_ch_estimates[p * gNB->frame_parms.nb_antennas_rx + aarx][ch_offset];
+    ul_ch = &ul_ch_estimates[nl * gNB->frame_parms.nb_antennas_rx + aarx][ch_offset];
     for (int idxP = 0; idxP < ceil((float)nb_rb_pusch * 12 / 8); idxP++) {
       for (int idxI = 0; idxI < 8; idxI++) {
           printf("%d\t%d\t", ul_ch[idxP * 8 + idxI].r, ul_ch[idxP * 8 + idxI].i);
@@ -553,6 +554,12 @@ void nr_pusch_ptrs_processing(PHY_VARS_gNB *gNB,
       /*------------------------------------------------------------------------------------------------------- */
       /* 1) Estimate common phase error per PTRS symbol                                                                */
       /*------------------------------------------------------------------------------------------------------- */
+      const uint32_t *gold = nr_gold_pusch(frame_parms->N_RB_UL,
+                                           frame_parms->symbols_per_slot,
+                                           gNB->gNB_config.cell_config.phy_cell_id.value,
+                                           rel15_ul->scid,
+                                           nr_tti_rx,
+                                           symbol);
       nr_ptrs_cpe_estimation(*K_ptrs,
                              *ptrsReOffset,
                              *nb_rb,
@@ -561,7 +568,7 @@ void nr_pusch_ptrs_processing(PHY_VARS_gNB *gNB,
                              symbol,
                              frame_parms->ofdm_symbol_size,
                              (int16_t *)&pusch_vars->rxdataF_comp[aarx][(symbol * nb_re_pusch)],
-                             gNB->nr_gold_pusch_dmrs[rel15_ul->scid][nr_tti_rx][symbol],
+                             gold,
                              (int16_t *)&phase_per_symbol[symbol],
                              ptrs_re_symbol);
     }
@@ -611,19 +618,21 @@ uint32_t calc_power(const int16_t *x, const uint32_t size) {
   return sum_x2/size - (sum_x/size)*(sum_x/size);
 }
 
-int nr_srs_channel_estimation(const PHY_VARS_gNB *gNB,
-                              const int frame,
-                              const int slot,
-                              const nfapi_nr_srs_pdu_t *srs_pdu,
-                              const nr_srs_info_t *nr_srs_info,
-                              const int32_t **srs_generated_signal,
-                              int32_t srs_received_signal[][gNB->frame_parms.ofdm_symbol_size*(1<<srs_pdu->num_symbols)],
-                              int32_t srs_estimated_channel_freq[][1<<srs_pdu->num_ant_ports][gNB->frame_parms.ofdm_symbol_size*(1<<srs_pdu->num_symbols)],
-                              int32_t srs_estimated_channel_time[][1<<srs_pdu->num_ant_ports][gNB->frame_parms.ofdm_symbol_size],
-                              int32_t srs_estimated_channel_time_shifted[][1<<srs_pdu->num_ant_ports][gNB->frame_parms.ofdm_symbol_size],
-                              int8_t *snr_per_rb,
-                              int8_t *snr) {
-
+int nr_srs_channel_estimation(
+    const PHY_VARS_gNB *gNB,
+    const int frame,
+    const int slot,
+    const nfapi_nr_srs_pdu_t *srs_pdu,
+    const nr_srs_info_t *nr_srs_info,
+    const c16_t **srs_generated_signal,
+    int32_t srs_received_signal[][gNB->frame_parms.ofdm_symbol_size * (1 << srs_pdu->num_symbols)],
+    int32_t srs_estimated_channel_freq[][1 << srs_pdu->num_ant_ports]
+                                      [gNB->frame_parms.ofdm_symbol_size * (1 << srs_pdu->num_symbols)],
+    int32_t srs_estimated_channel_time[][1 << srs_pdu->num_ant_ports][gNB->frame_parms.ofdm_symbol_size],
+    int32_t srs_estimated_channel_time_shifted[][1 << srs_pdu->num_ant_ports][gNB->frame_parms.ofdm_symbol_size],
+    int8_t *snr_per_rb,
+    int8_t *snr)
+{
 #ifdef SRS_DEBUG
   LOG_I(NR_PHY,"Calling %s function\n", __FUNCTION__);
 #endif
@@ -694,9 +703,8 @@ int nr_srs_channel_estimation(const PHY_VARS_gNB *gNB,
           uint16_t subcarrier_cdm = subcarrier;
 
           for (int cdm_idx = 0; cdm_idx < fd_cdm; cdm_idx++) {
-
-            int16_t generated_real = ((c16_t*)srs_generated_signal[p_index])[subcarrier_cdm].r;
-            int16_t generated_imag = ((c16_t*)srs_generated_signal[p_index])[subcarrier_cdm].i;
+            int16_t generated_real = srs_generated_signal[p_index][subcarrier_cdm].r;
+            int16_t generated_imag = srs_generated_signal[p_index][subcarrier_cdm].i;
 
             int16_t received_real = ((c16_t*)srs_received_signal[ant])[subcarrier_cdm].r;
             int16_t received_imag = ((c16_t*)srs_received_signal[ant])[subcarrier_cdm].i;

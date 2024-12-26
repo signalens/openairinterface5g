@@ -134,9 +134,14 @@ int nr_write_ce_dlsch_pdu(module_id_t module_idP,
     // contention resolution identity MAC ce has a fixed 48 bit size
     // this contains the UL CCCH SDU. If UL CCCH SDU is longer than 48 bits,
     // it contains the first 48 bits of the UL CCCH SDU
-    LOG_T(NR_MAC, "[gNB ][RAPROC] Generate contention resolution msg: %x.%x.%x.%x.%x.%x\n",
-          ue_cont_res_id[0], ue_cont_res_id[1], ue_cont_res_id[2],
-          ue_cont_res_id[3], ue_cont_res_id[4], ue_cont_res_id[5]);
+    LOG_D(NR_MAC,
+          "[gNB ][RAPROC] Generate contention resolution msg: %x.%x.%x.%x.%x.%x\n",
+          ue_cont_res_id[0],
+          ue_cont_res_id[1],
+          ue_cont_res_id[2],
+          ue_cont_res_id[3],
+          ue_cont_res_id[4],
+          ue_cont_res_id[5]);
     // Copying bytes (6 octects) to CEs pointer
     mac_ce_size = 6;
     memcpy(ce_ptr, ue_cont_res_id, mac_ce_size);
@@ -326,8 +331,9 @@ static void nr_store_dlsch_buffer(module_id_t module_id, frame_t frame, sub_fram
 
     /* loop over all activated logical channels */
     // Note: DL_SCH_LCID_DCCH, DL_SCH_LCID_DCCH1, DL_SCH_LCID_DTCH
-    for (int i = 0; i < sched_ctrl->dl_lc_num; ++i) {
-      const int lcid = sched_ctrl->dl_lc_ids[i];
+    for (int i = 0; i < seq_arr_size(&sched_ctrl->lc_config); ++i) {
+      const nr_lc_config_t *c = seq_arr_at(&sched_ctrl->lc_config, i);
+      const int lcid = c->lcid;
       const uint16_t rnti = UE->rnti;
       LOG_D(NR_MAC, "In %s: UE %x: LCID %d\n", __FUNCTION__, rnti, lcid);
 
@@ -388,17 +394,23 @@ static void nr_store_dlsch_buffer(module_id_t module_id, frame_t frame, sub_fram
   }
 }
 
-void abort_nr_dl_harq(NR_UE_info_t* UE, int8_t harq_pid)
+void finish_nr_dl_harq(NR_UE_sched_ctrl_t *sched_ctrl, int harq_pid)
 {
-  /* already mutex protected through handle_dl_harq() */
-  NR_UE_sched_ctrl_t *sched_ctrl = &UE->UE_sched_ctrl;
   NR_UE_harq_t *harq = &sched_ctrl->harq_processes[harq_pid];
 
   harq->ndi ^= 1;
   harq->round = 0;
-  UE->mac_stats.dl.errors++;
-  add_tail_nr_list(&sched_ctrl->available_dl_harq, harq_pid);
 
+  add_tail_nr_list(&sched_ctrl->available_dl_harq, harq_pid);
+}
+
+void abort_nr_dl_harq(NR_UE_info_t* UE, int8_t harq_pid)
+{
+  /* already mutex protected through handle_dl_harq() */
+  NR_UE_sched_ctrl_t *sched_ctrl = &UE->UE_sched_ctrl;
+
+  finish_nr_dl_harq(sched_ctrl, harq_pid);
+  UE->mac_stats.dl.errors++;
 }
 
 static void get_start_stop_allocation(gNB_MAC_INST *mac,
@@ -472,6 +484,8 @@ static bool allocate_dl_retransmission(module_id_t module_id,
                                            TYPE_C_RNTI_,
                                            coresetid,
                                            false);
+  if (!temp_tda.valid_tda)
+    return false;
 
   bool reuse_old_tda = (retInfo->tda_info.startSymbolIndex == temp_tda.startSymbolIndex) && (retInfo->tda_info.nrOfSymbols <= temp_tda.nrOfSymbols);
   LOG_D(NR_MAC, "[UE %x] %s old TDA, %s number of layers\n",
@@ -571,14 +585,17 @@ static bool allocate_dl_retransmission(module_id_t module_id,
   /* Find PUCCH occasion: if it fails, undo CCE allocation (undoing PUCCH
    * allocation after CCE alloc fail would be more complex) */
 
-  int r_pucch = nr_get_pucch_resource(sched_ctrl->coreset, ul_bwp->pucch_Config, CCEIndex);
-  const int alloc = nr_acknack_scheduling(nr_mac, UE, frame, slot, r_pucch, 0);
-  if (alloc<0) {
-    LOG_D(NR_MAC, "[UE %04x][%4d.%2d] could not find PUCCH for DL DCI retransmission\n",
-          UE->rnti,
-          frame,
-          slot);
-    return false;
+  int alloc = -1;
+  if (!get_FeedbackDisabled(UE->sc_info.downlinkHARQ_FeedbackDisabled_r17, current_harq_pid)) {
+    int r_pucch = nr_get_pucch_resource(sched_ctrl->coreset, ul_bwp->pucch_Config, CCEIndex);
+    alloc = nr_acknack_scheduling(nr_mac, UE, frame, slot, r_pucch, 0);
+    if (alloc<0) {
+      LOG_D(NR_MAC, "[UE %04x][%4d.%2d] could not find PUCCH for DL DCI retransmission\n",
+            UE->rnti,
+            frame,
+            slot);
+      return false;
+    }
   }
 
   sched_ctrl->cce_index = CCEIndex;
@@ -677,7 +694,7 @@ static void pf_dl(module_id_t module_id,
       }
 
       /* Check DL buffer and skip this UE if no bytes and no TA necessary */
-      if (sched_ctrl->num_total_bytes == 0 && frame != (sched_ctrl->ta_frame + 10) % 1024)
+      if (sched_ctrl->num_total_bytes == 0 && frame != (sched_ctrl->ta_frame + 100) % 1024)
         continue;
 
       /* Calculate coeff */
@@ -739,6 +756,8 @@ static void pf_dl(module_id_t module_id,
       iterator++;
       continue;
     }
+    NR_sched_pdsch_t *sched_pdsch = &sched_ctrl->sched_pdsch;
+    sched_pdsch->dl_harq_pid = sched_ctrl->available_dl_harq.head;
 
     int CCEIndex = get_cce_index(mac,
                                  CC_id, slot, iterator->UE->rnti,
@@ -759,16 +778,18 @@ static void pf_dl(module_id_t module_id,
     /* Find PUCCH occasion: if it fails, undo CCE allocation (undoing PUCCH
     * allocation after CCE alloc fail would be more complex) */
 
-    int r_pucch = nr_get_pucch_resource(sched_ctrl->coreset, ul_bwp->pucch_Config, CCEIndex);
-    const int alloc = nr_acknack_scheduling(mac, iterator->UE, frame, slot, r_pucch, 0);
-
-    if (alloc<0) {
-      LOG_D(NR_MAC, "[UE %04x][%4d.%2d] could not find PUCCH for DL DCI\n",
-            rnti,
-            frame,
-            slot);
-      iterator++;
-      continue;
+    int alloc = -1;
+    if (!get_FeedbackDisabled(iterator->UE->sc_info.downlinkHARQ_FeedbackDisabled_r17, sched_pdsch->dl_harq_pid)) {
+      int r_pucch = nr_get_pucch_resource(sched_ctrl->coreset, ul_bwp->pucch_Config, CCEIndex);
+      alloc = nr_acknack_scheduling(mac, iterator->UE, frame, slot, r_pucch, 0);
+      if (alloc<0) {
+        LOG_D(NR_MAC, "[UE %04x][%4d.%2d] could not find PUCCH for DL DCI\n",
+              rnti,
+              frame,
+              slot);
+        iterator++;
+        continue;
+      }
     }
 
     sched_ctrl->cce_index = CCEIndex;
@@ -779,7 +800,6 @@ static void pf_dl(module_id_t module_id,
                        sched_ctrl->aggregation_level);
 
     /* MCS has been set above */
-    NR_sched_pdsch_t *sched_pdsch = &sched_ctrl->sched_pdsch;
     sched_pdsch->time_domain_allocation = get_dl_tda(mac, scc, slot);
     AssertFatal(sched_pdsch->time_domain_allocation>=0,"Unable to find PDSCH time domain allocation in list\n");
 
@@ -792,6 +812,7 @@ static void pf_dl(module_id_t module_id,
                                             TYPE_C_RNTI_,
                                             coresetid,
                                             false);
+    AssertFatal(sched_pdsch->tda_info.valid_tda, "Invalid TDA from get_dl_tda_info\n");
 
     NR_tda_info_t *tda_info = &sched_pdsch->tda_info;
 
@@ -822,8 +843,8 @@ static void pf_dl(module_id_t module_id,
     // awaiting. Therefore, for the time being, we put a fixed overhead of 12
     // (for 4 PDUs) and optionally + 2 for TA. Once RLC gives the number of
     // PDUs, we replace with 3 * numPDUs
-    const int oh = 3 * 4 + 2 * (frame == (sched_ctrl->ta_frame + 10) % 1024);
-    //const int oh = 3 * sched_ctrl->dl_pdus_total + 2 * (frame == (sched_ctrl->ta_frame + 10) % 1024);
+    const int oh = 3 * 4 + 2 * (frame == (sched_ctrl->ta_frame + 100) % 1024);
+    //const int oh = 3 * sched_ctrl->dl_pdus_total + 2 * (frame == (sched_ctrl->ta_frame + 100) % 1024);
     nr_find_nb_rb(sched_pdsch->Qm,
                   sched_pdsch->R,
                   1, // no transform precoding for DL
@@ -905,6 +926,9 @@ static void nr_fr1_dlsch_preprocessor(module_id_t module_id, frame_t frame, sub_
   int average_agg_level = 4; // TODO find a better estimation
   int max_sched_ues = bw / (average_agg_level * NR_NB_REG_PER_CCE);
 
+  // FAPI cannot handle more than MAX_DCI_CORESET DCIs
+  max_sched_ues = min(max_sched_ues, MAX_DCI_CORESET);
+
   /* proportional fair scheduling algorithm */
   pf_dl(module_id,
         frame,
@@ -979,7 +1003,7 @@ void nr_schedule_ue_spec(module_id_t module_id,
      * Possible improvement: take the periodicity from input file.
      * If such UE is not scheduled now, it will be by the preprocessor later.
      * If we add the CE, ta_apply will be reset */
-    if (frame == (sched_ctrl->ta_frame + 10) % 1024) {
+    if (frame == (sched_ctrl->ta_frame + 100) % 1024) {
       sched_ctrl->ta_apply = true; /* the timer is reset once TA CE is scheduled */
       LOG_D(NR_MAC, "[UE %04x][%d.%d] UL timing alignment procedures: setting flag for Timing Advance command\n", UE->rnti, frame, slot);
     }
@@ -1017,12 +1041,17 @@ void nr_schedule_ue_spec(module_id_t module_id,
     NR_tda_info_t *tda_info = &sched_pdsch->tda_info;
     NR_pdsch_dmrs_t *dmrs_parms = &sched_pdsch->dmrs_parms;
     NR_UE_harq_t *harq = &sched_ctrl->harq_processes[current_harq_pid];
+    NR_sched_pucch_t *pucch = NULL;
     DevAssert(!harq->is_waiting);
-    add_tail_nr_list(&sched_ctrl->feedback_dl_harq, current_harq_pid);
-    NR_sched_pucch_t *pucch = &sched_ctrl->sched_pucch[sched_pdsch->pucch_allocation];
-    harq->feedback_frame = pucch->frame;
-    harq->feedback_slot = pucch->ul_slot;
-    harq->is_waiting = true;
+    if (sched_pdsch->pucch_allocation < 0) {
+      finish_nr_dl_harq(sched_ctrl, current_harq_pid);
+    } else {
+      pucch = &sched_ctrl->sched_pucch[sched_pdsch->pucch_allocation];
+      add_tail_nr_list(&sched_ctrl->feedback_dl_harq, current_harq_pid);
+      harq->feedback_frame = pucch->frame;
+      harq->feedback_slot = pucch->ul_slot;
+      harq->is_waiting = true;
+    }
     UE->mac_stats.dl.rounds[harq->round]++;
     LOG_D(NR_MAC,
           "%4d.%2d [DLSCH/PDSCH/PUCCH] RNTI %04x DCI L %d start %3d RBs %3d startSymbol %2d nb_symbol %2d dmrspos %x MCS %2d nrOfLayers %d TBS %4d HARQ PID %2d round %d RV %d NDI %d dl_data_to_ULACK %d (%d.%d) PUCCH allocation %d TPC %d\n",
@@ -1098,9 +1127,8 @@ void nr_schedule_ue_spec(module_id_t module_id,
     if (nr_get_code_rate_dl(sched_pdsch->mcs, current_BWP->mcsTableIdx) != R) {
       pdsch_pdu->mcsTable[0] = 0;
     }
-    AssertFatal(harq!=NULL,"harq is null\n");
-    AssertFatal(harq->round<gNB_mac->dl_bler.harq_round_max,"%d",harq->round);
-    pdsch_pdu->rvIndex[0] = nr_rv_round_map[harq->round%4];
+    AssertFatal(harq->round < gNB_mac->dl_bler.harq_round_max,"%d", harq->round);
+    pdsch_pdu->rvIndex[0] = nr_rv_round_map[harq->round % 4];
     pdsch_pdu->TBSize[0] = TBS;
     pdsch_pdu->dataScramblingId = *scc->physCellId;
     pdsch_pdu->nrOfLayers = nrOfLayers;
@@ -1215,10 +1243,10 @@ void nr_schedule_ue_spec(module_id_t module_id,
     dci_payload.rv = pdsch_pdu->rvIndex[0];
     dci_payload.harq_pid = current_harq_pid;
     dci_payload.ndi = harq->ndi;
-    dci_payload.dai[0].val = (pucch->dai_c-1)&3;
+    dci_payload.dai[0].val = pucch ? (pucch->dai_c-1)&3 : 0;
     dci_payload.tpc = sched_ctrl->tpc1; // TPC for PUCCH: table 7.2.1-1 in 38.213
-    dci_payload.pucch_resource_indicator = pucch->resource_indicator;
-    dci_payload.pdsch_to_harq_feedback_timing_indicator.val = pucch->timing_indicator; // PDSCH to HARQ TI
+    dci_payload.pucch_resource_indicator = pucch ? pucch->resource_indicator : 0;
+    dci_payload.pdsch_to_harq_feedback_timing_indicator.val = pucch ? pucch->timing_indicator : 0; // PDSCH to HARQ TI
     dci_payload.antenna_ports.val = dmrs_parms->dmrs_ports_id;
     dci_payload.dmrs_sequence_initialization.val = pdsch_pdu->SCID;
     LOG_D(NR_MAC,
@@ -1298,8 +1326,9 @@ void nr_schedule_ue_spec(module_id_t module_id,
 
       if (sched_ctrl->num_total_bytes > 0) {
         /* loop over all activated logical channels */
-        for (int i = 0; i < sched_ctrl->dl_lc_num; ++i) {
-          const int lcid = sched_ctrl->dl_lc_ids[i];
+        for (int i = 0; i < seq_arr_size(&sched_ctrl->lc_config); ++i) {
+          const nr_lc_config_t *c = seq_arr_at(&sched_ctrl->lc_config, i);
+          const int lcid = c->lcid;
 
           /* FUZZ-NR: duplication */
           if (shm_mq_available(W_MQ_MAC_DL))
