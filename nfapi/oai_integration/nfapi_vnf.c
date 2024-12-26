@@ -260,9 +260,8 @@ void oai_create_gnb(void) {
   PHY_VARS_gNB *gNB = RC.gNB[0];
   RC.nb_nr_CC = (int *)malloc(sizeof(int)); // TODO: find a better function to place this in
 
-  gNB->Mod_id  = bodge_counter;
-  gNB->CC_id   = bodge_counter;
-  gNB->abstraction_flag   = 0;
+  gNB->Mod_id = bodge_counter;
+  gNB->CC_id = bodge_counter;
   RC.nb_nr_CC[bodge_counter] = 1;
 
   if (gNB->if_inst==0) {

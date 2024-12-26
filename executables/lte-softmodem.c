@@ -37,6 +37,7 @@
 #undef MALLOC //there are two conflicting definitions, so we better make sure we don't use it at all
 
 #include "assertions.h"
+#include "common/oai_version.h"
 
 #include "PHY/types.h"
 
@@ -466,11 +467,8 @@ int main ( int argc, char **argv )
   init_opt();
   // to make a graceful exit when ctrl-c is pressed
   set_softmodem_sighandler();
-#ifndef PACKAGE_VERSION
-#define PACKAGE_VERSION "UNKNOWN-EXPERIMENTAL"
-#endif
   // strdup to put the sring in the core file for post mortem identification
-  LOG_I(HW, "Version: %s\n", strdup(PACKAGE_VERSION));
+  LOG_I(HW, "Version: %s\n", strdup(OAI_PACKAGE_VERSION));
 
   /* Read configuration */
   if (RC.nb_inst > 0) {

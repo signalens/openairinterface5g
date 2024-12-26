@@ -81,16 +81,12 @@ int do_RRCSetup(rrc_gNB_ue_context_t *const ue_context_pP,
                 const gNB_RrcConfigurationReq *configuration,
                 NR_SRB_ToAddModList_t *SRBs);
 
-int do_NR_SecurityModeCommand(
-                    const protocol_ctxt_t *const ctxt_pP,
-                    uint8_t *const buffer,
-                    const uint8_t Transaction_id,
-                    const uint8_t cipheringAlgorithm,
-                    NR_IntegrityProtAlgorithm_t integrityProtAlgorithm);
+int do_NR_SecurityModeCommand(uint8_t *const buffer,
+                              const uint8_t Transaction_id,
+                              const uint8_t cipheringAlgorithm,
+                              NR_IntegrityProtAlgorithm_t integrityProtAlgorithm);
 
-int do_NR_SA_UECapabilityEnquiry(const protocol_ctxt_t *const ctxt_pP,
-                                 uint8_t               *const buffer,
-                                 const uint8_t                Transaction_id);
+int do_NR_SA_UECapabilityEnquiry(uint8_t *const buffer, const uint8_t Transaction_id);
 
 int do_NR_RRCRelease(uint8_t *buffer, size_t buffer_size, uint8_t Transaction_id);
 
@@ -112,6 +108,8 @@ int do_RRCSetupComplete(uint8_t *buffer,
                         uint8_t sel_plmn_id,
                         const int dedicatedInfoNASLength,
                         const char *dedicatedInfoNAS);
+
+int do_NR_HandoverPreparationInformation(const uint8_t *uecap_buf, int uecap_buf_size, uint8_t *buf, int buf_size);
 
 int do_RRCSetupRequest(uint8_t *buffer, size_t buffer_size, uint8_t *rv);
 
@@ -143,7 +141,7 @@ int do_RRCReestablishment(rrc_gNB_ue_context_t *const ue_context_pP,
 
 int do_RRCReestablishmentComplete(uint8_t *buffer, size_t buffer_size, int64_t rrc_TransactionIdentifier);
 
-const nr_a3_event_t *get_a3_configuration(int nr_cellid);
+const nr_a3_event_t *get_a3_configuration(int pci);
 NR_MeasConfig_t *get_MeasConfig(const NR_MeasTiming_t *mt,
                                 int band,
                                 int scs,

@@ -29,7 +29,7 @@
 * \note
 * \warning
  */
-#ifdef ENABLE_AERIAL
+
 #include "fapi_vnf_p5.h"
 #include "fapi_vnf_p7.h"
 #include "nfapi/open-nFAPI/vnf/inc/vnf_p7.h"
@@ -53,19 +53,19 @@ void *aerial_vnf_nr_p7_config_init(void *ptr)
   init_queue(&gnb_slot_ind_queue);
 
   p7_vnf->config->port = p7_vnf->local_port;
-  p7_vnf->config->sync_indication = &aerial_phy_sync_indication;
-  p7_vnf->config->slot_indication = &aerial_phy_slot_indication;
-  p7_vnf->config->harq_indication = &aerial_phy_harq_indication;
+  p7_vnf->config->sync_indication = NULL;
+  p7_vnf->config->slot_indication = NULL;
+  p7_vnf->config->harq_indication = NULL;
   p7_vnf->config->nr_crc_indication = &aerial_phy_nr_crc_indication;
   p7_vnf->config->nr_rx_data_indication = &aerial_phy_nr_rx_data_indication;
   p7_vnf->config->nr_rach_indication = &aerial_phy_nr_rach_indication;
   p7_vnf->config->nr_uci_indication = &aerial_phy_nr_uci_indication;
-  p7_vnf->config->srs_indication = &aerial_phy_srs_indication;
-  p7_vnf->config->sr_indication = &aerial_phy_sr_indication;
-  p7_vnf->config->cqi_indication = &aerial_phy_cqi_indication;
-  p7_vnf->config->lbt_dl_indication = &aerial_phy_lbt_dl_indication;
-  p7_vnf->config->nb_harq_indication = &aerial_phy_nb_harq_indication;
-  p7_vnf->config->nrach_indication = &aerial_phy_nrach_indication;
+  p7_vnf->config->srs_indication = NULL;
+  p7_vnf->config->sr_indication = NULL;
+  p7_vnf->config->cqi_indication = NULL;
+  p7_vnf->config->lbt_dl_indication = NULL;
+  p7_vnf->config->nb_harq_indication = NULL;
+  p7_vnf->config->nrach_indication = NULL;
   p7_vnf->config->nr_slot_indication = &aerial_phy_nr_slot_indication;
   p7_vnf->config->nr_srs_indication = &aerial_phy_nr_srs_indication;
   p7_vnf->config->malloc = &aerial_vnf_allocate;
@@ -283,7 +283,7 @@ int aerial_nr_send_config_request(nfapi_vnf_config_t *config, int p5_idx)
   pnf_info *pnf = vnf->pnfs;
   phy_info *phy = pnf->phys;
 
-  nfapi_nr_config_request_scf_t *req = &RC.nrmac[0]->config[0]; //&RC.gNB[0]->gNB_config; // check
+  nfapi_nr_config_request_scf_t *req = &RC.nrmac[0]->config[0];
 
   NFAPI_TRACE(NFAPI_TRACE_INFO,
               "[VNF] %d.%d pnf p7 %s:%d timing %u %u %u %u\n",
@@ -617,4 +617,3 @@ int oai_fapi_send_end_request(int cell, uint32_t frame, uint32_t slot){
   }
   return retval;
 }
-#endif

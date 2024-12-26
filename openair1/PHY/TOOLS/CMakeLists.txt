@@ -63,3 +63,7 @@ endif()
 if (ENABLE_TESTS)
   add_subdirectory(tests)
 endif()
+
+if (ENABLE_IMSCOPE)
+  add_subdirectory(imscope)
+endif()

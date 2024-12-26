@@ -99,6 +99,7 @@ void get_common_options(configmodule_interface_t *cfg, uint32_t execmask)
   uint32_t start_websrv = 0;
   uint32_t noS1 = 0, nonbiot = 0;
   uint32_t rfsim = 0, do_forms = 0;
+  uint32_t enable_imscope = 0;
   int nfapi_index = 0;
   char *logmem_filename = NULL;
   check_execmask(execmask);
@@ -156,6 +157,10 @@ void get_common_options(configmodule_interface_t *cfg, uint32_t execmask)
 
   if (do_forms) {
     set_softmodem_optmask(SOFTMODEM_DOSCOPE_BIT);
+  }
+
+  if (enable_imscope) {
+    set_softmodem_optmask(SOFTMODEM_IMSCOPE_BIT);
   }
 
   if (start_websrv) {

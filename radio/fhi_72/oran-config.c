@@ -498,7 +498,7 @@ static bool set_fh_io_cfg(struct xran_io_cfg *io_cfg, const paramdef_t *fhip, in
   //io_cfg->bbdev_dev = NULL;
   io_cfg->bbdev_mode = XRAN_BBDEV_NOT_USED; // none
   io_cfg->dpdkIoVaMode = 0; /* IOVA mode */
-  io_cfg->dpdkMemorySize = 0; /* DPDK memory size */
+  io_cfg->dpdkMemorySize = *gpd(fhip, nump, ORAN_CONFIG_DPDK_MEM_SIZE)->uptr;
   io_cfg->core = *gpd(fhip, nump, ORAN_CONFIG_IO_CORE)->iptr;
   io_cfg->system_core = *gpd(fhip, nump, ORAN_CONFIG_SYSTEM_CORE)->iptr;
   io_cfg->pkt_proc_core = get_u64_mask(gpd(fhip, nump, ORAN_CONFIG_WORKER_CORES));

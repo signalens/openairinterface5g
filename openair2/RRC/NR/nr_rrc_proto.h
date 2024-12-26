@@ -45,19 +45,6 @@
 #include "NR_CellGroupConfig.h"
 
 #define NR_MAX_SUPPORTED_DL_LAYERS 4
-void rrc_init_nr_srb_param(NR_LCHAN_DESC *chan);
-
-void rrc_gNB_process_SgNBAdditionRequest( 
-     const protocol_ctxt_t  *const ctxt_pP,
-     rrc_gNB_ue_context_t   *ue_context_pP 
-     );
-
-void rrc_gNB_generate_SgNBAdditionRequestAcknowledge( 
-     const protocol_ctxt_t  *const ctxt_pP,
-     rrc_gNB_ue_context_t   *const ue_context_pP
-     );
-
-rrc_gNB_ue_context_t *rrc_gNB_allocate_new_UE_context(gNB_RRC_INST *rrc_instance_pP);
 
 void rrc_parse_ue_capabilities(gNB_RRC_INST *rrc,NR_UE_CapabilityRAT_ContainerList_t *UE_CapabilityRAT_ContainerList, x2ap_ENDC_sgnb_addition_req_t *m, NR_CG_ConfigInfo_IEs_t * cg_config_info);
 
@@ -72,21 +59,13 @@ NR_CG_Config_t *generate_CG_Config(const NR_RRCReconfiguration_t *reconfig, cons
 
 int parse_CG_ConfigInfo(gNB_RRC_INST *rrc, NR_CG_ConfigInfo_t *CG_ConfigInfo, x2ap_ENDC_sgnb_addition_req_t *m);
 
-void rrc_gNB_generate_SecurityModeCommand(const protocol_ctxt_t *const ctxt_pP, rrc_gNB_ue_context_t *const ue_context_pP);
+void rrc_gNB_generate_SecurityModeCommand(gNB_RRC_INST *rrc, gNB_RRC_UE_t *ue_p);
+
+void rrc_forward_ue_nas_message(gNB_RRC_INST *rrc, gNB_RRC_UE_t *UE);
 
 unsigned int rrc_gNB_get_next_transaction_identifier(module_id_t gnb_mod_idP);
 
-void
-rrc_gNB_generate_UECapabilityEnquiry(
-  const protocol_ctxt_t *const ctxt_pP,
-  rrc_gNB_ue_context_t  *const ue_context_pP
-);
-
-void
-rrc_gNB_generate_RRCRelease(
-  const protocol_ctxt_t *const ctxt_pP,
-  rrc_gNB_ue_context_t  *const ue_context_pP
-);
+void rrc_gNB_generate_RRCRelease(gNB_RRC_INST *rrc, gNB_RRC_UE_t *UE);
 
 /**\brief RRC eNB task.
    \param args_p Pointer on arguments to start the task. */
@@ -100,20 +79,13 @@ void *rrc_gnb_task(void *args_p);
    \ *reOffset Pointer to RE Offset Value */
 void rrc_config_dl_ptrs_params(NR_BWP_Downlink_t *bwp, long *ptrsNrb, long *ptrsMcs, long *epre_Ratio, long *reOffset);
 
-int nr_rrc_reconfiguration_req(rrc_gNB_ue_context_t         *const ue_context_pP,
-                               protocol_ctxt_t              *const ctxt_pP,
-                               const int                    dl_bwp_id,
-                               const int                    ul_bwp_id);
+int nr_rrc_reconfiguration_req(gNB_RRC_INST *rrc, gNB_RRC_UE_t *ue_p, const int dl_bwp_id, const int ul_bwp_id);
 
-void
-rrc_gNB_generate_dedicatedRRCReconfiguration_release(
-    const protocol_ctxt_t   *const ctxt_pP,
-    rrc_gNB_ue_context_t    *const ue_context_pP,
-    uint8_t                  xid,
-    uint32_t                 nas_length,
-    uint8_t                 *nas_buffer);
-
-void rrc_gNB_generate_dedicatedRRCReconfiguration(const protocol_ctxt_t *const ctxt_pP, rrc_gNB_ue_context_t *ue_context_pP);
+void rrc_gNB_generate_dedicatedRRCReconfiguration_release(gNB_RRC_INST *rrc,
+                                                          gNB_RRC_UE_t *ue_p,
+                                                          uint8_t xid,
+                                                          uint32_t nas_length,
+                                                          uint8_t *nas_buffer);
 
 bool ue_associated_to_cuup(const gNB_RRC_INST *rrc, const gNB_RRC_UE_t *ue);
 sctp_assoc_t get_existing_cuup_for_ue(const gNB_RRC_INST *rrc, const gNB_RRC_UE_t *ue);
@@ -157,5 +129,8 @@ void rrc_gNB_generate_UeContextModificationRequest(const gNB_RRC_INST *rrc,
                                                    const f1ap_drb_to_be_setup_t *drbs,
                                                    int n_rel_drbs,
                                                    const f1ap_drb_to_be_released_t *rel_drbs);
+
+pdusession_level_qos_parameter_t *get_qos_characteristics(const int qfi, rrc_pdu_session_param_t *pduSession);
+f1ap_qos_characteristics_t get_qos_char_from_qos_flow_param(const pdusession_level_qos_parameter_t *qos_param);
 
 #endif

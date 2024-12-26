@@ -21,7 +21,6 @@
 
 #include "tools_defs.h"
 #include "PHY/impl_defs_top.h"
-#include "PHY/sse_intrin.h"
 
 // Compute Energy of a complex signal vector, removing the DC component!
 // input  : points to vector
@@ -112,7 +111,7 @@ int32_t signal_energy_amp_shift(int32_t *input,uint32_t length)
   return((temp>0)?temp:1);
 }
 
-int32_t signal_energy_nodc(const c16_t *input, uint32_t length)
+uint32_t signal_energy_nodc(const c16_t *input, uint32_t length)
 {
   // init
   simde__m128 mm0 = simde_mm_setzero_ps();
@@ -135,7 +134,7 @@ int32_t signal_energy_nodc(const c16_t *input, uint32_t length)
   // Ave
   float sums[4];
   simde_mm_store_ps(sums, mm0);
-  return (int)((sums[0] + sums[1] + sums[2] + sums[3] + leftover_sum) / (float)length);
+  return (uint32_t)((sums[0] + sums[1] + sums[2] + sums[3] + leftover_sum) / (float)length);
 }
 
 double signal_energy_fp(double *s_re[2],double *s_im[2],uint32_t nb_antennas,uint32_t length,uint32_t offset)

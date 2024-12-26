@@ -42,6 +42,7 @@
 #include "pdcp.h"
 
 #include "PHY/defs_UE.h"
+#include "common/oai_version.h"
 #include "common/ran_context.h"
 #include "common/config/config_userapi.h"
 #include "common/utils/load_module_shlib.h"
@@ -575,11 +576,8 @@ int main( int argc, char **argv ) {
   pdcp_pc5_socket_init();
   // to make a graceful exit when ctrl-c is pressed
   set_softmodem_sighandler();
-#ifndef PACKAGE_VERSION
-#define PACKAGE_VERSION "UNKNOWN-EXPERIMENTAL"
-#endif
   // strdup to put the sring in the core file for post mortem identification
-  LOG_I(HW, "Version: %s\n", strdup(PACKAGE_VERSION));
+  LOG_I(HW, "Version: %s\n", strdup(OAI_PACKAGE_VERSION));
 
   // init the parameters
   for (CC_id=0; CC_id<MAX_NUM_CCs; CC_id++) {

@@ -1,6 +1,6 @@
 services:
     gnb_mono_tdd:
-        image: oai-gnb:latest
+        image: ${REGISTRY:-oaisoftwarealliance}/${GNB_IMG:-oai-gnb}:${TAG:-develop}
         container_name: sa-b200-gnb
         cap_drop:
             - ALL

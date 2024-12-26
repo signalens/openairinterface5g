@@ -61,6 +61,9 @@ COPY --from=gnb-base \
     /lib64/libconfig.so.11 \
     /lib64/
 
+## Copy E2 SM models
+COPY --from=gnb-build /usr/local/lib64/flexric /usr/local/lib64/flexric
+
 RUN ldconfig && \
     echo "ldd on nr-cuup" && ldd /opt/oai-gnb/bin/nr-cuup && \
     echo "ldd on libparams_libconfig" && ldd /usr/local/lib/libparams_libconfig.so && \

@@ -1,6 +1,6 @@
 services:
     oai-nr-ue:
-        image: oai-nr-ue:latest
+        image: ${REGISTRY:-oaisoftwarealliance}/${NRUE_IMG:-oai-nr-ue}:${TAG:-develop}
         network_mode: host
         container_name: oai-nr-ue
         cap_drop:

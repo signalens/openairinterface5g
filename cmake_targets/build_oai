@@ -46,7 +46,7 @@ BUILD_DOXYGEN=0
 DISABLE_HARDWARE_DEPENDENCY="False"
 CMAKE_BUILD_TYPE="RelWithDebInfo"
 CMAKE_CMD="$CMAKE"
-OPTIONAL_LIBRARIES="telnetsrv enbscope uescope nrscope ldpc_cuda ldpc_t2 websrv oai_iqplayer"
+OPTIONAL_LIBRARIES="telnetsrv enbscope uescope nrscope ldpc_cuda ldpc_t2 websrv oai_iqplayer imscope"
 TARGET_LIST=""
 
 function print_help() {
@@ -500,7 +500,7 @@ function main() {
     # add some default libraries that should always be built
     # for eNB, gNB, UEs, simulators
     if [[ $gNB == 1 || $eNB == 1 || $UE == 1 || $nrUE == 1 || $SIMUS_PHY == 1 || $RU == 1 ]]; then
-      TARGET_LIST="$TARGET_LIST params_libconfig coding rfsimulator dfts"
+      TARGET_LIST="$TARGET_LIST params_libconfig coding rfsimulator dfts params_yaml"
     fi
 
     mkdir -p $DIR/$BUILD_DIR/build

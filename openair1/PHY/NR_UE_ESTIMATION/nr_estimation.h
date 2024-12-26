@@ -24,13 +24,10 @@
 
 
 #include "PHY/defs_nr_UE.h"
-//#include "PHY/defs_gNB.h"
+
 /** @addtogroup _PHY_PARAMETER_ESTIMATION_BLOCKS_
  * @{
  */
-
-/*!\brief Timing drift hysterisis in samples*/
-#define NR_SYNCH_HYST 1
 
 /* A function to perform the channel estimation of DL PRS signal */
 int nr_prs_channel_estimation(uint8_t gNB_id,

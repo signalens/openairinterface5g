@@ -37,6 +37,8 @@
 #include "LAYER2/nr_pdcp/nr_pdcp_oai_api.h"
 #include "LAYER2/nr_rlc/nr_rlc_oai_api.h"
 #include "RRC/NR/MESSAGES/asn1_msg.h"
+#include "openair1/PHY/TOOLS/phy_scope_interface.h"
+#include "PHY/MODULATION/nr_modulation.h"
 
 /*
  *  NR SLOT PROCESSING SEQUENCE
@@ -445,13 +447,12 @@ static void RU_write(nr_rxtx_thread_data_t *rxtxD, bool sl_tx_action)
 
   radio_tx_burst_flag_t flags = TX_BURST_INVALID;
 
-  NR_UE_MAC_INST_t *mac = get_mac_inst(UE->Mod_id);
-  if (mac->phy_config_request_sent &&
-      openair0_cfg[0].duplex_mode == duplex_mode_TDD &&
-      !get_softmodem_params()->continuous_tx) {
+  if (UE->received_config_request) {
+    if (openair0_cfg[0].duplex_mode == duplex_mode_FDD || get_softmodem_params()->continuous_tx) {
+      flags = TX_BURST_MIDDLE;
     // In case of Sidelink, USRP write needed only in case transmission
     // needs to be done in this slot and not based on tdd ULDL configuration.
-    if (UE->sl_mode == 2) {
+    } else if (UE->sl_mode == 2) {
       if (sl_tx_action)
         flags = TX_BURST_START_AND_END;
     } else {
@@ -468,8 +469,6 @@ static void RU_write(nr_rxtx_thread_data_t *rxtxD, bool sl_tx_action)
           flags = TX_BURST_MIDDLE;
       }
     }
-  } else {
-    flags = TX_BURST_MIDDLE;
   }
 
   int tmp = openair0_write_reorder(&UE->rfdevice, proc->timestamp_tx, txp, rxtxD->writeBlockSize, fp->nb_antennas_tx, flags);
@@ -597,7 +596,7 @@ void processSlotTX(void *arg)
 
 static int UE_dl_preprocessing(PHY_VARS_NR_UE *UE, const UE_nr_rxtx_proc_t *proc, int *tx_wait_for_dlsch, nr_phy_data_t *phy_data)
 {
-  int sampleShift = 0;
+  int sampleShift = INT_MAX;
   NR_DL_FRAME_PARMS *fp = &UE->frame_parms;
   if (UE->sl_mode == 2)
     fp = &UE->SL_UE_PHY_PARAMS.sl_frame_params;
@@ -606,9 +605,23 @@ static int UE_dl_preprocessing(PHY_VARS_NR_UE *UE, const UE_nr_rxtx_proc_t *proc
 
     // Start synchronization with a target gNB
     if (UE->synch_request.received_synch_request == 1) {
+      fapi_nr_synch_request_t *synch_req = &UE->synch_request.synch_req;
       UE->is_synchronized = 0;
-      UE->UE_scan_carrier = UE->synch_request.synch_req.ssb_bw_scan;
-      UE->target_Nid_cell = UE->synch_request.synch_req.target_Nid_cell;
+      UE->UE_scan_carrier = synch_req->ssb_bw_scan;
+      UE->target_Nid_cell = synch_req->target_Nid_cell;
+
+      uint64_t dl_bw = (12 * fp->N_RB_DL) * (15000 << fp->numerology_index);
+      uint64_t dl_CarrierFreq = (dl_bw >> 1) + (uint64_t)UE->nrUE_config.carrier_config.dl_frequency * 1000;
+      uint64_t ul_bw = (12 * fp->N_RB_UL) * (15000 << fp->numerology_index);
+      uint64_t ul_CarrierFreq = (ul_bw >> 1) + (uint64_t)UE->nrUE_config.carrier_config.uplink_frequency * 1000;
+      if (dl_CarrierFreq != fp->dl_CarrierFreq || ul_CarrierFreq != fp->ul_CarrierFreq) {
+        fp->dl_CarrierFreq = dl_CarrierFreq;
+        fp->ul_CarrierFreq = ul_CarrierFreq;
+        nr_rf_card_config_freq(&openair0_cfg[UE->rf_map.card], ul_CarrierFreq, dl_CarrierFreq, 0);
+        UE->rfdevice.trx_set_freq_func(&UE->rfdevice, &openair0_cfg[0]);
+        init_symbol_rotation(fp);
+      }
+
       clean_UE_harq(UE);
       UE->synch_request.received_synch_request = 0;
     }
@@ -709,8 +722,10 @@ void readFrame(PHY_VARS_NR_UE *UE,  openair0_timestamp *timestamp, bool toTrash)
                    + 4 * ((x * fp->samples_per_subframe) + fp->get_samples_slot_timestamp(slot, fp, 0));
       }
 
-      int tmp = UE->rfdevice.trx_read_func(&UE->rfdevice, timestamp, rxp, fp->get_samples_per_slot(slot, fp), fp->nb_antennas_rx);
-      AssertFatal(fp->get_samples_per_slot(slot, fp) == tmp, "");
+      int read_block_size = fp->get_samples_per_slot(slot, fp);
+      int tmp = UE->rfdevice.trx_read_func(&UE->rfdevice, timestamp, rxp, read_block_size, fp->nb_antennas_rx);
+      UEscopeCopy(UE, ueTimeDomainSamplesBeforeSync, rxp[0], sizeof(c16_t), 1, read_block_size, 0);
+      AssertFatal(read_block_size == tmp, "");
 
       if (IS_SOFTMODEM_RFSIM)
         dummyWrite(UE, *timestamp, fp->get_samples_per_slot(slot, fp));
@@ -802,7 +817,7 @@ void *UE_thread(void *arg)
 
   bool syncRunning = false;
   const int nb_slot_frame = fp->slots_per_frame;
-  int absolute_slot = 0, decoded_frame_rx = INT_MAX, trashed_frames = 0;
+  int absolute_slot = 0, decoded_frame_rx = MAX_FRAME_NUMBER - 1, trashed_frames = 0;
   int tx_wait_for_dlsch[NR_MAX_SLOTS_PER_FRAME];
 
   int num_ind_fifo = nb_slot_frame;
@@ -815,6 +830,11 @@ void *UE_thread(void *arg)
 
   if (get_softmodem_params()->sync_ref && UE->sl_mode == 2) {
     UE->is_synchronized = 1;
+  } else {
+    //warm up the RF board 
+    int64_t tmp;
+    for (int i = 0; i < 50; i++)
+      readFrame(UE, &tmp, true);
   }
 
   while (!oai_exit) {
@@ -886,7 +906,16 @@ void *UE_thread(void *arg)
       stream_status = STREAM_STATUS_SYNCING;
       syncInFrame(UE, &sync_timestamp, intialSyncOffset);
       openair0_write_reorder_clear_context(&UE->rfdevice);
-      shiftForNextFrame = 0; // will be used to track clock drift
+      if (get_nrUE_params()->time_sync_I)
+        // ntn_ta_commondrift is in µs/s, max_pos_acc * time_sync_I is in samples/frame
+        UE->max_pos_acc = get_nrUE_params()->ntn_ta_commondrift * 1e-6 * fp->samples_per_frame / get_nrUE_params()->time_sync_I;
+      else
+        UE->max_pos_acc = 0;
+      shiftForNextFrame = -(UE->init_sync_frame + trashed_frames + 2) * UE->max_pos_acc * get_nrUE_params()->time_sync_I; // compensate for the time drift that happened during initial sync
+      LOG_D(PHY, "max_pos_acc = %d, shiftForNextFrame = %d\n", UE->max_pos_acc, shiftForNextFrame);
+      // TODO: remove this autonomous TA and use up-to-date values of ta-Common, ta-CommonDrift and ta-CommonDriftVariant from received SIB19 instead
+      if (get_nrUE_params()->autonomous_ta)
+        UE->timing_advance -= 2 * shiftForNextFrame;
       // read in first symbol
       AssertFatal(fp->ofdm_symbol_size + fp->nb_prefix_samples0
                       == UE->rfdevice.trx_read_func(&UE->rfdevice,
@@ -897,7 +926,7 @@ void *UE_thread(void *arg)
                   "");
       // we have the decoded frame index in the return of the synch process
       // and we shifted above to the first slot of next frame
-      decoded_frame_rx++;
+      decoded_frame_rx = (decoded_frame_rx + 1) % MAX_FRAME_NUMBER;
       // we do ++ first in the regular processing, so it will be begin of frame;
       absolute_slot = decoded_frame_rx * nb_slot_frame - 1;
       if (UE->sl_mode == 2) {
@@ -925,7 +954,7 @@ void *UE_thread(void *arg)
     curMsg.proc.nr_slot_tx  = (absolute_slot + DURATION_RX_TO_TX) % nb_slot_frame;
     curMsg.proc.frame_rx    = (absolute_slot / nb_slot_frame) % MAX_FRAME_NUMBER;
     curMsg.proc.frame_tx    = ((absolute_slot + DURATION_RX_TO_TX) / nb_slot_frame) % MAX_FRAME_NUMBER;
-    if (mac->phy_config_request_sent) {
+    if (UE->received_config_request) {
       if (UE->sl_mode) {
         curMsg.proc.rx_slot_type = sl_nr_ue_slot_select(sl_cfg, curMsg.proc.nr_slot_rx, TDD);
         curMsg.proc.tx_slot_type = sl_nr_ue_slot_select(sl_cfg, curMsg.proc.nr_slot_tx, TDD);
@@ -947,12 +976,16 @@ void *UE_thread(void *arg)
     if (slot_nr == nb_slot_frame - 1) {
       // we shift of half of measured drift, at each beginning of frame for both rx and tx
       iq_shift_to_apply = shiftForNextFrame;
-      shiftForNextFrame = 0; // We will get a new measured offset if we decode PBCH
+      // TODO: remove this autonomous TA and use up-to-date values of ta-Common, ta-CommonDrift and ta-CommonDriftVariant from received SIB19 instead
+      if (get_nrUE_params()->autonomous_ta)
+        UE->timing_advance -= 2 * shiftForNextFrame;
+      shiftForNextFrame = -round(UE->max_pos_acc * get_nrUE_params()->time_sync_I);
     }
 
     const int readBlockSize = get_readBlockSize(slot_nr, fp) - iq_shift_to_apply;
     openair0_timestamp rx_timestamp;
     int tmp = UE->rfdevice.trx_read_func(&UE->rfdevice, &rx_timestamp, rxp, readBlockSize, fp->nb_antennas_rx);
+    UEscopeCopy(UE, ueTimeDomainSamples, rxp[0], sizeof(c16_t), 1, readBlockSize, 0);
     AssertFatal(readBlockSize == tmp, "");
 
     if(slot_nr == (nb_slot_frame - 1)) {
@@ -991,10 +1024,7 @@ void *UE_thread(void *arg)
     nr_rxtx_thread_data_t *curMsgRx = (nr_rxtx_thread_data_t *)NotifiedFifoData(newRx);
     *curMsgRx = (nr_rxtx_thread_data_t){.proc = curMsg.proc, .UE = UE};
     int ret = UE_dl_preprocessing(UE, &curMsgRx->proc, tx_wait_for_dlsch, &curMsgRx->phy_data);
-    if (ret)
-      // if ret is 0, no rx_offset has been computed,
-      // or the computed value is 0 = no offset to do
-      // we store it to apply the drift compensation at beginning of next frame
+    if (ret != INT_MAX)
       shiftForNextFrame = ret;
     pushTpool(&(get_nrUE_params()->Tpool), newRx);
 

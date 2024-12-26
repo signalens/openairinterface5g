@@ -74,6 +74,10 @@ NR_BCCH_DL_SCH_Message_t *get_SIB1_NR(const NR_ServingCellConfigCommon_t *scc,
 void free_SIB1_NR(NR_BCCH_DL_SCH_Message_t *sib1);
 int encode_SIB1_NR(NR_BCCH_DL_SCH_Message_t *sib1, uint8_t *buffer, int max_buffer_size);
 
+NR_BCCH_DL_SCH_Message_t *get_SIB19_NR(const NR_ServingCellConfigCommon_t *scc);
+int encode_SIB19_NR(NR_BCCH_DL_SCH_Message_t *sib19, uint8_t *buffer, int max_buffer_size);
+void free_SIB19_NR(NR_BCCH_DL_SCH_Message_t *sib19);
+
 NR_CellGroupConfig_t *get_initial_cellGroupConfig(int uid,
                                                   const NR_ServingCellConfigCommon_t *scc,
                                                   const NR_ServingCellConfig_t *servingcellconfigdedicated,
@@ -97,5 +101,7 @@ NR_CellGroupConfig_t *get_default_secondaryCellGroup(const NR_ServingCellConfigC
                                                      int servCellIndex,
                                                      const nr_mac_config_t *configuration,
                                                      int uid);
+
+NR_ReconfigurationWithSync_t *get_reconfiguration_with_sync(rnti_t rnti, uid_t uid, const NR_ServingCellConfigCommon_t *scc);
 
 #endif

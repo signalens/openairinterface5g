@@ -935,10 +935,6 @@ static uint8_t pack_ul_tti_request_prach_pdu(nfapi_nr_prach_pdu_t *prach_pdu, ui
     return 0;
   }
 
-  if (prach_pdu->beamforming.num_prgs > 0 || prach_pdu->beamforming.prg_size > 0 || prach_pdu->beamforming.dig_bf_interface > 0) {
-    AssertFatal(1 == 0, "PRACH PDU Beamforming not supported yet");
-  }
-
   // Pack RX Beamforming PDU
   if (!(push16(prach_pdu->beamforming.num_prgs, ppWritePackedMsg, end)
         && push16(prach_pdu->beamforming.prg_size, ppWritePackedMsg, end)
@@ -4771,15 +4767,6 @@ static uint8_t unpack_ul_tti_request_prach_pdu(void *tlv, uint8_t **ppReadPacked
         && pull16(ppReadPackedMsg, &prach_pdu->beamforming.prg_size, end)
         && pull8(ppReadPackedMsg, &prach_pdu->beamforming.dig_bf_interface, end))) {
     return 0;
-  }
-  if (prach_pdu->beamforming.num_prgs > 0) {
-    prach_pdu->beamforming.prgs_list = calloc(prach_pdu->beamforming.num_prgs, sizeof(*prach_pdu->beamforming.prgs_list));
-    if (prach_pdu->beamforming.dig_bf_interface > 0) {
-      for(int prg_idx = 0; prg_idx < prach_pdu->beamforming.num_prgs;prg_idx++){
-        prach_pdu->beamforming.prgs_list[prg_idx].dig_bf_interface_list =
-            calloc(prach_pdu->beamforming.dig_bf_interface, sizeof(*prach_pdu->beamforming.prgs_list[0].dig_bf_interface_list));
-      }
-    }
   }
   for (int prg = 0; prg < prach_pdu->beamforming.num_prgs; prg++) {
     for (int digBFInterface = 0; digBFInterface < prach_pdu->beamforming.dig_bf_interface; digBFInterface++) {

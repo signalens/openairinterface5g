@@ -76,7 +76,6 @@
 #define NR_INVALID_LCGID (NR_MAX_NUM_LCGID)
 
 #define MAX_NUM_BWP_UE 5
-#define NUM_SLOT_FRAME 10
 #define NR_MAX_SR_ID 8  // SchedulingRequestId ::= INTEGER (0..7)
 
 /*!\brief value for indicating BSR Timer is not running */
@@ -192,11 +191,6 @@ typedef enum {
   RE_ESTABLISHMENT
 } NR_UE_MAC_reset_cause_t;
 
-typedef enum {
-  RA_2STEP = 0,
-  RA_4STEP
-} nr_ra_type_e;
-
 typedef struct {
   // after multiplexing buffer remain for each lcid
   int32_t LCID_buffer_remain;
@@ -269,16 +263,17 @@ typedef struct {
 } NR_UE_SCHEDULING_INFO;
 
 typedef enum {
-  nrRA_UE_IDLE = 0,
-  nrRA_GENERATE_PREAMBLE = 1,
-  nrRA_WAIT_RAR = 2,
-  nrRA_WAIT_CONTENTION_RESOLUTION = 3,
-  nrRA_SUCCEEDED = 4,
-  nrRA_FAILED = 5
+  nrRA_UE_IDLE,
+  nrRA_GENERATE_PREAMBLE,
+  nrRA_WAIT_RAR,
+  nrRA_WAIT_MSGB,
+  nrRA_WAIT_CONTENTION_RESOLUTION,
+  nrRA_SUCCEEDED,
+  nrRA_FAILED,
 } nrRA_UE_state_t;
 
 static const char *const nrra_ue_text[] =
-    {"UE_IDLE", "GENERATE_PREAMBLE", "WAIT_RAR", "WAIT_CONTENTION_RESOLUTION", "RA_SUCCEEDED", "RA_FAILED"};
+    {"UE_IDLE", "GENERATE_PREAMBLE", "WAIT_RAR", "WAIT_MSGB", "WAIT_CONTENTION_RESOLUTION", "RA_SUCCEEDED", "RA_FAILED"};
 
 typedef struct {
   /// PRACH format retrieved from prach_ConfigIndex
@@ -300,7 +295,7 @@ typedef struct {
   ///
   uint8_t RA_SCALING_FACTOR_BI;
   /// Indicating whether it is 2-step or 4-step RA
-  nr_ra_type_e RA_TYPE;
+  nr_ra_type_t RA_TYPE;
   /// UE configured maximum output power
   int RA_PCMAX;
 } NR_PRACH_RESOURCES_t;
@@ -313,10 +308,21 @@ typedef struct {
   nrRA_UE_state_t ra_state;
   /// RA contention type
   uint8_t cfra;
+  /// RA type
+  nr_ra_type_t ra_type;
   /// RA rx frame offset: compensate RA rx offset introduced by OAI gNB.
   uint8_t RA_offset;
+  /// MsgB SuccessRAR MAC subheader
+  int8_t MsgB_R;
+  int8_t MsgB_CH_ACESS_CPEXT;
+  uint8_t MsgB_TPC;
+  int8_t MsgB_HARQ_FTI;
+  uint16_t timing_advance_command;
+  int8_t PUCCH_RI;
   /// RA-rnti
   uint16_t ra_rnti;
+  /// MsgB RNTI
+  uint16_t MsgB_rnti;
   /// Temporary CRNTI
   uint16_t t_crnti;
   /// number of attempt for rach
@@ -424,10 +430,9 @@ typedef enum ta_type {
 } ta_type_t;
 
 typedef struct NR_UL_TIME_ALIGNMENT {
-  /// TA command and TAGID received from the gNB
+  /// TA command received from the gNB
   ta_type_t ta_apply;
   int ta_command;
-  uint32_t tag_id;
   int frame;
   int slot;
 } NR_UL_TIME_ALIGNMENT_t;
@@ -519,6 +524,7 @@ typedef struct NR_UE_MAC_INST_s {
   bool get_otherSI;
   NR_MIB_t *mib;
   struct NR_SI_SchedulingInfo *si_SchedulingInfo;
+  struct NR_SI_SchedulingInfo_v1700 *si_SchedulingInfo_v1700;
   int si_window_start;
   ssb_list_info_t ssb_list[MAX_NUM_BWP_UE];
   prach_association_pattern_t prach_assoc_pattern[MAX_NUM_BWP_UE];
@@ -541,8 +547,6 @@ typedef struct NR_UE_MAC_INST_s {
 
   NR_UL_TIME_ALIGNMENT_t ul_time_alignment;
   NR_TDD_UL_DL_ConfigCommon_t *tdd_UL_DL_ConfigurationCommon;
-
-  bool phy_config_request_sent;
   frame_type_t frame_type;
 
   /* Random Access */
@@ -577,6 +581,7 @@ typedef struct NR_UE_MAC_INST_s {
   int dmrs_TypeA_Position;
   int p_Max;
   int p_Max_alt;
+  int n_ta_offset; // -1 not present, otherwise value to be applied
 
   long pdsch_HARQ_ACK_Codebook;
 
@@ -595,6 +600,11 @@ typedef struct NR_UE_MAC_INST_s {
   NR_UE_HARQ_STATUS_t dl_harq_info[NR_MAX_HARQ_PROCESSES];
   NR_UL_HARQ_INFO_t ul_harq_info[NR_MAX_HARQ_PROCESSES];
 
+  NR_TAG_Id_t tag_Id;
+  A_SEQUENCE_OF(NR_TAG_t) TAG_list;
+  NR_TimeAlignmentTimer_t timeAlignmentTimerCommon;
+  NR_timer_t time_alignment_timer;
+
   nr_emulated_l1_t nr_ue_emul_l1;
 
   pthread_mutex_t mutex_dl_info;
@@ -606,6 +616,7 @@ typedef struct NR_UE_MAC_INST_s {
   bool pucch_power_control_initialized;
   int f_b_f_c;
   bool pusch_power_control_initialized;
+  int delta_msg2;
 } NR_UE_MAC_INST_t;
 
 /*@}*/

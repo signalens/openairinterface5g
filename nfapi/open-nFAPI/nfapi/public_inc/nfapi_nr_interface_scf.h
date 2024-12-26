@@ -22,6 +22,8 @@
 #define NFAPI_MAX_NUM_UCI_INDICATION 8
 #define NFAPI_MAX_NUM_GROUPS 8
 #define NFAPI_MAX_NUM_CB 8
+#define NFAPI_MAX_NUM_PRGS 1
+#define NFAPI_MAX_NUM_BG_IF 1
 
 // Extension to the generic structures for single tlv values
 
@@ -443,6 +445,27 @@ typedef struct
 
 } nfapi_nr_measurement_config_t;
 
+//-----------------------//
+//3.3.6 Storing Precoding and Beamforming Tables
+
+//table 3-32
+
+typedef struct {
+  uint16_t dig_beam_weight_Re;
+  uint16_t dig_beam_weight_Im;
+} nfapi_nr_txru_t;
+
+typedef struct {
+  uint16_t beam_idx;     //0~65535
+  nfapi_nr_txru_t *txru_list;
+} nfapi_nr_dig_beam_t;
+
+typedef struct {
+  uint16_t num_dig_beams; //0~65535
+  uint16_t num_txrus;    //0~65535
+  nfapi_nr_dig_beam_t *dig_beam_list;
+} nfapi_nr_dbt_pdu_t;
+
 // Table 3–62 Precoding matrix (PM) PDU (v.222.10.04)
 typedef struct {
   int16_t precoder_weight_Re;
@@ -462,6 +485,11 @@ typedef struct {
   uint16_t num_pm_idx;
   nfapi_nr_pm_pdu_t *pmi_pdu;
 } nfapi_nr_pm_list_t;
+
+typedef struct {
+  nfapi_uint8_tlv_t num_beams_period_vendor_ext;
+  nfapi_uint8_tlv_t analog_bf_vendor_ext;
+} nfapi_nr_analog_beamforming_ve_t;
 
 // ERROR enums
 typedef enum {    // Table 2-22
@@ -575,6 +603,8 @@ typedef struct {
   nfapi_nr_measurement_config_t measurement_config;
   nfapi_nr_nfapi_t              nfapi_config;
   nfapi_nr_pm_list_t            pmi_list;
+  nfapi_nr_dbt_pdu_t            dbt_config;
+  nfapi_nr_analog_beamforming_ve_t analog_beamforming_ve;
 } nfapi_nr_config_request_scf_t;
 
 typedef enum {
@@ -669,28 +699,6 @@ typedef struct {
   nfapi_nr_phy_notifications_errors_e error_code;
 } nfapi_nr_phy_notifications_error_indicate_t;
 
-//-----------------------//
-//3.3.6 Storing Precoding and Beamforming Tables
-
-//table 3-32
-//? 
-typedef struct {
-  uint16_t beam_idx;     //0~65535
-} nfapi_nr_dig_beam_t;
-
-typedef struct {
-  uint16_t dig_beam_weight_Re;
-  uint16_t dig_beam_weight_Im;
-} nfapi_nr_txru_t;
-
-typedef struct {
-  uint16_t num_dig_beams; //0~65535
-  uint16_t num_txrus;    //0~65535
-  nfapi_nr_dig_beam_t* dig_beam_list;
-  nfapi_nr_txru_t*  txru_list;
-} nfapi_nr_dbt_pdu_t;
-
-
 // Section 3.4
 
 // Section 3.4.1 slot indication
@@ -719,7 +727,7 @@ typedef struct
 typedef struct
 {
   uint16_t pm_idx;//Index to precoding matrix (PM) pre-stored at cell configuration. Note: If precoding is not used this parameter should be set to 0. Value: 0->65535.
-  nfapi_nr_dig_bf_interface_t dig_bf_interface_list[1];//max dig_bf_interfaces
+  nfapi_nr_dig_bf_interface_t dig_bf_interface_list[NFAPI_MAX_NUM_BG_IF];//max dig_bf_interfaces
 
 }nfapi_nr_tx_precoding_and_beamforming_number_of_prgs_t;
 
@@ -730,7 +738,7 @@ typedef struct
   uint16_t prg_size;//Size in RBs of a precoding resource block group (PRG) – to which same precoding and digital beamforming gets applied. Value: 1->275
   //watchout: dig_bf_interfaces here, in table 3-53 it's dig_bf_interface
   uint8_t  dig_bf_interfaces;//Number of STD ant ports (parallel streams) feeding into the digBF Value: 0->255
-  nfapi_nr_tx_precoding_and_beamforming_number_of_prgs_t prgs_list[1];//max prg_size
+  nfapi_nr_tx_precoding_and_beamforming_number_of_prgs_t prgs_list[NFAPI_MAX_NUM_PRGS];//max prg_size
 
 }nfapi_nr_tx_precoding_and_beamforming_t;
 
@@ -1135,7 +1143,7 @@ typedef struct {
 //for prach_pdu:
 typedef struct
 {
-  nfapi_nr_dig_bf_interface_t* dig_bf_interface_list;
+  nfapi_nr_dig_bf_interface_t dig_bf_interface_list[NFAPI_MAX_NUM_BG_IF];
 } nfapi_nr_ul_beamforming_number_of_prgs_t;
 
 typedef struct
@@ -1144,7 +1152,7 @@ typedef struct
   uint16_t num_prgs;          // Number of PRGs spanning this allocation. Value : 1->275
   uint16_t prg_size;          // Size in RBs of a precoding resource block group (PRG) – to which the same digital beamforming gets applied. Value: 1->275
   uint8_t dig_bf_interface;   // Number of logical antenna ports (parallel streams) resulting from the Rx combining. Value: 0->255
-  nfapi_nr_ul_beamforming_number_of_prgs_t *prgs_list;
+  nfapi_nr_ul_beamforming_number_of_prgs_t prgs_list[NFAPI_MAX_NUM_PRGS];
 } nfapi_nr_ul_beamforming_t;
 
 typedef struct

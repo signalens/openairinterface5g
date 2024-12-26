@@ -277,7 +277,7 @@ int test_pucch_common_config_single_transport_block(PHY_VARS_NR_UE *ue, int gNB_
    v_return = -1;
   }
 
-  harq_status->ack = DL_NACK;
+  harq_status->decodeResult = false;
 
   printf("\n  => Test : PUCCH format from common config in prach mode: one negative downlink ACKnowledgment \n");
 
@@ -308,7 +308,7 @@ int test_pucch_common_config_single_transport_block(PHY_VARS_NR_UE *ue, int gNB_
     v_return = -1;
   }
 
-  harq_status->ack = DL_NACK;
+  harq_status->decodeResult = false;
 
   printf("\n  => Test : PUCCH format from common config in dedicated mode: one positive and one negative downlink ACKnowledgments \n");
 

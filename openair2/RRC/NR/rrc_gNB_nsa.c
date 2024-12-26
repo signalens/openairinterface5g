@@ -40,7 +40,7 @@
 #include "uper_decoder.h"
 #include "openair2/LAYER2/NR_MAC_gNB/mac_proto.h"
 #include "openair2/LAYER2/nr_rlc/nr_rlc_oai_api.h"
-#include "openair2/RRC/LTE/rrc_eNB_GTPV1U.h"
+#include "openair2/RRC/NR/rrc_gNB_GTPV1U.h"
 #include "openair2/F1AP/f1ap_ids.h"
 #include "executables/softmodem-common.h"
 #include "executables/nr-softmodem.h"
@@ -282,15 +282,11 @@ void rrc_add_nsa_user(gNB_RRC_INST *rrc, rrc_gNB_ue_context_t *ue_context_p, x2a
       create_tunnel_req.rnti = ue_context_p->ue_context.rrc_ue_id;
       create_tunnel_req.num_tunnels    = m->nb_e_rabs_tobeadded;
       RB_INSERT(rrc_nr_ue_tree_s, &RC.nrrrc[rrc->module_id]->rrc_ue_head, ue_context_p);
-      PROTOCOL_CTXT_SET_BY_MODULE_ID(&ctxt, rrc->module_id, GNB_FLAG_YES, ue_context_p->ue_context.rnti, 0, 0, rrc->module_id);
       memset(&create_tunnel_resp, 0, sizeof(create_tunnel_resp));
       if (!IS_SOFTMODEM_NOS1) {
         LOG_D(RRC, "Calling gtpv1u_create_s1u_tunnel()\n");
-        gtpv1u_create_s1u_tunnel(ctxt.instance, &create_tunnel_req, &create_tunnel_resp, nr_pdcp_data_req_drb);
-        rrc_gNB_process_GTPV1U_CREATE_TUNNEL_RESP(
-          &ctxt,
-          &create_tunnel_resp,
-          &inde_list[0]);
+        gtpv1u_create_s1u_tunnel(rrc->module_id, &create_tunnel_req, &create_tunnel_resp, nr_pdcp_data_req_drb);
+        rrc_gNB_process_GTPV1U_CREATE_TUNNEL_RESP(&ue_context_p->ue_context, &create_tunnel_resp, &inde_list[0]);
       }
       X2AP_ENDC_SGNB_ADDITION_REQ_ACK(msg).nb_e_rabs_admitted_tobeadded = m->nb_e_rabs_tobeadded;
       X2AP_ENDC_SGNB_ADDITION_REQ_ACK(msg).target_assoc_id = m->target_assoc_id;

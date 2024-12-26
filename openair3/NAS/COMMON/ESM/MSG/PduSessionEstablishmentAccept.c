@@ -21,7 +21,7 @@
 
 #include "PduSessionEstablishmentAccept.h"
 #include "common/utils/LOG/log.h"
-#include "nr_nas_msg_sim.h"
+#include "nr_nas_msg.h"
 #include "common/utils/tun_if.h"
 #include "openair2/SDAP/nr_sdap/nr_sdap.h"
 
@@ -124,18 +124,28 @@ void capture_pdu_session_establishment_accept_msg(uint8_t *buffer, uint32_t msg_
       case IEI_PDU_ADDRESS:
         LOG_T(NAS, "PDU SESSION ESTABLISHMENT ACCEPT - Received PDU Address IE\n");
         psea_msg.pdu_addr_ie.pdu_length = *curPtr++;
-        psea_msg.pdu_addr_ie.pdu_type = *curPtr++;
 
+        /* Octet 3 */
+        // PDU type (3 bits)
+        psea_msg.pdu_addr_ie.pdu_type = *curPtr & 0x07;
+        // SMF's IPv6 link local address (1 bit)
+        uint8_t si6lla = (*curPtr >> 3) & 0x01;
+        if (si6lla)
+          LOG_E(NAS, "SMF's IPv6 link local address is not handled\n");
+        curPtr++;
+
+        /* Octet 4 to n */
+        // PDU address information
         uint8_t *addr = psea_msg.pdu_addr_ie.pdu_addr_oct;
         if (psea_msg.pdu_addr_ie.pdu_type == PDU_SESSION_TYPE_IPV4) {
-          for (int i = 0; i < 4; ++i)
+          for (int i = 0; i < IPv4_ADDRESS_LENGTH; ++i)
             addr[i] = *curPtr++;
           char ip[20];
           capture_ipv4_addr(&addr[0], ip, sizeof(ip));
           tun_config(1, ip, NULL, "oaitun_ue");
           setup_ue_ipv4_route(1, ip, "oaitun_ue");
         } else if (psea_msg.pdu_addr_ie.pdu_type == PDU_SESSION_TYPE_IPV6) {
-          for (int i = 0; i < 8; ++i)
+          for (int i = 0; i < IPv6_INTERFACE_ID_LENGTH; ++i)
             addr[i] = *curPtr++;
           char ipv6[40];
           capture_ipv6_addr(addr, ipv6, sizeof(ipv6));
@@ -145,12 +155,12 @@ void capture_pdu_session_establishment_accept_msg(uint8_t *buffer, uint32_t msg_
           // IPv4v6, the PDU address information in octet 4 to octet 11
           // contains an interface identifier for the IPv6 link local address
           // and in octet 12 to octet 15 contains an IPv4 address."
-          for (int i = 0; i < 12; ++i)
+          for (int i = 0; i < IPv4_ADDRESS_LENGTH + IPv6_INTERFACE_ID_LENGTH; ++i)
             addr[i] = *curPtr++;
           char ipv6[40];
           capture_ipv6_addr(addr, ipv6, sizeof(ipv6));
           char ipv4[20];
-          capture_ipv4_addr(&addr[8], ipv4, sizeof(ipv4));
+          capture_ipv4_addr(&addr[IPv6_INTERFACE_ID_LENGTH], ipv4, sizeof(ipv4));
           tun_config(1, ipv4, ipv6, "oaitun_ue");
           setup_ue_ipv4_route(1, ipv4, "oaitun_ue");
         } else {
@@ -164,42 +174,47 @@ void capture_pdu_session_establishment_accept_msg(uint8_t *buffer, uint32_t msg_
         curPtr++; /* TS 24.008 10.5.7.3 */
         break;
 
-      case IEI_SNSSAI: /* Ommited */
+      case IEI_SNSSAI: {
         LOG_T(NAS, "PDU SESSION ESTABLISHMENT ACCEPT - Received S-NSSAI IE\n");
         uint8_t snssai_length = *curPtr;
         curPtr += (snssai_length + sizeof(snssai_length));
         break;
+      }
 
       case IEI_ALWAYSON_PDU: /* Ommited */
         LOG_T(NAS, "PDU SESSION ESTABLISHMENT ACCEPT - Received Always-on PDU Session indication IE\n");
         curPtr++;
         break;
 
-      case IEI_MAPPED_EPS: /* Ommited */
+      case IEI_MAPPED_EPS: {
         LOG_T(NAS, "PDU SESSION ESTABLISHMENT ACCEPT - Received Mapped EPS bearer context IE\n");
         uint16_t mapped_eps_length = getShort(curPtr);
         curPtr += mapped_eps_length;
         break;
+      }
 
-      case IEI_EAP_MSG: /* Ommited */
+      case IEI_EAP_MSG: {
         LOG_T(NAS, "PDU SESSION ESTABLISHMENT ACCEPT - Received EAP message IE\n");
         uint16_t eap_length = getShort(curPtr);
         curPtr += (eap_length + sizeof(eap_length));
         break;
+      }
 
-      case IEI_AUTH_QOS_DESC: /* Ommited */
+      case IEI_AUTH_QOS_DESC: {
         LOG_T(NAS, "PDU SESSION ESTABLISHMENT ACCEPT - Received Authorized QoS flow descriptions IE\n");
         psea_msg.qos_fd_ie.length = getShort(curPtr);
         curPtr += (psea_msg.qos_fd_ie.length + sizeof(psea_msg.qos_fd_ie.length));
         break;
+      }
 
-      case IEI_EXT_CONF_OPT: /* Ommited */
+      case IEI_EXT_CONF_OPT: {
         LOG_T(NAS, "PDU SESSION ESTABLISHMENT ACCEPT - Received Extended protocol configuration options IE\n");
         psea_msg.ext_pp_ie.length = getShort(curPtr);
         curPtr += (psea_msg.ext_pp_ie.length + sizeof(psea_msg.ext_pp_ie.length));
         break;
+      }
 
-      case IEI_DNN:
+      case IEI_DNN: {
         LOG_T(NAS, "PDU SESSION ESTABLISHMENT ACCEPT - Received DNN IE\n");
         psea_msg.dnn_ie.dnn_length = *curPtr++;
         char apn[APN_MAX_LEN];
@@ -213,6 +228,7 @@ void capture_pdu_session_establishment_accept_msg(uint8_t *buffer, uint32_t msg_
 
         curPtr = buffer + msg_length; // we force stop processing
         break;
+      }
 
       default:
         LOG_T(NAS, "PDU SESSION ESTABLISHMENT ACCEPT - Not known IE\n");

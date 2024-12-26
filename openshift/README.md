@@ -53,8 +53,6 @@ In case you have difficulties in following it then you can copy the
 certificates from an RHEL9 host
 
 ```bash
-oc create configmap rhsm-conf --from-file /etc/rhsm/rhsm.conf
-oc create configmap rhsm-ca --from-file /etc/rhsm/ca/redhat-uep.pem
 oc create secret generic etc-pki-entitlement --from-file /etc/pki/entitlement/{NUMBER_ON_YOUR_COMPUTER}.pem --from-file /etc/pki/entitlement/{NUMBER_ON_YOUR_COMPUTER}-key.pem
 ```
 

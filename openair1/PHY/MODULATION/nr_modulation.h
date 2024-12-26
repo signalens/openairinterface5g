@@ -69,7 +69,7 @@ void nr_layer_mapping(int nbCodes,
   @param[in] n_symbs, number of modulated symbols
   @param[out] tx_layers, modulated symbols for each layer
 */
-void nr_ue_layer_mapping(const c16_t *mod_symbs, const int n_layers, const int n_symbs, int sz, c16_t tx_layers[][sz]);
+void nr_ue_layer_mapping(const c16_t *mod_symbs, const int n_layers, const int n_symbs, c16_t tx_layers[][n_symbs]);
 /*!
 \brief This function implements the OFDM front end processor on reception (FEP)
 \param frame_parms Pointer to frame parameters
@@ -95,16 +95,15 @@ int nr_slot_fep_ul(NR_DL_FRAME_PARMS *frame_parms,
 */
 void nr_dft(c16_t *z, c16_t *d, uint32_t Msc_PUSCH);
 
-int nr_beam_precoding(c16_t **txdataF,
-	              c16_t **txdataF_BF,
-                      NR_DL_FRAME_PARMS *frame_parms,
-	              int32_t ***beam_weights,
-                      int slot,
-                      int symbol,
-                      int aa,
-                      int nb_antenna_ports,
-                      int offset
-);
+void nr_beam_precoding(c16_t **txdataF,
+                       c16_t **txdataF_BF,
+                       NR_DL_FRAME_PARMS *frame_parms,
+                       int32_t ***beam_weights,
+                       int slot,
+                       int symbol,
+                       int aa,
+                       int nb_antenna_ports,
+                       int offset);
 
 void apply_nr_rotation_TX(const NR_DL_FRAME_PARMS *fp,
                           c16_t *txdataF,
@@ -120,14 +119,14 @@ void init_symbol_rotation(NR_DL_FRAME_PARMS *fp);
 
 void init_timeshift_rotation(NR_DL_FRAME_PARMS *fp);
 
-void apply_nr_rotation_RX(NR_DL_FRAME_PARMS *frame_parms,
-			  c16_t *rxdataF,
-                          c16_t *rot,
-			  int slot,
+void apply_nr_rotation_RX(const NR_DL_FRAME_PARMS *frame_parms,
+                          c16_t *rxdataF,
+                          const c16_t *rot,
+                          int slot,
                           int nb_rb,
                           int soffset,
-			  int first_symbol,
-			  int nsymb);
+                          int first_symbol,
+                          int nsymb);
 
 /*! \brief Perform NR precoding. TS 38.211 V15.4.0 subclause 6.3.1.5
   @param[in] datatx_F_precoding, Pointer to n_layers*re data array

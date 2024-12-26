@@ -293,8 +293,12 @@ configmodule_interface_t *load_configmodule(int argc,
   } else if ( i == 1 ) {
     /* -O argument doesn't contain ":" separator, assume -O <conf file> option, default cfgmode to libconfig
        with one parameter, the path to the configuration file cfgmode must not be NULL */
-    modeparams=cfgmode;
-    cfgmode=strdup(CONFIG_LIBCONFIGFILE);
+    modeparams = cfgmode;
+    if (strstr(modeparams, ".yaml") != NULL || strstr(modeparams, ".yml") != NULL) {
+      cfgmode = strdup("yaml");
+    } else {
+      cfgmode = strdup(CONFIG_LIBCONFIGFILE);
+    }
   }
   static configmodule_interface_t *cfgptr;
   if (cfgptr)

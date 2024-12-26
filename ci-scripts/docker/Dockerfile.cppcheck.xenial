@@ -52,8 +52,8 @@ RUN mkdir -p cmake_targets/log && \
         -I openair3/NAS/COMMON/UTIL \
         -j`nproc` . 2> cmake_targets/log/cppcheck.xml 1> cmake_targets/log/cppcheck_build.txt
 
-RUN egrep -c 'severity="error' cmake_targets/log/cppcheck.xml
+RUN grep -E -c 'severity="error' cmake_targets/log/cppcheck.xml
 
-RUN egrep -c 'severity="warning' cmake_targets/log/cppcheck.xml
+RUN grep -E -c 'severity="warning' cmake_targets/log/cppcheck.xml
 
 RUN cat cmake_targets/log/cppcheck.xml

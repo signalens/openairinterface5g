@@ -42,6 +42,9 @@
 #define PDU_SESSION_TYPE_IPV4   0b001
 #define PDU_SESSION_TYPE_IPV6   0b010
 #define PDU_SESSION_TYPE_IPV4V6 0b011
+#define IPv4_ADDRESS_LENGTH      4 // length of the IPv4 address associated with a PDU session
+#define IPv6_INTERFACE_ID_LENGTH 8 // interface identifier for the IPv6 link local address
+#define SMF_IPv6_LLA_LENGTH 16
 
 /* Rule operation codes - TS 24.501 Table 9.11.4.13.1 */
 
@@ -114,7 +117,8 @@ typedef struct pdu_address_s {
   uint8_t pdu_iei;        /* PDU Address IEI (0x29) */
   uint8_t pdu_length;     /* Length of PDU address contents */
   uint8_t pdu_type;       /* PDU session type value */
-  uint8_t pdu_addr_oct[12];  /* PDU address information (depending on type, up to 12 bytes)*/
+  /// PDU address information (depending on type, up to 12 bytes)
+  uint8_t pdu_addr_oct[IPv4_ADDRESS_LENGTH + IPv6_INTERFACE_ID_LENGTH];
 } pdu_address_t; /* TS 24.501 9.11.4.10 */
 
 typedef struct dnn_s {

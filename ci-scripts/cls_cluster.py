@@ -41,7 +41,7 @@ import cls_cmd
 IMAGE_REGISTRY_SERVICE_NAME = "image-registry.openshift-image-registry.svc"
 NAMESPACE = "oaicicd-ran"
 OCUrl = "https://api.oai.cs.eurecom.fr:6443"
-OCRegistry = "default-route-openshift-image-registry.apps.oai.cs.eurecom.fr/"
+OCRegistry = "default-route-openshift-image-registry.apps.oai.cs.eurecom.fr"
 CI_OC_RAN_NAMESPACE = "oaicicd-ran"
 CN_IMAGES = ["mysql", "oai-nrf", "oai-amf", "oai-smf", "oai-upf", "oai-ausf", "oai-udm", "oai-udr", "oai-traffic-server"]
 CN_CONTAINERS = ["", "-c nrf", "-c amf", "-c smf", "-c upf", "-c ausf", "-c udm", "-c udr", ""]
@@ -50,9 +50,9 @@ CN_CONTAINERS = ["", "-c nrf", "-c amf", "-c smf", "-c upf", "-c ausf", "-c udm"
 def OC_login(cmd, ocUserName, ocPassword, ocProjectName):
 	if ocUserName == '' or ocPassword == '' or ocProjectName == '':
 		HELP.GenericHelp(CONST.Version)
-		sys.exit('Insufficient Parameter: no OC Credentials')
-	if OCRegistry.startswith("http") and not self.OCRegistry.endswith("/"):
-		sys.exit(f'ocRegistry {OCRegistry} should not start with http:// or https:// and end on a slash /')
+		raise ValueError('Insufficient Parameter: no OC Credentials')
+	if OCRegistry.startswith("http") or OCRegistry.endswith("/"):
+		raise ValueError(f'ocRegistry {OCRegistry} should not start with http:// or https:// and not end on a slash /')
 	ret = cmd.run(f'oc login -u {ocUserName} -p {ocPassword} --server {OCUrl}')
 	if ret.returncode != 0:
 		logging.error('\u001B[1m OC Cluster Login Failed\u001B[0m')
@@ -118,8 +118,8 @@ class Cluster:
 		self.OCUserName = ""
 		self.OCPassword = ""
 		self.OCProjectName = ""
-		self.OCUrl = "https://api.oai.cs.eurecom.fr:6443"
-		self.OCRegistry = "default-route-openshift-image-registry.apps.oai.cs.eurecom.fr/"
+		self.OCUrl = OCUrl
+		self.OCRegistry = OCRegistry
 		self.ranRepository = ""
 		self.ranBranch = ""
 		self.ranCommitID = ""
@@ -244,10 +244,11 @@ class Cluster:
 		if self.testSvrId == None: self.testSvrId = self.eNBIPAddress
 		if self.imageToPull == '':
 			HELP.GenericHelp(CONST.Version)
-			sys.exit('Insufficient Parameter')
+			raise ValueError('Insufficient Parameter')
 		logging.debug(f'Pull OC image {self.imageToPull} to server {self.testSvrId}')
 		self.testCase_id = HTML.testCase_id
 		cmd = cls_cmd.getConnection(self.testSvrId)
+		logging.info(cmd.run('docker --version'))
 		succeeded = OC_login(cmd, self.OCUserName, self.OCPassword, CI_OC_RAN_NAMESPACE)
 		if not succeeded:
 			logging.error('\u001B[1m OC Cluster Login Failed\u001B[0m')
@@ -261,8 +262,9 @@ class Cluster:
 			HTML.CreateHtmlTestRow('N/A', 'KO', CONST.OC_LOGIN_FAIL)
 			return False
 		for image in self.imageToPull:
-			imagePrefix = f'{self.OCRegistry}{CI_OC_RAN_NAMESPACE}'
-			imageTag = cls_containerize.ImageTagToUse(image, self.ranCommitID, self.ranBranch, self.ranAllowMerge)
+			imagePrefix = f'{self.OCRegistry}/{CI_OC_RAN_NAMESPACE}'
+			tag = cls_containerize.CreateTag(self.ranCommitID, self.ranBranch, self.ranAllowMerge)
+			imageTag = f"{image}:{tag}"
 			ret = cmd.run(f'docker pull {imagePrefix}/{imageTag}')
 			if ret.returncode != 0:
 				logging.error(f'Could not pull {image} from local registry : {self.OCRegistry}')
@@ -280,19 +282,19 @@ class Cluster:
 	def BuildClusterImage(self, HTML):
 		if self.ranRepository == '' or self.ranBranch == '' or self.ranCommitID == '':
 			HELP.GenericHelp(CONST.Version)
-			sys.exit(f'Insufficient Parameter: ranRepository {self.ranRepository} ranBranch {ranBranch} ranCommitID {self.ranCommitID}')
+			raise ValueError(f'Insufficient Parameter: ranRepository {self.ranRepository} ranBranch {ranBranch} ranCommitID {self.ranCommitID}')
 		lIpAddr = self.eNBIPAddress
 		lSourcePath = self.eNBSourceCodePath
 		if lIpAddr == '' or lSourcePath == '':
-			sys.exit('Insufficient Parameter: eNBSourceCodePath missing')
+			raise ValueError('Insufficient Parameter: eNBSourceCodePath missing')
 		ocUserName = self.OCUserName
 		ocPassword = self.OCPassword
 		ocProjectName = self.OCProjectName
 		if ocUserName == '' or ocPassword == '' or ocProjectName == '':
 			HELP.GenericHelp(CONST.Version)
-			sys.exit('Insufficient Parameter: no OC Credentials')
-		if self.OCRegistry.startswith("http") and not self.OCRegistry.endswith("/"):
-			sys.exit(f'ocRegistry {self.OCRegistry} should not start with http:// or https:// and end on a slash /')
+			raise ValueError('Insufficient Parameter: no OC Credentials')
+		if self.OCRegistry.startswith("http") or self.OCRegistry.endswith("/"):
+			raise ValueError(f'ocRegistry {self.OCRegistry} should not start with http:// or https:// and not end on a slash /')
 
 		logging.debug(f'Building on cluster triggered from server: {lIpAddr}')
 		self.cmd = cls_cmd.RemoteCmd(lIpAddr)
@@ -300,10 +302,7 @@ class Cluster:
 		self.testCase_id = HTML.testCase_id
 
 		# Workaround for some servers, we need to erase completely the workspace
-		if self.forcedWorkspaceCleanup:
-			self.cmd.run(f'rm -Rf {lSourcePath}')
-		cls_containerize.CreateWorkspace(self.cmd, lSourcePath, self.ranRepository, self.ranCommitID, self.ranTargetBranch, self.ranAllowMerge)
-
+		self.cmd.cd(lSourcePath)
 		# to reduce the amount of data send to OpenShift, we
 		# manually delete all generated files in the workspace
 		self.cmd.run(f'rm -rf {lSourcePath}/cmake_targets/ran_build');

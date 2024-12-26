@@ -23,6 +23,7 @@
 
 cmake_minimum_required (VERSION 3.16)
 project (OpenAirInterface LANGUAGES C CXX)
+set(CMAKE_CXX_STANDARD 17)
 
 #########################################################
 # Base directories, compatible with legacy OAI building #
@@ -30,6 +31,10 @@ project (OpenAirInterface LANGUAGES C CXX)
 set (OPENAIR_DIR     ${CMAKE_SOURCE_DIR})
 
 include("cmake_targets/macros.cmake")
+if(NOT DEFINED ENV{CPM_SOURCE_CACHE})
+  set(CPM_SOURCE_CACHE ~/.cache/cpm/ CACHE FILEPATH "Directory to download CPM dependencies")
+endif()
+include("cmake_targets/CPM.cmake")
 
 ##############################
 ### CCache: reduce compilation time
@@ -86,7 +91,6 @@ set (OPENAIR2_DIR    ${OPENAIR_DIR}/openair2)
 set (OPENAIR3_DIR    ${OPENAIR_DIR}/openair3)
 set (OPENAIR3_DIR    ${OPENAIR_DIR}/openair3)
 set (OPENAIR_CMAKE   ${OPENAIR_DIR}/cmake_targets)
-set (OPENAIR_BIN_DIR ${CMAKE_CURRENT_BINARY_DIR}${CMAKE_FILES_DIRECTORY})
 
 project (OpenAirInterface)
 
@@ -256,12 +260,6 @@ if(GIT_FOUND)
   )
 endif()
 
-# Below is a hard-coded info
-set (FIRMWARE_VERSION "No svn information")
-add_definitions("-DFIRMWARE_VERSION=\"${FIRMWARE_VERSION}\"")
-add_definitions("-DPACKAGE_VERSION=\"Branch: ${GIT_BRANCH} Abrev. Hash: ${GIT_COMMIT_HASH} Date: ${GIT_COMMIT_DATE}\"")
-add_definitions("-DPACKAGE_BUGREPORT=\"openair4g-devel@lists.eurecom.fr\"")
-
 # Debug related options
 #########################################
 add_boolean_option(DEBUG_ASN1 False "Enable ASN1 debug logs" OFF)
@@ -296,6 +294,8 @@ set(KPM_VERSION "KPM_V2_03" CACHE STRING "The KPM SM version to use")
 set_property(CACHE KPM_VERSION PROPERTY STRINGS "KPM_V2_03" "KPM_V3_00")
 message(STATUS "Selected KPM Version: ${KPM_VERSION}")
 
+
+add_boolean_option(ENABLE_IMSCOPE OFF "Enable phy scope based on imgui" OFF)
 
 ##################################################
 # ASN.1 grammar C code generation & dependencies #
@@ -437,20 +437,18 @@ add_library(f1ap
             ${F1AP_DIR}/f1ap_cu_rrc_message_transfer.c
             ${F1AP_DIR}/f1ap_cu_task.c
             ${F1AP_DIR}/f1ap_cu_ue_context_management.c
-            ${F1AP_DIR}/f1ap_cu_warning_message_transmission.c
             ${F1AP_DIR}/f1ap_du_interface_management.c
             ${F1AP_DIR}/f1ap_du_paging.c
             ${F1AP_DIR}/f1ap_du_rrc_message_transfer.c
-            ${F1AP_DIR}/f1ap_du_system_information.c
             ${F1AP_DIR}/f1ap_du_task.c
             ${F1AP_DIR}/f1ap_du_ue_context_management.c
-            ${F1AP_DIR}/f1ap_du_warning_message_transmission.c
             ${F1AP_DIR}/f1ap_encoder.c
             ${F1AP_DIR}/f1ap_handlers.c
             ${F1AP_DIR}/f1ap_itti_messaging.c)
 target_include_directories(f1ap PUBLIC F1AP_DIR)
 target_link_libraries(f1ap PUBLIC asn1_f1ap L2_NR)
-target_link_libraries(f1ap PRIVATE ngap nr_rrc HASHTABLE)
+target_link_libraries(f1ap PRIVATE ngap nr_rrc HASHTABLE f1ap_lib)
+target_include_directories(f1ap PRIVATE ${F1AP_DIR}/lib)
 
 # LPP
 ##############
@@ -546,16 +544,8 @@ add_boolean_option(NAS_UE                  True  "NAS UE INSTANCE (<> NAS_MME)" 
 add_boolean_option(RRC_DEFAULT_RAB_IS_AM       True   "set the LTE RLC mode to AM for the default bearer, otherwise it is UM." ON)
 
 # add the binary tree to the search path for include files
-#######################################################
-# We will find ConfigOAI.h after generation in target directory
-include_directories("${OPENAIR_BIN_DIR}")
-# add directories to find all include files
-# the internal rule is to use generic names such as defs.h
-# but to make it uniq name as adding the relative path in the include directtive
-# example: #include "RRC/LTE/rrc_defs.h"
-#find_path (include_dirs_all *.h ${OPENAIR_DIR})
-#find_path (include_dirs_all *.h PATHS /usr/include NO_CMAKE_PATH)
-#include_directories("${include_dirs_all}")
+# We will find common/oai_version.h after generation in target directory
+include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
 # Legacy exact order
 
@@ -1013,7 +1003,7 @@ set(PHY_SRC_UE
 
   set(PHY_NR_SRC_COMMON
   ${OPENAIR1_DIR}/PHY/NR_TRANSPORT/nr_prach_common.c
-  ${OPENAIR1_DIR}/PHY/NR_TRANSPORT/nr_csi_rs.c
+  ${OPENAIR1_DIR}/PHY/nr_phy_common/src/nr_phy_common_csirs.c
   ${OPENAIR1_DIR}/PHY/NR_TRANSPORT/nr_scrambling.c
   ${OPENAIR1_DIR}/PHY/NR_REFSIG/scrambling_luts.c
   ${OPENAIR1_DIR}/PHY/NR_REFSIG/refsig.c
@@ -1045,12 +1035,12 @@ set(PHY_SRC_UE
   ${OPENAIR1_DIR}/PHY/NR_REFSIG/nr_gen_mod_table.c
   ${OPENAIR1_DIR}/PHY/NR_REFSIG/dmrs_nr.c
   ${OPENAIR1_DIR}/PHY/NR_REFSIG/ptrs_nr.c
+  ${OPENAIR1_DIR}/PHY/NR_TRANSPORT/nr_csi_rs.c
   ${OPENAIR1_DIR}/PHY/NR_ESTIMATION/nr_ul_channel_estimation.c
   ${OPENAIR1_DIR}/PHY/NR_ESTIMATION/nr_freq_equalization.c
   ${OPENAIR1_DIR}/PHY/NR_ESTIMATION/nr_measurements_gNB.c
   ${OPENAIR1_DIR}/PHY/TOOLS/file_output.c
   ${OPENAIR1_DIR}/PHY/TOOLS/cadd_vv.c
-  #${OPENAIR1_DIR}/PHY/TOOLS/lte_dfts.c
   ${OPENAIR1_DIR}/PHY/TOOLS/log2_approx.c
   ${OPENAIR1_DIR}/PHY/TOOLS/cmult_sv.c
   ${OPENAIR1_DIR}/PHY/TOOLS/cmult_vv.c
@@ -1083,7 +1073,6 @@ set(PHY_SRC_UE
   ${OPENAIR1_DIR}/PHY/NR_UE_TRANSPORT/nr_dlsch_demodulation.c
   ${OPENAIR1_DIR}/PHY/NR_UE_TRANSPORT/nr_ulsch_coding.c
   ${OPENAIR1_DIR}/PHY/NR_UE_TRANSPORT/nr_dlsch_decoding.c
-  ${OPENAIR1_DIR}/PHY/NR_UE_TRANSPORT/nr_dlsch_llr_computation.c
   ${OPENAIR1_DIR}/PHY/NR_TRANSPORT/nr_tbs_tools.c
   ${OPENAIR1_DIR}/PHY/NR_TRANSPORT/nr_prach_common.c
   ${OPENAIR1_DIR}/PHY/NR_TRANSPORT/nr_sch_dmrs.c
@@ -1106,7 +1095,6 @@ set(PHY_SRC_UE
   ${OPENAIR1_DIR}/PHY/NR_UE_ESTIMATION/nr_adjust_gain.c
   ${OPENAIR1_DIR}/PHY/TOOLS/file_output.c
   ${OPENAIR1_DIR}/PHY/TOOLS/cadd_vv.c
- # ${OPENAIR1_DIR}/PHY/TOOLS/lte_dfts.c
   ${OPENAIR1_DIR}/PHY/TOOLS/log2_approx.c
   ${OPENAIR1_DIR}/PHY/TOOLS/cmult_sv.c
   ${OPENAIR1_DIR}/PHY/TOOLS/cmult_vv.c
@@ -1117,7 +1105,6 @@ set(PHY_SRC_UE
   ${OPENAIR1_DIR}/PHY/TOOLS/lut.c
   ${OPENAIR1_DIR}/PHY/TOOLS/simde_operations.c
   ${OPENAIR1_DIR}/PHY/INIT/nr_init_ue.c
-  #  ${OPENAIR1_DIR}/SIMULATION/NR_UE_PHY/unit_tests/src/pucch_uci_test.c
   ${PHY_POLARSRC}
   ${PHY_SMALLBLOCKSRC}
   ${PHY_NR_CODINGIF}
@@ -1153,6 +1140,10 @@ add_library(PHY_NR_COMMON ${PHY_NR_SRC_COMMON})
 
 add_library(PHY_NR ${PHY_NR_SRC})
 target_link_libraries(PHY_NR nr_phy_common nr_common)
+
+add_library(PHY_NR_NO_AVX_256 ${PHY_NR_SRC})
+target_link_libraries(PHY_NR_NO_AVX_256 nr_phy_common nr_common)
+target_compile_definitions(PHY_NR_NO_AVX_256 PUBLIC USE_128BIT)
 
 add_library(PHY_NR_UE ${PHY_NR_UE_SRC})
 target_link_libraries(PHY_NR_UE PRIVATE asn1_nr_rrc_hdrs nr_phy_common nr_common)
@@ -1213,6 +1204,7 @@ set(NR_PDCP_SRC
   ${OPENAIR2_DIR}/LAYER2/nr_pdcp/nr_pdcp_sdu.c
   ${OPENAIR2_DIR}/LAYER2/nr_pdcp/nr_pdcp_timer_thread.c
   ${OPENAIR2_DIR}/LAYER2/nr_pdcp/nr_pdcp_security_nea2.c
+  ${OPENAIR2_DIR}/LAYER2/nr_pdcp/nr_pdcp_security_nea1.c
   ${OPENAIR2_DIR}/LAYER2/nr_pdcp/nr_pdcp_integrity_nia2.c
   ${OPENAIR2_DIR}/LAYER2/nr_pdcp/nr_pdcp_integrity_nia1.c
   ${OPENAIR2_DIR}/LAYER2/nr_pdcp/asn1_utils.c
@@ -1270,7 +1262,6 @@ set(L2_NR_SRC
   ${NR_PDCP_SRC}
   ${NR_SDAP_SRC}
   ${NR_RRC_DIR}/rrc_gNB.c
-  ${NR_RRC_DIR}/nr_rrc_common.c
   ${NR_RRC_DIR}/mac_rrc_dl_direct.c
   ${NR_RRC_DIR}/mac_rrc_dl_f1ap.c
   ${NR_RRC_DIR}/nr_rrc_config.c
@@ -1282,6 +1273,7 @@ set(L2_NR_SRC
   ${NR_RRC_DIR}/rrc_gNB_radio_bearers.c
   ${NR_RRC_DIR}/rrc_gNB_cuup.c
   ${NR_RRC_DIR}/rrc_gNB_du.c
+  ${NR_RRC_DIR}/rrc_gNB_mobility.c
   )
 
 set(L2_SRC_UE
@@ -1444,6 +1436,8 @@ add_library(L2_NR
   ${GNB_APP_SRC}
   )
 target_link_libraries(L2_NR PRIVATE ds alg)
+target_link_libraries(L2_NR PRIVATE f1ap_lib)
+target_include_directories(L2_NR PRIVATE ${F1AP_DIR}/lib)
 
 add_library(e1_if
   ${NR_RRC_DIR}/cucp_cuup_direct.c
@@ -1790,7 +1784,7 @@ add_library(LIB_NAS_SIMUE
   ${NAS_SRC}UE/nas_parser.c
   ${NAS_SRC}UE/nas_proc.c
   ${NAS_SRC}UE/nas_user.c
-  ${NAS_SRC}NR_UE/nr_nas_msg_sim.c
+  ${NAS_SRC}NR_UE/nr_nas_msg.c
   ${libnas_api_OBJS}
   ${libnas_ue_api_OBJS}
   ${libnas_emm_msg_OBJS}
@@ -1853,8 +1847,6 @@ add_library(NB_IoT MODULE ${NBIOT_SOURCES} )
 
 add_library(LIB_5GNAS_GNB
   ${NAS_SRC}/COMMON/nr_common.c
-  ${NAS_SRC}/gNB/network_process_nas.c
-  ${NAS_SRC}/NR_UE/ue_process_nas.c
   ${OPENAIR3_DIR}//UICC/usim_interface.c
   )
 
@@ -2396,17 +2388,24 @@ if(ENABLE_TESTS)
   find_package(GTest)
   if (NOT GTest_FOUND)
     message(STATUS "GTest package not found, will download googletest automatically. To prevent that install google test on your system (libgtest-dev)")
-    include(FetchContent)
-    FetchContent_Declare(
-      googletest
-      GIT_REPOSITORY https://github.com/google/googletest.git
-      GIT_TAG        58d77fa8070e8cec2dc1ed015d66b454c8d78850 # 1.12.1
+    CPMAddPackage(
+      NAME googletest
+      GITHUB_REPOSITORY google/googletest
+      GIT_TAG release-1.12.1
+      VERSION 1.12.1
+      OPTIONS "INSTALL_GTEST OFF" "gtest_force_shared_crt" "BUILD_GMOCK OFF"
     )
-    set(BUILD_GMOCK OFF)
-    set(INSTALL_GTEST OFF)
-    FetchContent_MakeAvailable(googletest)
-    add_library(GTest::gtest ALIAS gtest)
-    add_library(GTest::gtest_main ALIAS gtest_main)
+  endif()
+
+  find_package(benchmark)
+  if (NOT benchmark_FOUND)
+    message(STATUS "benchmark package not found, will download benchmark automatically. To prevent that install google benchmark on your system (libbenchmark-dev)")
+    CPMAddPackage(
+      NAME benchmark
+      GITHUB_REPOSITORY google/benchmark
+      VERSION 1.9.0
+      OPTIONS "BENCHMARK_ENABLE_TESTING OFF"
+    )
   endif()
 endif()
 

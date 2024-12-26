@@ -318,10 +318,10 @@ void nr_layer_mapping(int nbCodes,
   }
 }
 
-void nr_ue_layer_mapping(const c16_t *mod_symbs, const int n_layers, const int n_symbs, int sz, c16_t tx_layers[][sz])
+void nr_ue_layer_mapping(const c16_t *mod_symbs, const int n_layers, const int n_symbs, c16_t tx_layers[][n_symbs])
 {
-  for (int i=0; i<n_symbs/n_layers; i++) {
-    for (int l=0; l<n_layers; l++) {
+  for (int l = 0; l < n_layers; l++) {
+    for (int i = 0; i < n_symbs; i++) {
       tx_layers[l][i] = c16mulRealShift(mod_symbs[n_layers * i + l], AMP, 15);
     }
   }

@@ -101,7 +101,6 @@ configmodule_interface_t *uniqCfg = NULL;
 
 int main(int argc, char **argv)
 {
-  char c;
   int i;
   double SNR, SNR_lin, snr0 = -2.0, snr1 = 2.0;
   double snr_step = 0.1;
@@ -146,6 +145,7 @@ int main(int argc, char **argv)
   // logInit();
   randominit(0);
 
+  int c;
   while ((c = getopt(argc, argv, "--:O:df:hpVg:i:j:n:l:m:r:s:S:y:z:M:N:F:R:P:L:X:")) != -1) {
 
     /* ignore long options starting with '--' and their arguments that are handled by configmodule */

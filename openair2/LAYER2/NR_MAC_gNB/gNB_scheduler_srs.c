@@ -430,7 +430,7 @@ static void nr_configure_srs(nfapi_nr_srs_pdu_t *srs_pdu,
   srs_pdu->num_ant_ports = srs_resource->nrofSRS_Ports;
   srs_pdu->num_symbols = srs_resource->resourceMapping.nrofSymbols;
   srs_pdu->num_repetitions = srs_resource->resourceMapping.repetitionFactor;
-  srs_pdu->time_start_position = srs_resource->resourceMapping.startPosition;
+  srs_pdu->time_start_position = NR_NUMBER_OF_SYMBOLS_PER_SLOT - 1 - srs_resource->resourceMapping.startPosition;
   srs_pdu->config_index = srs_resource->freqHopping.c_SRS;
   srs_pdu->sequence_id = srs_resource->sequenceId;
   srs_pdu->bandwidth_index = srs_resource->freqHopping.b_SRS;
@@ -470,8 +470,9 @@ static void nr_configure_srs(nfapi_nr_srs_pdu_t *srs_pdu,
     srs_pdu->beamforming.prg_size = 1;
   }
 
-  uint16_t *vrb_map_UL = &RC.nrmac[module_id]->common_channels[CC_id].vrb_map_UL[buffer_index * MAX_BWP_SIZE];
-  uint64_t mask = SL_to_bitmap(13 - srs_pdu->time_start_position, srs_pdu->num_symbols);
+  // TODO properly use beam allocation
+  uint16_t *vrb_map_UL = &RC.nrmac[module_id]->common_channels[CC_id].vrb_map_UL[0][buffer_index * MAX_BWP_SIZE];
+  uint64_t mask = SL_to_bitmap(srs_pdu->time_start_position, srs_pdu->num_symbols);
   for (int i = 0; i < srs_pdu->bwp_size; ++i)
     vrb_map_UL[i + srs_pdu->bwp_start] |= mask;
 }
@@ -532,7 +533,7 @@ void nr_schedule_srs(int module_id, frame_t frame, int slot)
       sched_ctrl->sched_srs.srs_scheduled = false;
     }
 
-    if ((sched_ctrl->ul_failure && !get_softmodem_params()->phy_test) || sched_ctrl->rrc_processing_timer > 0) {
+    if ((sched_ctrl->ul_failure && !get_softmodem_params()->phy_test) || nr_timer_is_active(&sched_ctrl->transm_interrupt)) {
       continue;
     }
 

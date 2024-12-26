@@ -81,8 +81,6 @@
 
 #define NR_MAX_NB_PORTS 32
 
-#define NR_MAX_PDSCH_TBS 3824
-
 #define MAX_NUM_NR_DLSCH_SEGMENTS_PER_LAYER 36
 
 #define MAX_NUM_NR_ULSCH_SEGMENTS_PER_LAYER 34
@@ -120,13 +118,6 @@ typedef struct {
   c16_t **srs_generated_signal;
   nfapi_nr_srs_pdu_t srs_pdu;
 } nr_srs_info_t;
-
-typedef struct {
-  uint8_t csi_rs_generated_signal_bits;
-  int32_t **csi_rs_generated_signal;
-  bool csi_im_meas_computed;
-  uint32_t interference_plus_noise_power;
-} nr_csi_info_t;
 
 typedef struct NR_DL_FRAME_PARMS NR_DL_FRAME_PARMS;
 

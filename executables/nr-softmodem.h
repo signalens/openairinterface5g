@@ -52,8 +52,6 @@ extern void stop_RU(int nb_ru);
 extern void kill_NR_RU_proc(int inst);
 extern void set_function_spec_param(RU_t *ru);
 
-extern void reset_opp_meas(void);
-extern void print_opp_meas(void);
 void init_gNB_afterRU(void);
 
 void init_pdcp(void);

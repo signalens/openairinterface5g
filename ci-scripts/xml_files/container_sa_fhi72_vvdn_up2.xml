@@ -24,10 +24,10 @@
   <htmlTabRef>test-5g-fhi72-vvdn</htmlTabRef>
   <htmlTabName>100 MHz TDD SA VVDN</htmlTabName>
   <htmlTabIcon>tasks</htmlTabIcon>
-  <repeatCount>1</repeatCount>
   <TestCaseRequestedList>
     200000
     110000
+    800813
     120000
     102000
     102001
@@ -39,14 +39,16 @@
     103000
     100002
     130000
+    777777
+    888888
   </TestCaseRequestedList>
   <TestCaseExclusionList></TestCaseExclusionList>
 
   <testCase id="200000">
-    <class>Custom_Command</class>
+    <class>Custom_Script</class>
     <desc>Setup sriov and network interfaces VVDN</desc>
     <node>cacofonix</node>
-    <command>/opt/FHI7.2/setup_sriov_vvdn.sh</command>
+    <script>yaml_files/sa_fhi_7.2_vvdn_gnb/setup_sriov_vvdn.sh</script>
     <command_fail>yes</command_fail>
   </testCase>
 
@@ -56,7 +58,12 @@
     <oc_project>oaicicd-ran</oc_project>
     <images_to_pull>oai-gnb-fhi72</images_to_pull>
   </testCase>
-
+  <testCase id="800813">
+    <class>Create_Workspace</class>
+    <desc>Create new Workspace for server 0</desc>
+    <eNB_instance>0</eNB_instance>
+    <eNB_serverId>0</eNB_serverId>
+  </testCase>
   <testCase id="120000">
     <class>Deploy_Object</class>
     <desc>Deploy gNB (TDD/Band78/100MHz/VVDN) in a container</desc>
@@ -122,6 +129,7 @@
 
   <testCase id="103000">
     <class>Detach_UE</class>
+    <always_exec>true</always_exec>
     <desc>Detach UE</desc>
     <id>up2-fhi72</id>
   </testCase>
@@ -134,10 +142,28 @@
 
   <testCase id="130000">
     <class>Undeploy_Object</class>
+    <always_exec>true</always_exec>
     <desc>Undeploy gNB</desc>
     <yaml_path>ci-scripts/yaml_files/sa_fhi_7.2_vvdn_gnb</yaml_path>
     <eNB_instance>0</eNB_instance>
     <eNB_serverId>0</eNB_serverId>
   </testCase>
+
+  <testCase id="777777">
+    <class>Clean_Test_Server_Images</class>
+    <always_exec>true</always_exec>
+    <desc>Clean Test Images on Test Server</desc>
+    <test_svr_id>0</test_svr_id>
+  </testCase>
+
+  <testCase id="888888">
+    <class>Custom_Script</class>
+    <always_exec>true</always_exec>
+    <desc>Set CPU to idle state, set kernel parameters to default values</desc>
+    <node>cacofonix</node>
+    <script>yaml_files/sa_fhi_7.2_vvdn_gnb/setup_cleanup.sh</script>
+    <command_fail>yes</command_fail>
+  </testCase>
+
 
 </testCaseList>

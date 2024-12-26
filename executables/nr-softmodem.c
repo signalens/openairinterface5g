@@ -28,6 +28,7 @@
 
 #undef MALLOC //there are two conflicting definitions, so we better make sure we don't use it at all
 #include <common/utils/assertions.h>
+#include "common/oai_version.h"
 
 #include "PHY/types.h"
 #include "common/ran_context.h"
@@ -153,18 +154,12 @@ uint8_t nb_antenna_rx = 1;
 
 int otg_enabled;
 
-extern void reset_opp_meas(void);
-extern void print_opp_meas(void);
-
 extern void *udp_eNB_task(void *args_p);
 
 int transmission_mode=1;
 int emulate_rf = 0;
 int numerology = 0;
 
-
-static char *parallel_config = NULL;
-static char *worker_config = NULL;
 
 /* struct for ethernet specific parameters given in eNB conf file */
 eth_params_t *eth_params;
@@ -177,11 +172,6 @@ void pdcp_run(const protocol_ctxt_t *const ctxt_pP)
 {
   abort();
 }
-
-/* see file openair2/LAYER2/MAC/main.c for why abstraction_flag is needed
- * this is very hackish - find a proper solution
- */
-uint8_t abstraction_flag=0;
 
 /* forward declarations */
 void set_default_frame_parms(nfapi_nr_config_request_scf_t *config[MAX_NUM_CCs], NR_DL_FRAME_PARMS *frame_parms[MAX_NUM_CCs]);
@@ -436,10 +426,6 @@ static void get_options(configmodule_interface_t *cfg)
     NB_RU   = RC.nb_RU;
     printf("Configuration: nb_rrc_inst %d, nb_nr_L1_inst %d, nb_ru %hhu\n",NB_gNB_INST,RC.nb_nr_L1_inst,NB_RU);
   }
-
-  if(parallel_config != NULL) set_parallel_conf(parallel_config);
-
-  if(worker_config != NULL) set_worker_conf(worker_config);
 }
 
 void set_default_frame_parms(nfapi_nr_config_request_scf_t *config[MAX_NUM_CCs],
@@ -556,7 +542,7 @@ void init_pdcp(void) {
   uint32_t pdcp_initmask = IS_SOFTMODEM_NOS1 ? ENB_NAS_USE_TUN_BIT : LINK_ENB_PDCP_TO_GTPV1U_BIT;
 
   if (!NODE_IS_DU(get_node_type())) {
-    nr_pdcp_layer_init(get_node_type() == ngran_gNB_CUCP);
+    nr_pdcp_layer_init();
     nr_pdcp_module_init(pdcp_initmask, 0);
   }
 }
@@ -781,20 +767,14 @@ int main( int argc, char **argv ) {
   set_taus_seed (0);
   printf("configuring for RAU/RRU\n");
 
-  if (opp_enabled ==1) {
-    reset_opp_meas();
-  }
-
   cpuf=get_cpu_freq_GHz();
   itti_init(TASK_MAX, tasks_info);
   // initialize mscgen log after ITTI
   init_opt();
 
-#ifndef PACKAGE_VERSION
-#define PACKAGE_VERSION "UNKNOWN-EXPERIMENTAL"
-#endif
   // strdup to put the sring in the core file for post mortem identification
-  LOG_I(HW, "Version: %s\n", strdup(PACKAGE_VERSION));
+  char *pckg = strdup(OAI_PACKAGE_VERSION);
+  LOG_I(HW, "Version: %s\n", pckg);
 
   // don't create if node doesn't connect to RRC/S1/GTP
   const ngran_node_t node_type = get_node_type();
@@ -886,14 +866,19 @@ int main( int argc, char **argv ) {
     printf("ALL RUs ready - init gNBs\n");
 
     for (int idx=0;idx<RC.nb_nr_L1_inst;idx++) RC.gNB[idx]->if_inst->sl_ahead = sl_ahead;
-    if(IS_SOFTMODEM_DOSCOPE) {
+    if (IS_SOFTMODEM_DOSCOPE || IS_SOFTMODEM_IMSCOPE_ENABLED) {
       sleep(1);
       scopeParms_t p;
-      p.argc=&argc;
-      p.argv=argv;
-      p.gNB=RC.gNB[0];
-      p.ru=RC.ru[0];
-      load_softscope("nr",&p);
+      p.argc = &argc;
+      p.argv = argv;
+      p.gNB = RC.gNB[0];
+      p.ru = RC.ru[0];
+      if (IS_SOFTMODEM_DOSCOPE) {
+        load_softscope("nr", &p);
+      }
+      if (IS_SOFTMODEM_IMSCOPE_ENABLED) {
+        load_softscope("im", &p);
+      }
     }
 
     if (NFAPI_MODE != NFAPI_MODE_PNF && NFAPI_MODE != NFAPI_MODE_VNF && NFAPI_MODE != NFAPI_MODE_AERIAL) {
@@ -949,6 +934,7 @@ int main( int argc, char **argv ) {
       RC.ru[ru_id]->ifdevice.trx_end_func(&RC.ru[ru_id]->ifdevice);
   }
 
+  free(pckg);
   logClean();
   printf("Bye.\n");
   return 0;

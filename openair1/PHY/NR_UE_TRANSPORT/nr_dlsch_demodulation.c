@@ -28,6 +28,7 @@
  * \note
  * \warning
  */
+#include "nr_phy_common.h"
 #include "PHY/defs_nr_UE.h"
 #include "PHY/phy_extern.h"
 #include "nr_transport_proto_ue.h"
@@ -101,27 +102,20 @@ static void nr_dlsch_layer_demapping(int16_t *llr_cw[2],
                                      int16_t llr_layers[][sz]);
 
 /* compute LLR */
-static int nr_dlsch_llr(uint32_t rx_size_symbol,
-                        int nbRx,
-                        uint sz,
-                        int16_t layer_llr[][sz],
-                        NR_DL_FRAME_PARMS *frame_parms,
-                        int32_t rxdataF_comp[][nbRx][rx_size_symbol * NR_SYMBOLS_PER_SLOT],
-                        int32_t dl_ch_mag[rx_size_symbol],
-                        int32_t dl_ch_magb[rx_size_symbol],
-                        int32_t dl_ch_magr[rx_size_symbol],
-                        NR_DL_UE_HARQ_t *dlsch0_harq,
-                        NR_DL_UE_HARQ_t *dlsch1_harq,
-                        unsigned char harq_pid,
-                        unsigned char first_symbol_flag,
-                        unsigned char symbol,
-                        unsigned short nb_rb,
-                        int32_t codeword_TB0,
-                        int32_t codeword_TB1,
-                        uint32_t len,
-                        uint8_t nr_slot_rx,
-                        NR_UE_DLSCH_t dlsch[2],
-                        uint32_t llr_offset[NR_SYMBOLS_PER_SLOT]);
+static void nr_dlsch_llr(uint32_t rx_size_symbol,
+                         int nbRx,
+                         uint sz,
+                         int16_t layer_llr[][sz],
+                         int32_t rxdataF_comp[][nbRx][rx_size_symbol * NR_SYMBOLS_PER_SLOT],
+                         int32_t dl_ch_mag[rx_size_symbol],
+                         int32_t dl_ch_magb[rx_size_symbol],
+                         int32_t dl_ch_magr[rx_size_symbol],
+                         NR_DL_UE_HARQ_t *dlsch0_harq,
+                         NR_DL_UE_HARQ_t *dlsch1_harq,
+                         unsigned char symbol,
+                         uint32_t len,
+                         NR_UE_DLSCH_t dlsch[2],
+                         uint32_t llr_offset_symbol);
 
 /** \fn nr_dlsch_extract_rbs
     \brief This function extracts the received resource blocks, both channel estimates and data symbols,    for the current
@@ -220,17 +214,16 @@ void nr_dlsch_scale_channel(uint32_t rx_size_symbol,
                             uint8_t pilots,
                             uint32_t len,
                             unsigned short nb_rb);
-void nr_dlsch_detection_mrc(uint32_t rx_size_symbol,
-                            short n_tx,
-                            short n_rx,
-                            int32_t rxdataF_comp[][n_rx][rx_size_symbol * NR_SYMBOLS_PER_SLOT],
-                            int ***rho,
-                            int32_t dl_ch_mag[][n_rx][rx_size_symbol],
-                            int32_t dl_ch_magb[][n_rx][rx_size_symbol],
-                            int32_t dl_ch_magr[][n_rx][rx_size_symbol],
-                            unsigned char symbol,
-                            unsigned short nb_rb,
-                            int length);
+static void nr_dlsch_detection_mrc(uint32_t rx_size_symbol,
+                                   short n_tx,
+                                   short n_rx,
+                                   int32_t rxdataF_comp[][n_rx][rx_size_symbol * NR_SYMBOLS_PER_SLOT],
+                                   int ***rho,
+                                   int32_t dl_ch_mag[][n_rx][rx_size_symbol],
+                                   int32_t dl_ch_magb[][n_rx][rx_size_symbol],
+                                   int32_t dl_ch_magr[][n_rx][rx_size_symbol],
+                                   unsigned char symbol,
+                                   int length);
 
 static bool overlap_csi_symbol(fapi_nr_dl_config_csirs_pdu_rel15_t *csi_pdu, int symbol)
 {
@@ -516,9 +509,9 @@ int nr_rx_pdsch(PHY_VARS_NR_UE *ue,
       int32_t median[MAX_ANT][MAX_ANT];
       for (int aatx = 0; aatx < nl; aatx++)
         for (int aarx = 0; aarx < n_rx; aarx++) {
-          // LOG_I(PHY, "nb_rb %d len %d avg_%d_%d Power per SC is %d\n",nb_rb, len,aarx, aatx,avg[aatx*n_rx+aarx]);
           avgs = cmax(avgs, avg[aatx][aarx]);
-          // LOG_I(PHY, "avgs Power per SC is %d\n", avgs);
+          LOG_D(PHY, "nb_rb %d avg_%d_%d Power per SC is %d\n", nb_rb_pdsch, aarx, aatx, avg[aatx][aarx]);
+          LOG_D(PHY, "avgs Power per SC is %d\n", avgs);
           median[aatx][aarx] = avg[aatx][aarx];
         }
       if (nl > 1) {
@@ -530,7 +523,6 @@ int nr_rx_pdsch(PHY_VARS_NR_UE *ue,
         }
       }
       *log2_maxh = (log2_approx(avgs) / 2) + 1;
-      // LOG_I(PHY, "avgs Power per SC is %d lg2_maxh %d\n", avgs,  log2_maxh);
       LOG_D(PHY, "[DLSCH] AbsSubframe %d.%d log2_maxh = %d (%d)\n", frame % 1024, nr_slot_rx, *log2_maxh, avgs);
     }
     stop_meas_nr_ue_phy(ue, DLSCH_CHANNEL_LEVEL_STATS);
@@ -595,7 +587,6 @@ int nr_rx_pdsch(PHY_VARS_NR_UE *ue,
                            dl_ch_magb,
                            dl_ch_magr,
                            symbol,
-                           nb_rb_pdsch,
                            nb_re_pdsch);
     if (nl >= 2) // Apply MMSE for 2, 3, and 4 Tx layers
       nr_dlsch_mmse(rx_size_symbol,
@@ -628,7 +619,7 @@ int nr_rx_pdsch(PHY_VARS_NR_UE *ue,
 
 
   /* Store the valid DL RE's */
-  dl_valid_re[symbol-1] = nb_re_pdsch;
+  dl_valid_re[symbol] = nb_re_pdsch;
   int startSymbIdx = 0;
   int nbSymb = 0;
   int pduBitmap = 0;
@@ -656,10 +647,10 @@ int nr_rx_pdsch(PHY_VARS_NR_UE *ue,
                              (nb_rb_pdsch * 12),
                              dlsch[0].rnti,
                              dlsch);
-    dl_valid_re[symbol - 1] -= ptrs_re_per_slot[0][symbol];
+    dl_valid_re[symbol] -= ptrs_re_per_slot[0][symbol];
   }
   /* at last symbol in a slot calculate LLR's for whole slot */
-  if(symbol == (startSymbIdx + nbSymb -1)) {
+  if(symbol == (startSymbIdx + nbSymb - 1)) {
     const uint32_t rx_llr_layer_size = (G + dlsch[0].Nl - 1) / dlsch[0].Nl;
 
     if (dlsch[0].Nl == 0 || rx_llr_layer_size == 0 || rx_llr_layer_size > 10 * 1000 * 1000) {
@@ -668,42 +659,32 @@ int nr_rx_pdsch(PHY_VARS_NR_UE *ue,
     }
 
     int16_t layer_llr[dlsch[0].Nl][rx_llr_layer_size];
-    for(int i = startSymbIdx; i < startSymbIdx+nbSymb; i++) {
-      /* re evaluating the first symbol flag as LLR's are done in symbol loop  */
-      if(i == startSymbIdx && i < 3)
-        first_symbol_flag = 1;
-      else
-        first_symbol_flag = 0;
+    for(int i = startSymbIdx; i < startSymbIdx + nbSymb; i++) {
       /* Calculate LLR's for each symbol */
       start_meas_nr_ue_phy(ue, DLSCH_LLR_STATS);
       nr_dlsch_llr(rx_size_symbol,
                    nbRx,
                    rx_llr_layer_size,
                    layer_llr,
-                   frame_parms,
                    rxdataF_comp,
                    dl_ch_mag[0][0],
                    dl_ch_magb[0][0],
                    dl_ch_magr[0][0],
                    dlsch0_harq,
                    dlsch1_harq,
-                   harq_pid,
-                   first_symbol_flag,
                    i,
-                   nb_rb_pdsch,
-                   codeword_TB0,
-                   codeword_TB1,
-                   dl_valid_re[i - 1],
-                   nr_slot_rx,
+                   dl_valid_re[i],
                    dlsch,
-                   llr_offset);
+                   llr_offset[i]);
+      if (i < startSymbIdx + nbSymb - 1) // up to the penultimate symbol
+        llr_offset[i + 1] = dl_valid_re[i] * dlsch_config->qamModOrder + llr_offset[i];
       stop_meas_nr_ue_phy(ue, DLSCH_LLR_STATS);
     }
 
     start_meas_nr_ue_phy(ue, DLSCH_LAYER_DEMAPPING);
     nr_dlsch_layer_demapping(llr,
                              dlsch[0].Nl,
-                             dlsch[0].dlsch_config.qamModOrder,
+                             dlsch_config->qamModOrder,
                              G,
                              codeword_TB0,
                              codeword_TB1,
@@ -736,6 +717,24 @@ int nr_rx_pdsch(PHY_VARS_NR_UE *ue,
     }
   */
 #endif
+    if (UEScopeHasTryLock(ue)) {
+      metadata mt = {.frame = proc->frame_rx, .slot = proc->nr_slot_rx };
+      int total_valid_res = 0;
+      for (int i = startSymbIdx; i < startSymbIdx + nbSymb; i++) {
+        total_valid_res = dl_valid_re[i - 1];
+      }
+      if (UETryLockScopeData(ue, pdschRxdataF_comp, sizeof(c16_t), 1,  total_valid_res, &mt)) {
+        size_t offset = 0;
+        for (int i = startSymbIdx; i < startSymbIdx + nbSymb; i++) {
+          size_t data_size = sizeof(c16_t) * dl_valid_re[i - i];
+          UEscopeCopyUnsafe(ue, pdschRxdataF_comp, &rxdataF_comp[0][0][rx_size_symbol * i], data_size, offset, i - startSymbIdx);
+          offset += data_size;
+        }
+        UEunlockScopeData(ue, pdschRxdataF_comp)
+      }
+    } else {
+      UEscopeCopy(ue, pdschRxdataF_comp, rxdataF_comp[0], sizeof(c16_t), nbRx, rx_size_symbol * NR_SYMBOLS_PER_SLOT, 0);
+    }
   }
 
   if (meas_enabled) {
@@ -759,7 +758,6 @@ int nr_rx_pdsch(PHY_VARS_NR_UE *ue,
     T_INT(frame_parms->symbols_per_slot),
     T_BUFFER(&rxdataF_comp[gNB_id][0], 2 * /* ulsch[UE_id]->harq_processes[harq_pid]->nb_rb */ frame_parms->N_RB_UL * 12 * 2));
 #endif
-  UEscopeCopy(ue, pdschRxdataF_comp, rxdataF_comp[0], sizeof(c16_t), nbRx, rx_size_symbol * NR_SYMBOLS_PER_SLOT, 0);
 
   if (ue->phy_sim_pdsch_rxdataF_comp)
     for (int a = 0; a < nbRx; a++) {
@@ -876,15 +874,13 @@ static void nr_dlsch_channel_compensation(uint32_t rx_size_symbol,
       QAM_amp128r = simde_mm_set1_epi16(QAM256_n3);
     }
 
-    //    printf("comp: rxdataF_comp %p, symbol %d\n",rxdataF_comp[0],symbol);
-
     for (int aarx = 0; aarx < frame_parms->nb_antennas_rx; aarx++) {
       dl_ch128 = (simde__m128i *)dl_ch_estimates_ext[(l * frame_parms->nb_antennas_rx) + aarx];
       dl_ch_mag128 = (simde__m128i *)dl_ch_mag[l][aarx];
       dl_ch_mag128b = (simde__m128i *)dl_ch_magb[l][aarx];
       dl_ch_mag128r = (simde__m128i *)dl_ch_magr[l][aarx];
       rxdataF128 = (simde__m128i *)rxdataF_ext[aarx];
-      rxdataF_comp128 = (simde__m128i *)(rxdataF_comp[l][aarx] + symbol * nb_rb * 12);
+      rxdataF_comp128 = (simde__m128i *)(rxdataF_comp[l][aarx] + symbol * rx_size_symbol);
 
       for (int rb = 0; rb < nb_rb_0; rb++) {
         if (mod_order > 2) {
@@ -1102,10 +1098,9 @@ void nr_dlsch_channel_level(uint32_t rx_size_symbol,
   simde__m128i *dl_ch128, avg128D;
   //nb_rb*nre = y * 2^x
   int16_t x = factor2(len);
-  int16_t y = (len)>>x;
-  LOG_D(NR_PHY, "%s: %d = %d * 2^(%d)\n", __func__, len, y, x);
+  int16_t y = (len) >> x;
   uint32_t nb_rb_0 = len / NR_NB_SC_PER_RB + ((len % NR_NB_SC_PER_RB) ? 1 : 0);
-
+  LOG_D(NR_PHY, "nb_rb_0 %d len %d = %d * 2^(%d)\n", nb_rb_0, len, y, x);
   for (int aatx = 0; aatx < n_tx; aatx++) {
     for (int aarx = 0; aarx < n_rx; aarx++) {
       //clear average level
@@ -1121,7 +1116,7 @@ void nr_dlsch_channel_level(uint32_t rx_size_symbol,
       }
       int32_t *tmp = (int32_t *)&avg128D;
       avg[aatx][aarx] = ((int64_t)tmp[0] + tmp[1] + tmp[2] + tmp[3]) / y;
-      //  printf("Channel level : %d\n",avg[(aatx<<1)+aarx]);
+      LOG_D(PHY, "Channel level: %d\n", avg[aatx][aarx]);
     }
   }
 }
@@ -1155,7 +1150,7 @@ static void nr_dlsch_channel_level_median(uint32_t rx_size_symbol,
       }
 
       median[aatx][aarx] = (max + min) >> 1;
-      //printf("Channel level  median [%d]: %d max = %d min = %d\n",aatx*n_rx + aarx, median[aatx*n_rx + aarx],max,min);
+      LOG_D(PHY, "Channel level  median [%d][%d]: %d max = %ld min = %ld\n", aatx, aarx, median[aatx][aarx], max, min);
     }
   }
 }
@@ -1259,37 +1254,34 @@ static void nr_dlsch_extract_rbs(uint32_t rxdataF_sz,
   }
 }
 
-void nr_dlsch_detection_mrc(uint32_t rx_size_symbol,
-                            short n_tx,
-                            short n_rx,
-                            int32_t rxdataF_comp[][n_rx][rx_size_symbol * NR_SYMBOLS_PER_SLOT],
-                            int ***rho,
-                            int32_t dl_ch_mag[][n_rx][rx_size_symbol],
-                            int32_t dl_ch_magb[][n_rx][rx_size_symbol],
-                            int32_t dl_ch_magr[][n_rx][rx_size_symbol],
-                            unsigned char symbol,
-                            unsigned short nb_rb,
-                            int length) {
-  unsigned char aatx, aarx;
-  int i;
+static void nr_dlsch_detection_mrc(uint32_t rx_size_symbol,
+                                   short nl,
+                                   short n_rx,
+                                   int32_t rxdataF_comp[][n_rx][rx_size_symbol * NR_SYMBOLS_PER_SLOT],
+                                   int ***rho,
+                                   int32_t dl_ch_mag[][n_rx][rx_size_symbol],
+                                   int32_t dl_ch_magb[][n_rx][rx_size_symbol],
+                                   int32_t dl_ch_magr[][n_rx][rx_size_symbol],
+                                   unsigned char symbol,
+                                   int length)
+{
   simde__m128i *rxdataF_comp128_0,*rxdataF_comp128_1,*dl_ch_mag128_0,*dl_ch_mag128_1,*dl_ch_mag128_0b,*dl_ch_mag128_1b,*dl_ch_mag128_0r,*dl_ch_mag128_1r;
+  uint32_t nb_rb_0 = length / 12 + ((length % 12) ? 1 : 0);
 
-  uint32_t nb_rb_0 = length/12 + ((length%12)?1:0);
-
-  if (n_rx>1) {
-    for (aatx=0; aatx<n_tx; aatx++) {
-      rxdataF_comp128_0 = (simde__m128i *)(rxdataF_comp[aatx][0] + symbol * nb_rb * 12);
-      dl_ch_mag128_0 = (simde__m128i *)dl_ch_mag[aatx][0];
-      dl_ch_mag128_0b = (simde__m128i *)dl_ch_magb[aatx][0];
-      dl_ch_mag128_0r = (simde__m128i *)dl_ch_magr[aatx][0];
-      for (aarx=1; aarx<n_rx; aarx++) {
-        rxdataF_comp128_1 = (simde__m128i *)(rxdataF_comp[aatx][aarx] + symbol * nb_rb * 12);
-        dl_ch_mag128_1 = (simde__m128i *)dl_ch_mag[aatx][aarx];
-        dl_ch_mag128_1b = (simde__m128i *)dl_ch_magb[aatx][aarx];
-        dl_ch_mag128_1r = (simde__m128i *)dl_ch_magr[aatx][aarx];
+  if (n_rx > 1) {
+    for (int l = 0; l < nl; l++) {
+      rxdataF_comp128_0 = (simde__m128i *)(rxdataF_comp[l][0] + symbol * rx_size_symbol);
+      dl_ch_mag128_0 = (simde__m128i *)dl_ch_mag[l][0];
+      dl_ch_mag128_0b = (simde__m128i *)dl_ch_magb[l][0];
+      dl_ch_mag128_0r = (simde__m128i *)dl_ch_magr[l][0];
+      for (int aarx = 1; aarx < n_rx; aarx++) {
+        rxdataF_comp128_1 = (simde__m128i *)(rxdataF_comp[l][aarx] + symbol * rx_size_symbol);
+        dl_ch_mag128_1 = (simde__m128i *)dl_ch_mag[l][aarx];
+        dl_ch_mag128_1b = (simde__m128i *)dl_ch_magb[l][aarx];
+        dl_ch_mag128_1r = (simde__m128i *)dl_ch_magr[l][aarx];
 
         // MRC on each re of rb, both on MF output and magnitude (for 16QAM/64QAM/256 llr computation)
-        for (i=0; i<nb_rb_0*3; i++) {
+        for (int i = 0; i < nb_rb_0 * 3; i++) {
           rxdataF_comp128_0[i] = simde_mm_adds_epi16(rxdataF_comp128_0[i],rxdataF_comp128_1[i]);
           dl_ch_mag128_0[i]    = simde_mm_adds_epi16(dl_ch_mag128_0[i],dl_ch_mag128_1[i]);
           dl_ch_mag128_0b[i]   = simde_mm_adds_epi16(dl_ch_mag128_0b[i],dl_ch_mag128_1b[i]);
@@ -1298,14 +1290,14 @@ void nr_dlsch_detection_mrc(uint32_t rx_size_symbol,
       }
     }
 #ifdef DEBUG_DLSCH_DEMOD
-    for (i=0; i<nb_rb_0*3; i++) {
-    printf("symbol%d RB %d\n",symbol,i/3);
-    rxdataF_comp128_0 = (simde__m128i *)(rxdataF_comp[0][0] + symbol * nb_rb * 12);
-    rxdataF_comp128_1 = (simde__m128i *)(rxdataF_comp[0][n_rx] + symbol * nb_rb * 12);
-    print_shorts("tx 1 mrc_re/mrc_Im:",(int16_t*)&rxdataF_comp128_0[i]);
-    print_shorts("tx 2 mrc_re/mrc_Im:",(int16_t*)&rxdataF_comp128_1[i]);
-    // printf("mrc mag0 = %d = %d \n",((int16_t*)&dl_ch_mag128_0[0])[0],((int16_t*)&dl_ch_mag128_0[0])[1]);
-    // printf("mrc mag0b = %d = %d \n",((int16_t*)&dl_ch_mag128_0b[0])[0],((int16_t*)&dl_ch_mag128_0b[0])[1]);
+    for (int i = 0; i < nb_rb_0 * 3; i++) {
+      printf("symbol%d RB %d\n", symbol, i / 3);
+      rxdataF_comp128_0 = (simde__m128i *)(rxdataF_comp[0][0] + symbol * rx_size_symbol);
+      rxdataF_comp128_1 = (simde__m128i *)(rxdataF_comp[0][n_rx] + symbol * rx_size_symbol);
+      print_shorts("tx 1 mrc_re/mrc_Im:",(int16_t*)&rxdataF_comp128_0[i]);
+      print_shorts("tx 2 mrc_re/mrc_Im:",(int16_t*)&rxdataF_comp128_1[i]);
+      // printf("mrc mag0 = %d = %d \n",((int16_t*)&dl_ch_mag128_0[0])[0],((int16_t*)&dl_ch_mag128_0[0])[1]);
+      // printf("mrc mag0b = %d = %d \n",((int16_t*)&dl_ch_mag128_0b[0])[0],((int16_t*)&dl_ch_mag128_0b[0])[1]);
     }
 #endif
     if (rho) {
@@ -1683,7 +1675,7 @@ void nr_conjch0_mult_ch1(int *ch0,
  */
 static void nr_dlsch_mmse(uint32_t rx_size_symbol,
                           unsigned char n_rx,
-                          unsigned char n_tx, // number of layer
+                          unsigned char nl, // number of layer
                           int32_t rxdataF_comp[][n_rx][rx_size_symbol * NR_SYMBOLS_PER_SLOT],
                           int32_t dl_ch_mag[][n_rx][rx_size_symbol],
                           int32_t dl_ch_magb[][n_rx][rx_size_symbol],
@@ -1696,25 +1688,24 @@ static void nr_dlsch_mmse(uint32_t rx_size_symbol,
                           int length,
                           uint32_t noise_var)
 {
-  int *ch0r, *ch0c;
-  uint32_t nb_rb_0 = length/12 + ((length%12)?1:0);
+  uint32_t nb_rb_0 = length / 12 + ((length % 12) ? 1 : 0);
   c16_t determ_fin[12 * nb_rb_0] __attribute__((aligned(32)));
 
   ///Allocate H^*H matrix elements and sub elements
-  c16_t conjH_H_elements_data[n_rx][n_tx][n_tx][12 * nb_rb_0];
+  c16_t conjH_H_elements_data[n_rx][nl][nl][12 * nb_rb_0];
   memset(conjH_H_elements_data, 0, sizeof(conjH_H_elements_data));
-  c16_t *conjH_H_elements[n_rx][n_tx][n_tx];
+  c16_t *conjH_H_elements[n_rx][nl][nl];
   for (int aarx = 0; aarx < n_rx; aarx++)
-    for (int rtx = 0; rtx < n_tx; rtx++)
-      for (int ctx = 0; ctx < n_tx; ctx++)
+    for (int rtx = 0; rtx < nl; rtx++)
+      for (int ctx = 0; ctx < nl; ctx++)
         conjH_H_elements[aarx][rtx][ctx] = conjH_H_elements_data[aarx][rtx][ctx];
 
   //Compute H^*H matrix elements and sub elements:(1/2^log2_maxh)*conjH_H_elements
-  for (int rtx=0;rtx<n_tx;rtx++) {//row
-    for (int ctx=0;ctx<n_tx;ctx++) {//column
-      for (int aarx=0;aarx<n_rx;aarx++)  {
-        ch0r = (int *)dl_ch_estimates_ext[rtx*n_rx+aarx];
-        ch0c = (int *)dl_ch_estimates_ext[ctx*n_rx+aarx];
+  for (int rtx = 0; rtx < nl; rtx++) {//row
+    for (int ctx = 0; ctx < nl; ctx++) {//column
+      for (int aarx = 0; aarx < n_rx; aarx++)  {
+        int *ch0r = (int *)dl_ch_estimates_ext[rtx * n_rx + aarx];
+        int *ch0c = (int *)dl_ch_estimates_ext[ctx * n_rx + aarx];
         nr_conjch0_mult_ch1(ch0r,
                             ch0c,
                             (int32_t *)conjH_H_elements[aarx][ctx][rtx], // sic
@@ -1729,7 +1720,7 @@ static void nr_dlsch_mmse(uint32_t rx_size_symbol,
   // Add noise_var such that: H^h * H + noise_var * I
   if (noise_var != 0) {
     simde__m128i nvar_128i = simde_mm_set1_epi32(noise_var >> 3);
-    for (int p = 0; p < n_tx; p++) {
+    for (int p = 0; p < nl; p++) {
       simde__m128i *conjH_H_128i = (simde__m128i *)conjH_H_elements[0][p][p];
       for (int k = 0; k < 3 * nb_rb_0; k++) {
         conjH_H_128i[0] = simde_mm_add_epi32(conjH_H_128i[0], nvar_128i);
@@ -1740,15 +1731,15 @@ static void nr_dlsch_mmse(uint32_t rx_size_symbol,
 
   //Compute the inverse and determinant of the H^*H matrix
   //Allocate the inverse matrix
-  c16_t *inv_H_h_H[n_tx][n_tx];
-  c16_t inv_H_h_H_data[n_tx][n_tx][12 * nb_rb_0];
+  c16_t *inv_H_h_H[nl][nl];
+  c16_t inv_H_h_H_data[nl][nl][12 * nb_rb_0];
   memset(inv_H_h_H_data, 0, sizeof(inv_H_h_H_data));
-  for (int rtx = 0; rtx < n_tx; rtx++)
-    for (int ctx = 0; ctx < n_tx; ctx++)
+  for (int rtx = 0; rtx < nl; rtx++)
+    for (int ctx = 0; ctx < nl; ctx++)
       inv_H_h_H[ctx][rtx] = inv_H_h_H_data[ctx][rtx];
 
   int fp_flag = 1;//0: float point calc 1: Fixed point calc
-  nr_matrix_inverse(n_tx,
+  nr_matrix_inverse(nl,
                     conjH_H_elements[0], // Input matrix
                     inv_H_h_H, // Inverse
                     determ_fin, // determin
@@ -1759,30 +1750,33 @@ static void nr_dlsch_mmse(uint32_t rx_size_symbol,
   // multiply Matrix inversion pf H_h_H by the rx signal vector
   c16_t outtemp[12 * nb_rb_0] __attribute__((aligned(32)));
   //Allocate rxdataF for zforcing out
-  c16_t rxdataF_zforcing[n_tx][12 * nb_rb_0];
+  c16_t rxdataF_zforcing[nl][12 * nb_rb_0];
   memset(rxdataF_zforcing, 0, sizeof(rxdataF_zforcing));
 
-  for (int rtx=0;rtx<n_tx;rtx++) {//Output Layers row
+  for (int rtx = 0; rtx < nl; rtx++) {//Output Layers row
     // loop over Layers rtx=0,...,N_Layers-1
-    for (int ctx = 0; ctx < n_tx; ctx++) { // column multi
+    for (int ctx = 0; ctx < nl; ctx++) { // column multi
       // printf("Computing r_%d c_%d\n",rtx,ctx);
-      // print_shorts(" H_h_H=",(int16_t*)&conjH_H_elements[ctx*n_tx+rtx][0][0]);
-      // print_shorts(" Inv_H_h_H=",(int16_t*)&inv_H_h_H[ctx*n_tx+rtx][0]);
-      nr_a_mult_b(inv_H_h_H[ctx][rtx], (c16_t *)(rxdataF_comp[ctx][0] + symbol * nb_rb * 12), outtemp, nb_rb_0, shift - (fp_flag == 1 ? 2 : 0));
-      nr_a_sum_b(rxdataF_zforcing[rtx], outtemp,
-                 nb_rb_0); // a =a + b
+      // print_shorts(" H_h_H=",(int16_t*)&conjH_H_elements[ctx*nl+rtx][0][0]);
+      // print_shorts(" Inv_H_h_H=",(int16_t*)&inv_H_h_H[ctx*nl+rtx][0]);
+      nr_a_mult_b(inv_H_h_H[ctx][rtx],
+                  (c16_t *)(rxdataF_comp[ctx][0] + symbol * rx_size_symbol),
+                  outtemp,
+                  nb_rb_0,
+                  shift - (fp_flag == 1 ? 2 : 0));
+      nr_a_sum_b(rxdataF_zforcing[rtx], outtemp, nb_rb_0); // a = a + b
     }
 #ifdef DEBUG_DLSCH_DEMOD
-    printf("Computing layer_%d \n",rtx);;
-    print_shorts(" Rx signal:=",(int16_t*)&rxdataF_zforcing[rtx][0]);
-    print_shorts(" Rx signal:=",(int16_t*)&rxdataF_zforcing[rtx][4]);
-    print_shorts(" Rx signal:=",(int16_t*)&rxdataF_zforcing[rtx][8]);
+    printf("Computing layer_%d \n", rtx);
+    print_shorts(" Rx signal:=", (int16_t*)&rxdataF_zforcing[rtx][0]);
+    print_shorts(" Rx signal:=", (int16_t*)&rxdataF_zforcing[rtx][4]);
+    print_shorts(" Rx signal:=", (int16_t*)&rxdataF_zforcing[rtx][8]);
 #endif
   }
 
   //Copy zero_forcing out to output array
-  for (int rtx=0;rtx<n_tx;rtx++)
-    nr_element_sign(rxdataF_zforcing[rtx], (c16_t *)(rxdataF_comp[rtx][0] + symbol * nb_rb * 12), nb_rb_0, +1);
+  for (int rtx = 0; rtx < nl; rtx++)
+    nr_element_sign(rxdataF_zforcing[rtx], (c16_t *)(rxdataF_comp[rtx][0] + symbol * rx_size_symbol), nb_rb_0, + 1);
 
   //Update LLR thresholds with the Matrix determinant
   simde__m128i *dl_ch_mag128_0=NULL,*dl_ch_mag128b_0=NULL,*dl_ch_mag128r_0=NULL,*determ_fin_128;
@@ -1791,7 +1785,7 @@ static void nr_dlsch_mmse(uint32_t rx_size_symbol,
   short nr_realpart[8]__attribute__((aligned(16))) = {1,0,1,0,1,0,1,0};
   determ_fin_128      = (simde__m128i *)&determ_fin[0];
 
-  if (mod_order>2) {
+  if (mod_order > 2) {
     if (mod_order == 4) {
       QAM_amp128 = simde_mm_set1_epi16(QAM16_n1);  //2/sqrt(10)
       QAM_amp128b = simde_mm_setzero_si128();
@@ -1809,25 +1803,24 @@ static void nr_dlsch_mmse(uint32_t rx_size_symbol,
     dl_ch_mag128b_0 = (simde__m128i *)dl_ch_magb[0][0];
     dl_ch_mag128r_0 = (simde__m128i *)dl_ch_magr[0][0];
 
-    for (int rb=0; rb<3*nb_rb_0; rb++) {
+    for (int rb = 0; rb < 3 * nb_rb_0; rb++) {
       //for symmetric H_h_H matrix, the determinant is only real values
-        mmtmpD2 = simde_mm_sign_epi16(determ_fin_128[0],*(simde__m128i*)&nr_realpart[0]);//set imag part to 0
-        mmtmpD3 = simde_mm_shufflelo_epi16(mmtmpD2,SIMDE_MM_SHUFFLE(2,3,0,1));
-        mmtmpD3 = simde_mm_shufflehi_epi16(mmtmpD3,SIMDE_MM_SHUFFLE(2,3,0,1));
-        mmtmpD2 = simde_mm_add_epi16(mmtmpD2,mmtmpD3);
+      mmtmpD2 = simde_mm_sign_epi16(determ_fin_128[0],*(simde__m128i*)&nr_realpart[0]);//set imag part to 0
+      mmtmpD3 = simde_mm_shufflelo_epi16(mmtmpD2,SIMDE_MM_SHUFFLE(2,3,0,1));
+      mmtmpD3 = simde_mm_shufflehi_epi16(mmtmpD3,SIMDE_MM_SHUFFLE(2,3,0,1));
+      mmtmpD2 = simde_mm_add_epi16(mmtmpD2,mmtmpD3);
 
-        dl_ch_mag128_0[0] = mmtmpD2;
-        dl_ch_mag128b_0[0] = mmtmpD2;
-        dl_ch_mag128r_0[0] = mmtmpD2;
+      dl_ch_mag128_0[0] = mmtmpD2;
+      dl_ch_mag128b_0[0] = mmtmpD2;
+      dl_ch_mag128r_0[0] = mmtmpD2;
 
-        dl_ch_mag128_0[0] = simde_mm_mulhi_epi16(dl_ch_mag128_0[0],QAM_amp128);
-        dl_ch_mag128_0[0] = simde_mm_slli_epi16(dl_ch_mag128_0[0],1);
+      dl_ch_mag128_0[0] = simde_mm_mulhi_epi16(dl_ch_mag128_0[0],QAM_amp128);
+      dl_ch_mag128_0[0] = simde_mm_slli_epi16(dl_ch_mag128_0[0],1);
 
-        dl_ch_mag128b_0[0] = simde_mm_mulhi_epi16(dl_ch_mag128b_0[0],QAM_amp128b);
-        dl_ch_mag128b_0[0] = simde_mm_slli_epi16(dl_ch_mag128b_0[0],1);
-        dl_ch_mag128r_0[0] = simde_mm_mulhi_epi16(dl_ch_mag128r_0[0],QAM_amp128r);
-        dl_ch_mag128r_0[0] = simde_mm_slli_epi16(dl_ch_mag128r_0[0],1);
-
+      dl_ch_mag128b_0[0] = simde_mm_mulhi_epi16(dl_ch_mag128b_0[0],QAM_amp128b);
+      dl_ch_mag128b_0[0] = simde_mm_slli_epi16(dl_ch_mag128b_0[0],1);
+      dl_ch_mag128r_0[0] = simde_mm_mulhi_epi16(dl_ch_mag128r_0[0],QAM_amp128r);
+      dl_ch_mag128r_0[0] = simde_mm_slli_epi16(dl_ch_mag128r_0[0],1);
 
       determ_fin_128 += 1;
       dl_ch_mag128_0 += 1;
@@ -1876,60 +1869,44 @@ static void nr_dlsch_layer_demapping(int16_t *llr_cw[2],
   }
 }
 
-static int nr_dlsch_llr(uint32_t rx_size_symbol,
-                        int nbRx,
-                        uint sz,
-                        int16_t layer_llr[][sz],
-                        NR_DL_FRAME_PARMS *frame_parms,
-                        int32_t rxdataF_comp[][nbRx][rx_size_symbol * NR_SYMBOLS_PER_SLOT],
-                        int32_t dl_ch_mag[rx_size_symbol],
-                        int32_t dl_ch_magb[rx_size_symbol],
-                        int32_t dl_ch_magr[rx_size_symbol],
-                        NR_DL_UE_HARQ_t *dlsch0_harq,
-                        NR_DL_UE_HARQ_t *dlsch1_harq,
-                        unsigned char harq_pid,
-                        unsigned char first_symbol_flag,
-                        unsigned char symbol,
-                        unsigned short nb_rb,
-                        int32_t codeword_TB0,
-                        int32_t codeword_TB1,
-                        uint32_t len,
-                        uint8_t nr_slot_rx,
-                        NR_UE_DLSCH_t dlsch[2],
-                        uint32_t llr_offset[14])
+static void nr_dlsch_llr(uint32_t rx_size_symbol,
+                         int nbRx,
+                         uint sz,
+                         int16_t layer_llr[][sz],
+                         int32_t rxdataF_comp[][nbRx][rx_size_symbol * NR_SYMBOLS_PER_SLOT],
+                         int32_t dl_ch_mag[rx_size_symbol],
+                         int32_t dl_ch_magb[rx_size_symbol],
+                         int32_t dl_ch_magr[rx_size_symbol],
+                         NR_DL_UE_HARQ_t *dlsch0_harq,
+                         NR_DL_UE_HARQ_t *dlsch1_harq,
+                         unsigned char symbol,
+                         uint32_t len,
+                         NR_UE_DLSCH_t dlsch[2],
+                         uint32_t llr_offset_symbol)
 {
-  uint32_t llr_offset_symbol;
-  
-  if (first_symbol_flag==1)
-    llr_offset[symbol-1] = 0;
-  llr_offset_symbol = llr_offset[symbol-1];
-
-  llr_offset[symbol] = len*dlsch[0].dlsch_config.qamModOrder + llr_offset_symbol;
- 
   switch (dlsch[0].dlsch_config.qamModOrder) {
     case 2 :
-      for(int l=0; l < dlsch[0].Nl; l++)
-        nr_dlsch_qpsk_llr(frame_parms, rxdataF_comp[l][0], layer_llr[l] + llr_offset_symbol, symbol, len, first_symbol_flag, nb_rb);
+      for(int l = 0; l < dlsch[0].Nl; l++)
+        nr_qpsk_llr(&rxdataF_comp[l][0][symbol * rx_size_symbol], layer_llr[l] + llr_offset_symbol, len);
       break;
 
     case 4 :
-      for(int l=0; l < dlsch[0].Nl; l++)
-        nr_dlsch_16qam_llr(frame_parms, rxdataF_comp[l][0], layer_llr[l] + llr_offset_symbol, dl_ch_mag, symbol, len, first_symbol_flag, nb_rb);
+      for(int l = 0; l < dlsch[0].Nl; l++)
+        nr_16qam_llr(&rxdataF_comp[l][0][symbol * rx_size_symbol], dl_ch_mag, layer_llr[l] + llr_offset_symbol, len);
       break;
 
     case 6 :
       for(int l=0; l < dlsch[0].Nl; l++)
-        nr_dlsch_64qam_llr(frame_parms, rxdataF_comp[l][0], layer_llr[l] + llr_offset_symbol, dl_ch_mag, dl_ch_magb, symbol, len, first_symbol_flag, nb_rb);
+        nr_64qam_llr(&rxdataF_comp[l][0][symbol * rx_size_symbol], dl_ch_mag, dl_ch_magb, layer_llr[l] + llr_offset_symbol, len);
       break;
 
     case 8:
       for(int l=0; l < dlsch[0].Nl; l++)
-        nr_dlsch_256qam_llr(frame_parms, rxdataF_comp[l][0], layer_llr[l] + llr_offset_symbol, dl_ch_mag, dl_ch_magb, dl_ch_magr, symbol, len, first_symbol_flag, nb_rb);
+        nr_256qam_llr(&rxdataF_comp[l][0][symbol * rx_size_symbol], dl_ch_mag, dl_ch_magb, dl_ch_magr, layer_llr[l] + llr_offset_symbol, len);
       break;
 
     default:
-      LOG_W(PHY,"rx_dlsch.c : Unknown mod_order!!!!\n");
-      return(-1);
+      AssertFatal(false, "Unknown mod_order!!!!\n");
       break;
   }
 
@@ -1937,27 +1914,25 @@ static int nr_dlsch_llr(uint32_t rx_size_symbol,
   if (dlsch1_harq) {
     switch (dlsch[1].dlsch_config.qamModOrder) {
       case 2 :
-        nr_dlsch_qpsk_llr(frame_parms, rxdataF_comp[0][0], layer_llr[0] + llr_offset_symbol, symbol, len, first_symbol_flag, nb_rb);
+        nr_qpsk_llr(&rxdataF_comp[0][0][symbol * rx_size_symbol], layer_llr[0] + llr_offset_symbol, len);
         break;
 
       case 4:
-        nr_dlsch_16qam_llr(frame_parms, rxdataF_comp[0][0], layer_llr[0] + llr_offset_symbol, dl_ch_mag, symbol, len, first_symbol_flag, nb_rb);
+        nr_16qam_llr(&rxdataF_comp[0][0][symbol * rx_size_symbol], dl_ch_mag, layer_llr[0] + llr_offset_symbol, len);
         break;
 
       case 6 :
-        nr_dlsch_64qam_llr(frame_parms, rxdataF_comp[0][0], layer_llr[0] + llr_offset_symbol, dl_ch_mag, dl_ch_magb, symbol, len, first_symbol_flag, nb_rb);
+        nr_64qam_llr(&rxdataF_comp[0][0][symbol * rx_size_symbol], dl_ch_mag, dl_ch_magb, layer_llr[0] + llr_offset_symbol, len);
         break;
 
       case 8 :
-        nr_dlsch_256qam_llr(frame_parms, rxdataF_comp[0][0], layer_llr[0] + llr_offset_symbol, dl_ch_mag, dl_ch_magb, dl_ch_magr, symbol, len, first_symbol_flag, nb_rb);
+        nr_256qam_llr(&rxdataF_comp[0][0][symbol * rx_size_symbol], dl_ch_mag, dl_ch_magb, dl_ch_magr, layer_llr[0] + llr_offset_symbol, len);
         break;
 
       default:
-        LOG_W(PHY,"rx_dlsch.c : Unknown mod_order!!!!\n");
-        return(-1);
+        AssertFatal(false, "Unknown mod_order!!!!\n");
         break;
     }
   }
-  return 0;
 }
 //==============================================================================================

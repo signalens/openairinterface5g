@@ -31,8 +31,9 @@
 #define NGAP_MESSAGES_TYPES_H_
 #include "common/platform_constants.h"
 #include "common/platform_types.h"
-#include "common/ngran_types.h"
+#include "common/5g_platform_types.h"
 #include "LTE_asn_constant.h"
+#include "s1ap_messages_types.h"
 //-------------------------------------------------------------------------------------------//
 // Defines to access message fields.
 
@@ -196,16 +197,11 @@ typedef enum ngap_rrc_establishment_cause_e {
   NGAP_RRC_CAUSE_LAST
 } ngap_rrc_establishment_cause_t;
 
-typedef struct nssai_s {
-  uint8_t sst;
-  uint32_t sd;
-} nssai_t;
-
 typedef struct pdusession_level_qos_parameter_s {
   uint8_t qfi;
   uint64_t fiveQI;
   uint64_t qos_priority;
-  fiveQI_type_t fiveQI_type;
+  fiveQI_t fiveQI_type;
   ngap_allocation_retention_priority_t allocation_retention_priority;
 } pdusession_level_qos_parameter_t;
 
@@ -278,8 +274,6 @@ typedef struct pdusession_s {
   transport_layer_addr_t upf_addr;
   /* Outgoing (UL) NG-U Tunnel Endpoint Identifier (S-GW/UPF) */
   uint32_t gtp_teid;
-  /* Stores the DRB ID of the DRBs used by this PDU Session */
-  uint8_t used_drbs[MAX_DRBS_PER_UE];
   /* Incoming (DL) NG-U Tunnel Endpoint Identifier (S-GW/UPF) */
   uint32_t gNB_teid_N3;
   transport_layer_addr_t gNB_addr_N3;

@@ -170,35 +170,16 @@ static void nr_pdcch_demapping_deinterleaving(c16_t *llr,
   }
 
   int rb_count = 0;
-  int data_sc = 9; // 9 sub-carriers with data per PRB
+  const int data_sc = 9; // 9 sub-carriers with data per PRB
   for (int c_id = 0; c_id < number_of_candidates; c_id++) {
     for (int symbol_idx = start_symbol; symbol_idx < start_symbol + coreset_time_dur; symbol_idx++) {
       for (int cce_count = 0; cce_count < L[c_id]; cce_count++) {
         for (int k = 0; k < NR_NB_REG_PER_CCE / reg_bundle_size_L; k++) { // loop over REG bundles
           int f = f_bundle_j_list_ord[c_id][k + NR_NB_REG_PER_CCE * cce_count / reg_bundle_size_L];
-          for (int rb = 0; rb < B_rb; rb++) { // loop over the RBs of the bundle
-            c16_t *out = e_rx + data_sc * rb_count;
-            c16_t *in = llr + (uint16_t)(f * B_rb + rb + symbol_idx * coreset_nbr_rb) * data_sc;
-            for (int i = 0; i < data_sc; i++) {
-              out[i] = in[i];
-#ifdef NR_PDCCH_DCI_DEBUG
-              LOG_I(NR_PHY_DCI,
-                    "[candidate=%d,symbol_idx=%d,cce=%d,REG bundle=%d,PRB=%d] z[%d]=(%d,%d) <-> \t llr[%d]=(%d,%d) \n",
-                    c_id,
-                    symbol_idx,
-                    cce_count,
-                    k,
-                    f * B_rb + rb,
-                    (index_z + i),
-                    out->r,
-                    out->i,
-                    index_llr + i,
-                    in.r,
-                    in.i);
-#endif
-            }
-            rb_count++;
-          }
+          c16_t *in = llr + (f * B_rb + symbol_idx * coreset_nbr_rb) * data_sc;
+          // loop over the RBs of the bundle
+          memcpy(e_rx + data_sc * rb_count, in, B_rb * data_sc * sizeof(*e_rx));
+          rb_count += B_rb;
         }
       }
     }

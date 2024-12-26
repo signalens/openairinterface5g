@@ -35,6 +35,7 @@
 #include "PHY/NR_REFSIG/nr_mod_table.h"
 #include "openair2/COMMON/prs_nr_paramdef.h"
 #include "SCHED_NR_UE/harq_nr.h"
+#include "nr-uesoftmodem.h"
 
 void RCconfig_nrUE_prs(void *cfg)
 {
@@ -277,14 +278,13 @@ int init_nr_ue_signal(PHY_VARS_NR_UE *ue, int nb_connected_gNB)
   }
 
   ue->init_averaging = 1;
-
-  // enable MIB/SIB decoding by default
-  ue->decode_MIB = 1;
-  ue->decode_SIB = 1;
-
   init_nr_prach_tables(839);
   init_symbol_rotation(fp);
   init_timeshift_rotation(fp);
+
+  // initialize to false only for SA since in do-ra and phy-test it is already set to true before getting here
+  if (get_softmodem_params()->sa)
+    ue->received_config_request = false;
 
   return 0;
 }
@@ -499,47 +499,21 @@ void clean_UE_harq(PHY_VARS_NR_UE *UE)
 }
 
 
-void init_N_TA_offset(PHY_VARS_NR_UE *ue){
-
+void init_N_TA_offset(PHY_VARS_NR_UE *ue)
+{
   NR_DL_FRAME_PARMS *fp = &ue->frame_parms;
 
   // No timing offset for Sidelink, refer to 3GPP 38.211 Section 8.5
-  if (fp->frame_type == FDD || ue->sl_mode == 2) {
+  if (ue->sl_mode == 2)
     ue->N_TA_offset = 0;
-  } else {
-    int N_TA_offset = fp->ul_CarrierFreq < 6e9 ? 400 : 431; // reference samples  for 25600Tc @ 30.72 Ms/s for FR1, same @ 61.44 Ms/s for FR2
+  else
+    ue->N_TA_offset = set_default_nta_offset(fp->freq_range, fp->samples_per_subframe);
+  ue->ta_frame = -1;
+  ue->ta_slot = -1;
 
-    double factor = 1.0;
-    switch (fp->numerology_index) {
-      case 0: //15 kHz scs
-        AssertFatal(N_TA_offset == 400, "scs_common 15kHz only for FR1\n");
-        factor = fp->samples_per_subframe / 30720.0;
-        break;
-      case 1: //30 kHz sc
-        AssertFatal(N_TA_offset == 400, "scs_common 30kHz only for FR1\n");
-        factor = fp->samples_per_subframe / 30720.0;
-        break;
-      case 2: //60 kHz scs
-        AssertFatal(1==0, "scs_common should not be 60 kHz\n");
-        break;
-      case 3: //120 kHz scs
-        AssertFatal(N_TA_offset == 431, "scs_common 120kHz only for FR2\n");
-        factor = fp->samples_per_subframe / 61440.0;
-        break;
-      case 4: //240 kHz scs
-        AssertFatal(N_TA_offset == 431, "scs_common 240kHz only for FR2\n");
-        factor = fp->samples_per_subframe / 61440.0;
-        break;
-      default:
-        AssertFatal(1==0, "Invalid scs_common!\n");
-    }
-
-    ue->N_TA_offset = (int)(N_TA_offset * factor);
-    ue->ta_frame = -1;
-    ue->ta_slot = -1;
-
-    LOG_I(PHY,"UE %d Setting N_TA_offset to %d samples (factor %f, UL Freq %lu, N_RB %d, mu %d)\n", ue->Mod_id, ue->N_TA_offset, factor, fp->ul_CarrierFreq, fp->N_RB_DL, fp->numerology_index);
-  }
+  LOG_I(PHY,
+        "UE %d Setting N_TA_offset to %d samples (UL Freq %lu, N_RB %d, mu %d)\n",
+        ue->Mod_id, ue->N_TA_offset, fp->ul_CarrierFreq, fp->N_RB_DL, fp->numerology_index);
 }
 
 void phy_init_nr_top(PHY_VARS_NR_UE *ue) {

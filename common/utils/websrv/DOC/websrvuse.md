@@ -38,6 +38,20 @@ $ sudo dnf install -y jansson-devel npm curl wget
 
 ulfius has to be installed as explained [here](https://github.com/babelouest/ulfius/blob/master/INSTALL.md#pre-compiled-packages).
 
+## Install from source if needed
+
+```bash
+sudo dnf install -y jansson-devel npm curl wget libmicrohttpd-devel curl curlpp-devel systemd-devel
+git clone https://github.com/babelouest/orcania.git
+cd orcania; mkdir build; cd build; cmake ..; sudo make install
+cd
+git clone https://github.com/babelouest/yder.git
+cd yder ; mkdir build; cd build; cmake ..; sudo make install
+git clone https://github.com/babelouest/ulfius.git
+cd ulfius
+mkdir build; cd build; cmake ..; sudo make install
+```
+
 ## Additional dependencies for the frontend
 
 Currently the web server frontend can run with nodejs 18, you can check the
@@ -54,6 +68,16 @@ beyond this doc.
 
 For example, to install a specific nodeJS version, you can run the below
 command, with the typical output printed below for your convenience:
+
+install method by nvm
+```bash
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.3/install.sh | bash
+source ~/.bashrc
+nvm install 18
+nvm use 18
+```
+
+install by apt-get
 ```bash
 $ curl -s https://deb.nodesource.com/setup_18.x | sudo bash
 
@@ -244,7 +268,7 @@ The web server back-end is using the [oai configuration module](Config/Rtusage).
 | `listenaddr` | `ipV4 address, ascii format` | "0.0.0.0" | local address the back-end  is listening on |
 | `listenport` | `integer` | 8090 | port number the server is listening on |
 | debug | `integer` | 0 | When not 0, http  requests headers and json objects dump are added to back-end traces |
-| fpath | character string | websrv | The path to on-disk http server resources . The default value matches the front-end installation when running  the softmodem from the executables repository. |
+| fpath | character string | common/utils/websrv | The path to on-disk http server resources . The default value matches the front-end installation when running  the softmodem from the executables repository. |
 | cert, key, rootca | `character string` | null | certificates and key used to trigger https protocol (not tested) |
 |                   |                              |                   |                                                              |
 

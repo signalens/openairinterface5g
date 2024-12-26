@@ -153,6 +153,7 @@ void nr_dlsim_preprocessor(module_id_t module_id,
                                       /* CC_id = */ 0,
                                       sched_ctrl->aggregation_level,
                                       nr_of_candidates,
+                                      0,
                                       &sched_ctrl->sched_pdcch,
                                       sched_ctrl->coreset,
                                       Y);
@@ -459,7 +460,7 @@ int main(int argc, char **argv)
 
     case 'P':
       print_perf=1;
-      opp_enabled=1;
+      cpu_meas_enabled = 1;
       break;
       
     case 'I':
@@ -662,6 +663,7 @@ int main(int argc, char **argv)
     RC.nb_nr_mac_CC[i] = 1;
   mac_top_init_gNB(ngran_gNB, scc, NULL, &conf);
   gNB_mac = RC.nrmac[0];
+  nr_mac_config_scc(RC.nrmac[0], scc, &conf);
 
   gNB_mac->dl_bler.harq_round_max = num_rounds;
 
@@ -981,8 +983,8 @@ int main(int argc, char **argv)
 
       NR_gNB_DLSCH_t *gNB_dlsch = &msgDataTx->dlsch[0][0];
       nfapi_nr_dl_tti_pdsch_pdu_rel15_t *rel15 = &gNB_dlsch->harq_process.pdsch_pdu.pdsch_pdu_rel15;
-      
-      UE_harq_process->ack = 0;
+
+      UE_harq_process->decodeResult = false;
       round = 0;
       UE_harq_process->DLround = round;
       UE_harq_process->first_rx = 1;
@@ -995,7 +997,7 @@ int main(int argc, char **argv)
       memset(Sched_INFO, 0, sizeof(*Sched_INFO));
       Sched_INFO->sched_response_id = -1;
 
-      while ((round<num_rounds) && (UE_harq_process->ack==0)) {
+      while (round < num_rounds && !UE_harq_process->decodeResult) {
         round_trials[round]++;
 
         clear_nr_nfapi_information(RC.nrmac[0], 0, frame, slot, &Sched_INFO->DL_req, &Sched_INFO->TX_req, &Sched_INFO->UL_dci_req);
@@ -1041,24 +1043,33 @@ int main(int argc, char **argv)
         int txdataF_offset = slot * frame_parms->samples_per_slot_wCP;
         
         if (n_trials==1) {
-          LOG_M("txsigF0.m","txsF0=", &gNB->common_vars.txdataF[0][txdataF_offset+2*frame_parms->ofdm_symbol_size],frame_parms->ofdm_symbol_size,1,1);
+          LOG_M("txsigF0.m","txsF0=",
+                &gNB->common_vars.txdataF[0][0][txdataF_offset +2 * frame_parms->ofdm_symbol_size],
+                frame_parms->ofdm_symbol_size,
+                1,
+                1);
           if (gNB->frame_parms.nb_antennas_tx>1)
-            LOG_M("txsigF1.m","txsF1=", &gNB->common_vars.txdataF[1][txdataF_offset+2*frame_parms->ofdm_symbol_size],frame_parms->ofdm_symbol_size,1,1);
+            LOG_M("txsigF1.m","txsF1=",
+                  &gNB->common_vars.txdataF[0][1][txdataF_offset + 2 * frame_parms->ofdm_symbol_size],
+                  frame_parms->ofdm_symbol_size,
+                  1,
+                  1);
         }
-        if (n_trials == 1) printf("slot_offset %d, txdataF_offset %d \n", slot_offset, txdataF_offset);
+        if (n_trials == 1)
+          printf("slot_offset %d, txdataF_offset %d \n", slot_offset, txdataF_offset);
 
         //TODO: loop over slots
         for (aa=0; aa<gNB->frame_parms.nb_antennas_tx; aa++) {
 
           if (cyclic_prefix_type == 1) {
-            PHY_ofdm_mod((int *)&gNB->common_vars.txdataF[aa][txdataF_offset],
+            PHY_ofdm_mod((int *)&gNB->common_vars.txdataF[0][aa][txdataF_offset],
                          (int *)&txdata[aa][slot_offset],
                          frame_parms->ofdm_symbol_size,
                          12,
                          frame_parms->nb_prefix_samples,
                          CYCLIC_PREFIX);
           } else {
-            nr_normal_prefix_mod(&gNB->common_vars.txdataF[aa][txdataF_offset],
+            nr_normal_prefix_mod(&gNB->common_vars.txdataF[0][aa][txdataF_offset],
                                  &txdata[aa][slot_offset],
                                  14,
                                  frame_parms,
@@ -1177,7 +1188,8 @@ int main(int argc, char **argv)
 	  printf("errors_bit = %u (trial %d)\n", errors_bit, trial);
       }
       roundStats += ((float)round);
-      if (UE_harq_process->ack==1) effRate += ((float)TBS)/round;
+      if (UE_harq_process->decodeResult)
+        effRate += ((float)TBS) / round;
     } // noise trials
 
     roundStats /= ((float)n_trials);

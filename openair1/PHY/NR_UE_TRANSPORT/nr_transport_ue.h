@@ -122,7 +122,7 @@ typedef struct {
   /// codeword this transport block is mapped to
   uint8_t codeword;
   /// HARQ-ACKs
-  uint8_t ack;
+  bool decodeResult;
   /// Last index of LLR buffer that contains information.
   /// Used for computing LDPC decoder R
   int llrLen;

@@ -66,6 +66,7 @@ RUN apt-get update && \
       libssl-dev:arm64 \
       libtool:arm64 \
       zlib1g-dev:arm64 \
+      libyaml-cpp-dev:arm64 \
       # cross build libs and compilers
       libc6-dev-i386 \
       gcc-11-aarch64-linux-gnu \

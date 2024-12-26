@@ -340,7 +340,7 @@ int test_viterbi(uint8_t dabflag)
 int main(int argc, char **argv)
 {
 
-  char c;
+  int c;
   uint8_t dabflag=0;
 
   while ((c = getopt (argc, argv, "d")) != -1) {

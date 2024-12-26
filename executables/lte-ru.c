@@ -1460,7 +1460,7 @@ static void *ru_stats_thread(void *param) {
   while (!oai_exit) {
     sleep(1);
 
-    if (opp_enabled) {
+    if (cpu_meas_enabled) {
       if (ru->feprx) print_meas(&ru->ofdm_demod_stats,"feprx_ru",NULL,NULL);
 
       if (ru->feptx_ofdm) print_meas(&ru->ofdm_mod_stats,"feptx_ofdm_ru",NULL,NULL);
@@ -2322,7 +2322,7 @@ void init_RU_proc(RU_t *ru) {
     init_feptx_thread(ru, NULL);
   }
 
-  if (opp_enabled == 1)
+  if (cpu_meas_enabled)
     pthread_create(&ru->ru_stats_thread, NULL, ru_stats_thread, (void *)ru);
 }
 
@@ -2420,7 +2420,7 @@ void kill_RU_proc(RU_t *ru) {
     }
   }
 
-  if (opp_enabled) {
+  if (cpu_meas_enabled) {
     LOG_D(PHY, "Joining ru_stats_thread\n");
     pthread_join(ru->ru_stats_thread, NULL);
   }

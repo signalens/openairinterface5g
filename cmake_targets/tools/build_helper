@@ -40,7 +40,7 @@ case "$OS_DISTRO" in
   fedora) OS_BASEDISTRO="fedora"; INSTALLER="dnf"; CMAKE="cmake" ;;
   rhel)   OS_BASEDISTRO="fedora"; INSTALLER="dnf"; CMAKE="cmake3" ;;
   rocky)  OS_BASEDISTRO="fedora"; INSTALLER="dnf"; CMAKE="cmake" ;;
-  centos) OS_BASEDISTRO="centos"; INSTALLER="yum"; CMAKE="cmake3" ;;
+  centos) OS_BASEDISTRO="fedora"; INSTALLER="dnf"; CMAKE="cmake3" ;; # CentOS Stream
   debian) OS_BASEDISTRO="debian"; INSTALLER="apt-get"; CMAKE="cmake" ;;
   ubuntu) OS_BASEDISTRO="debian"; INSTALLER="apt-get"; CMAKE="cmake" ;;
 esac
@@ -48,7 +48,7 @@ KERNEL_VERSION=$(uname -r | cut -d '.' -f1)
 KERNEL_MAJOR=$(uname -r | cut -d '.' -f2)
 
 #check if we run inside a container
-IS_CONTAINER=`egrep -c "docker|podman|kubepods|libpod|buildah" /proc/self/cgroup || true`
+IS_CONTAINER=`grep -E -c "docker|podman|kubepods|libpod|buildah" /proc/self/cgroup || true`
 #sudo is not needed when we are root
 if [ "$UID" = 0 ]
 then
@@ -110,18 +110,10 @@ check_supported_distribution() {
     local distribution=$(get_distribution_release)
     case "$distribution" in
         "ubuntu24.04") return 0 ;;
-        "ubuntu23.10") return 0 ;;
         "ubuntu22.04") return 0 ;;
-        "ubuntu21.04") return 0 ;;
         "ubuntu20.04") return 0 ;;
         "debian11")    return 0 ;;
-        "fedora36")    return 0 ;;
-        "fedora37")    return 0 ;;
-        "rhel7")       return 0 ;;
-        "rhel7.6")     return 0 ;;
-        "rhel7.7")     return 0 ;;
-        "rhel7.8")     return 0 ;;
-        "rhel7.9")     return 0 ;;
+        "fedora40")    return 0 ;;
         "rhel8.2")     return 0 ;;
         "rhel8.3")     return 0 ;;
         "rhel8.4")     return 0 ;;
@@ -135,14 +127,14 @@ check_supported_distribution() {
         "rhel9.2")     return 0 ;;
         "rhel9.3")     return 0 ;;
         "rhel9.4")     return 0 ;;
-        "centos7")     return 0 ;;
-        "centos8")     return 0 ;;
+        "centos9")     return 0 ;; # CentOS stream
         "rocky8.7")    return 0 ;;
         "rocky8.8")    return 0 ;;
         "rocky8.9")    return 0 ;;
         "rocky9.1")    return 0 ;;
         "rocky9.2")    return 0 ;;
         "rocky9.3")    return 0 ;;
+        "rocky9.4")    return 0 ;;
     esac
     return 1
 }
@@ -201,7 +193,7 @@ check_warnings() {
   #we look for 'warning:' in the compilation log file
   #this is how gcc starts a warning
   #this is not perfect, we may get false positive
-  warning_count=`grep "warning:" "$1" | egrep -v "jobserver unavailable|disabling jobserver mode" | wc -l`
+  warning_count=`grep "warning:" "$1" | grep -E -v "jobserver unavailable|disabling jobserver mode" | wc -l`
   if [ $warning_count -gt 0 ]; then
     echo_error "WARNING: $warning_count warnings. See $1"
   fi
@@ -308,7 +300,8 @@ install_usrp_uhd_driver_from_source(){
     mkdir -p host/build
     cd host/build || true
     sed -i 's/HAVE_PYTHON_MODULE_MAKO\" OFF ON)/HAVE_PYTHON_MODULE_MAKO\" ON ON)/g' /tmp/uhd/host/CMakeLists.txt || true
-    $CMAKE ../ -G Ninja
+    #$CMAKE ../ -G Ninja
+    $CMAKE ../ -GNinja -DENABLE_TESTS=OFF -DENABLE_EXAMPLES=OFF
     echo "Compiling UHD"
     ninja
     $SUDO ninja install
@@ -407,16 +400,16 @@ install_usrp_uhd_driver() {
         # On newer kernels, it fails to install
         $SUDO apt-get -y install uhd-host
     fi
-    # quick workaround for RHE7.6
+    # quick workaround for below distributions
     local distribution=$(get_distribution_release)
     if [ -z $1 ]; then
-      if [[ "$OS_DISTRO" == "rhel" ]] || [[ "$OS_DISTRO" == "rocky" ]]; then
+      if [[ "$OS_DISTRO" == "rhel" ]] || [[ "$OS_DISTRO" == "rocky" ]] || [[ "$OS_DISTRO" == "centos" ]]; then
           $SUDO /usr/local/bin/uhd_images_downloader
       else
           $SUDO uhd_images_downloader
       fi
     else
-      if [[ "$OS_DISTRO" == "rhel" ]] || [[ "$OS_DISTRO" == "rocky" ]]; then
+      if [[ "$OS_DISTRO" == "rhel" ]] || [[ "$OS_DISTRO" == "rocky" ]] || [[ "$OS_DISTRO" == "centos" ]]; then
           $SUDO /usr/local/bin/uhd_images_downloader -i $1
       else
           $SUDO uhd_images_downloader -i $1
@@ -556,7 +549,7 @@ check_install_additional_tools (){
   local optional_packages=""
   if [[ "$OS_BASEDISTRO" == "debian" ]]; then
     case "$(get_distribution_release)" in
-        "ubuntu20.04" | "ubuntu21.04" | "ubuntu22.04" | "debian11" )
+        "ubuntu20.04" | "ubuntu22.04" | "debian11" )
             optional_packages="python3 python3-pip python3-dev python3-scipy python3-matplotlib python3-pyroute2 universal-ctags"
             ;;
     esac
@@ -626,8 +619,9 @@ check_install_oai_software() {
 	libtool  \
 	patch \
 	openssl \
-        zlib1g-dev \
-        xxd
+	zlib1g-dev \
+	xxd \
+	libyaml-cpp-dev
 
   elif [[ "$OS_BASEDISTRO" == "fedora" ]]; then
     if [[ "$OS_DISTRO" == "rhel" ]] || [[ "$OS_DISTRO" == "centos" ]] || [[ "$OS_DISTRO" == "rocky" ]]; then
@@ -663,7 +657,8 @@ check_install_oai_software() {
       blas \
       blas-devel \
       vim-common \
-      zlib-devel
+      zlib-devel \
+      yaml-cpp-devel
   fi
 
     install_asn1c_from_source $1
@@ -708,8 +703,8 @@ install_simde_from_source(){
     if [[ -v SIMDE_VERSION ]]; then
       git checkout -f $SIMDE_VERSION
     else
-      # At time of writing, last working commit for OAI
-      git checkout 389f360a66d4a3bec62b7d71ad8be877487809ba
+      # At time of writing, last working commit for OAI: 1a09d3bc
+      git checkout 1a09d3bc9de47c4d9a5daa23eb753d5322748201
     fi
     # Showing which version is used
     git log -n1

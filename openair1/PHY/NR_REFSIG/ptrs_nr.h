@@ -53,6 +53,8 @@ void set_ptrs_symb_idx(uint16_t *ptrs_symbols,
                        uint8_t L_ptrs,
                        uint16_t dmrs_symb_pos);
 
+unsigned int get_first_ptrs_re(const rnti_t rnti, const uint8_t K_ptrs, const uint16_t nRB, const uint8_t k_RE_ref);
+
 uint8_t is_ptrs_subcarrier(uint16_t k,
                            uint16_t n_rnti,
                            uint8_t K_ptrs,

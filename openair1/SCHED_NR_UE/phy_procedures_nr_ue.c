@@ -137,16 +137,26 @@ void nr_fill_rx_indication(fapi_nr_rx_indication_t *rx_ind,
       if(dlsch0) {
         NR_DL_UE_HARQ_t *dl_harq0 = &ue->dl_harq_processes[0][dlsch0->dlsch_config.harq_process_nbr];
         rx->pdsch_pdu.harq_pid = dlsch0->dlsch_config.harq_process_nbr;
-        rx->pdsch_pdu.ack_nack = dl_harq0->ack;
+        rx->pdsch_pdu.ack_nack = dl_harq0->decodeResult;
         rx->pdsch_pdu.pdu = b;
         rx->pdsch_pdu.pdu_length = dlsch0->dlsch_config.TBS / 8;
-        if (dl_harq0->ack) {
+        if (dl_harq0->decodeResult) {
           int t = WS_C_RNTI;
           if (pdu_type == FAPI_NR_RX_PDU_TYPE_RAR)
             t = WS_RA_RNTI;
           if (pdu_type == FAPI_NR_RX_PDU_TYPE_SIB)
             t = WS_SI_RNTI;
-          trace_NRpdu(DIRECTION_DOWNLINK, b, rx->pdsch_pdu.pdu_length, t, dlsch0->rnti, proc->frame_rx, proc->nr_slot_rx, 0, 0);
+          ws_trace_t tmp = {.nr = true,
+                            .direction = DIRECTION_DOWNLINK,
+                            .pdu_buffer = b,
+                            .pdu_buffer_size = rx->pdsch_pdu.pdu_length,
+                            .ueid = 0,
+                            .rntiType = t,
+                            .rnti = dlsch0->rnti,
+                            .sysFrame = proc->frame_rx,
+                            .subframe = proc->nr_slot_rx,
+                            .harq_pid = dlsch0->dlsch_config.harq_process_nbr};
+          trace_pdu(&tmp);
         }
       }
       if(dlsch1) {
@@ -276,10 +286,12 @@ void phy_procedures_nrUE_TX(PHY_VARS_NR_UE *ue, const UE_nr_rxtx_proc_t *proc, n
   LOG_D(PHY,"****** start TX-Chain for AbsSubframe %d.%d ******\n", frame_tx, slot_tx);
 
   start_meas_nr_ue_phy(ue, PHY_PROC_TX);
-  for (uint8_t harq_pid = 0; harq_pid < NR_MAX_ULSCH_HARQ_PROCESSES; harq_pid++) {
-    if (ue->ul_harq_processes[harq_pid].ULstatus == ACTIVE) {
-      nr_ue_ulsch_procedures(ue, harq_pid, frame_tx, slot_tx, gNB_id, phy_data, (c16_t **)&txdataF);
-    }
+
+  const int harq_pid = phy_data->ulsch.pusch_pdu.pusch_data.harq_process_id;
+  if (ue->ul_harq_processes[harq_pid].ULstatus == ACTIVE) {
+    start_meas_nr_ue_phy(ue, PUSCH_PROC_STATS);
+    nr_ue_ulsch_procedures(ue, harq_pid, frame_tx, slot_tx, gNB_id, phy_data, (c16_t **)&txdataF);
+    stop_meas_nr_ue_phy(ue, PUSCH_PROC_STATS);
   }
 
   ue_srs_procedures_nr(ue, proc, (c16_t **)&txdataF);
@@ -287,12 +299,14 @@ void phy_procedures_nrUE_TX(PHY_VARS_NR_UE *ue, const UE_nr_rxtx_proc_t *proc, n
   pucch_procedures_ue_nr(ue, proc, phy_data, (c16_t **)&txdataF);
 
   LOG_D(PHY, "Sending Uplink data \n");
+  start_meas_nr_ue_phy(ue, OFDM_MOD_STATS);
   nr_ue_pusch_common_procedures(ue,
                                 proc->nr_slot_tx,
                                 &ue->frame_parms,
                                 ue->frame_parms.nb_antennas_tx,
                                 (c16_t **)txdataF,
                                 link_type_ul);
+  stop_meas_nr_ue_phy(ue, OFDM_MOD_STATS);
 
   nr_ue_prach_procedures(ue, proc);
 
@@ -500,7 +514,7 @@ static int nr_ue_pdsch_procedures(PHY_VARS_NR_UE *ue,
     int32_t ptrs_re_per_slot[ue->frame_parms.nb_antennas_rx][NR_SYMBOLS_PER_SLOT];
     memset(ptrs_re_per_slot, 0, sizeof(ptrs_re_per_slot));
 
-    const uint32_t rx_size_symbol = dlsch[0].dlsch_config.number_rbs * NR_NB_SC_PER_RB;
+    const uint32_t rx_size_symbol = (dlsch[0].dlsch_config.number_rbs * NR_NB_SC_PER_RB + 15) & ~15;
     __attribute__((aligned(32))) int32_t rxdataF_comp[dlsch[0].Nl][ue->frame_parms.nb_antennas_rx][rx_size_symbol * NR_SYMBOLS_PER_SLOT];
     memset(rxdataF_comp, 0, sizeof(rxdataF_comp));
 
@@ -868,7 +882,7 @@ int pbch_pdcch_processing(PHY_VARS_NR_UE *ue, const UE_nr_rxtx_proc_t *proc, nr_
   fapi_nr_config_request_t *cfg = &ue->nrUE_config;
   NR_DL_FRAME_PARMS *fp = &ue->frame_parms;
   NR_UE_PDCCH_CONFIG *phy_pdcch_config = &phy_data->phy_pdcch_config;
-  int sampleShift = 0;
+  int sampleShift = INT_MAX;
   nr_ue_dlsch_init(phy_data->dlsch, NR_MAX_NB_LAYERS>4 ? 2:1, ue->max_ldpc_iterations);
   
   VCD_SIGNAL_DUMPER_DUMP_FUNCTION_BY_NAME(VCD_SIGNAL_DUMPER_FUNCTIONS_PHY_PROCEDURES_UE_RX, VCD_FUNCTION_IN);
@@ -898,7 +912,14 @@ int pbch_pdcch_processing(PHY_VARS_NR_UE *ue, const UE_nr_rxtx_proc_t *proc, nr_
           __attribute__ ((aligned(32))) struct complex16 dl_ch_estimates_time[fp->nb_antennas_rx][fp->ofdm_symbol_size];
 
           for (int i=1; i<4; i++) {
-            nr_slot_fep(ue, fp, proc, (ssb_start_symbol + i) % (fp->symbols_per_slot), rxdataF, link_type_dl);
+            nr_slot_fep(ue,
+                        fp,
+                        proc->nr_slot_rx,
+                        (ssb_start_symbol + i) % (fp->symbols_per_slot),
+                        rxdataF,
+                        link_type_dl,
+                        0,
+                        ue->common_vars.rxdata);
 
             nr_pbch_channel_estimation(&ue->frame_parms,
                                        NULL,
@@ -962,7 +983,7 @@ int pbch_pdcch_processing(PHY_VARS_NR_UE *ue, const UE_nr_rxtx_proc_t *proc, nr_
         {
           for(int j = prs_config->SymbolStart; j < (prs_config->SymbolStart+prs_config->NumPRSSymbols); j++)
           {
-            nr_slot_fep(ue, fp, proc, (j % fp->symbols_per_slot), rxdataF, link_type_dl);
+            nr_slot_fep(ue, fp, proc->nr_slot_rx, (j % fp->symbols_per_slot), rxdataF, link_type_dl, 0, ue->common_vars.rxdata);
           }
           nr_prs_channel_estimation(gNB_id, rsc_id, i, ue, proc, fp, rxdataF);
         }
@@ -991,7 +1012,7 @@ int pbch_pdcch_processing(PHY_VARS_NR_UE *ue, const UE_nr_rxtx_proc_t *proc, nr_
 
   uint8_t nb_symb_pdcch = phy_pdcch_config->nb_search_space > 0 ? phy_pdcch_config->pdcch_config[0].coreset.duration : 0;
   for (uint16_t l=0; l<nb_symb_pdcch; l++) {
-    nr_slot_fep(ue, fp, proc, l, rxdataF, link_type_dl);
+    nr_slot_fep(ue, fp, proc->nr_slot_rx, l, rxdataF, link_type_dl, 0, ue->common_vars.rxdata);
   }
 
     // Hold the channel estimates in frequency domain.
@@ -1041,7 +1062,7 @@ void pdsch_processing(PHY_VARS_NR_UE *ue, const UE_nr_rxtx_proc_t *proc, nr_phy_
     for(int symb_idx = 0; symb_idx < 4; symb_idx++) {
       int symb = ue->csiim_vars[gNB_id]->csiim_config_pdu.l_csiim[symb_idx];
       if (!slot_fep_map[symb]) {
-        nr_slot_fep(ue, &ue->frame_parms, proc, symb, rxdataF, link_type_dl);
+        nr_slot_fep(ue, &ue->frame_parms, proc->nr_slot_rx, symb, rxdataF, link_type_dl, 0, ue->common_vars.rxdata);
         slot_fep_map[symb] = true;
       }
     }
@@ -1054,13 +1075,12 @@ void pdsch_processing(PHY_VARS_NR_UE *ue, const UE_nr_rxtx_proc_t *proc, nr_phy_
     for(int symb = 0; symb < NR_SYMBOLS_PER_SLOT; symb++) {
       if(is_csi_rs_in_symbol(ue->csirs_vars[gNB_id]->csirs_config_pdu, symb)) {
         if (!slot_fep_map[symb]) {
-          nr_slot_fep(ue, &ue->frame_parms, proc, symb, rxdataF, link_type_dl);
+          nr_slot_fep(ue, &ue->frame_parms, proc->nr_slot_rx, symb, rxdataF, link_type_dl, 0, ue->common_vars.rxdata);
           slot_fep_map[symb] = true;
         }
       }
     }
     nr_ue_csi_rs_procedures(ue, proc, rxdataF);
-    ue->csirs_vars[gNB_id]->active = 0;
   }
 
   if (dlsch[0].active) {
@@ -1073,7 +1093,7 @@ void pdsch_processing(PHY_VARS_NR_UE *ue, const UE_nr_rxtx_proc_t *proc, nr_phy_
 
     for (int m = start_symb_sch; m < (nb_symb_sch + start_symb_sch) ; m++) {
       if (!slot_fep_map[m]) {
-        nr_slot_fep(ue, &ue->frame_parms, proc, m, rxdataF, link_type_dl);
+        nr_slot_fep(ue, &ue->frame_parms, proc->nr_slot_rx, m, rxdataF, link_type_dl, 0, ue->common_vars.rxdata);
         slot_fep_map[m] = true;
       }
     }

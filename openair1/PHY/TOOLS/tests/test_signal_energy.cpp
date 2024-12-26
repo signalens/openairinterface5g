@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 extern "C" {
 #include "openair1/PHY/TOOLS/tools_defs.h"
-extern int32_t signal_energy_nodc(const c16_t *input, uint32_t length);
+extern uint32_t signal_energy_nodc(const c16_t *input, uint32_t length);
 }
 #include <vector>
 #include <algorithm>

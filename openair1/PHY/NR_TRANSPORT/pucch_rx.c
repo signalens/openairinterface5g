@@ -42,7 +42,7 @@
 #include "PHY/defs_gNB.h"
 #include "PHY/sse_intrin.h"
 #include "PHY/NR_UE_TRANSPORT/pucch_nr.h"
-#include <openair1/PHY/CODING/nrSmallBlock/nr_small_block_defs.h>
+#include "PHY/CODING/nrSmallBlock/nr_small_block_defs.h"
 #include "PHY/NR_TRANSPORT/nr_transport_common_proto.h"
 #include "PHY/NR_TRANSPORT/nr_transport_proto.h"
 #include "PHY/NR_REFSIG/nr_refsig.h"
@@ -50,6 +50,7 @@
 #include "common/utils/LOG/vcd_signal_dumper.h"
 #include "nfapi/oai_integration/vendor_ext.h"
 #include "nfapi/oai_integration/vendor_ext.h"
+#include "SCHED_NR/sched_nr.h"
 
 #include "T.h"
 
@@ -62,15 +63,25 @@ void nr_fill_pucch(PHY_VARS_gNB *gNB,
 {
 
   if (NFAPI_MODE == NFAPI_MODE_PNF)
-    gNB->pucch[0].active = 0; // check if ture in monolithic mode
+    gNB->pucch[0].active = false; // check if true in monolithic mode
 
   bool found = false;
   for (int i = 0; i < gNB->max_nb_pucch; i++) {
     NR_gNB_PUCCH_t *pucch = &gNB->pucch[i];
-    if (pucch->active == 0) {
+    if (pucch->active == false) {
       pucch->frame = frame;
       pucch->slot = slot;
-      pucch->active = 1;
+      pucch->active = true;
+      pucch->beam_nb = 0;
+      if (gNB->common_vars.beam_id) {
+        int fapi_beam_idx = pucch_pdu->beamforming.prgs_list[0].dig_bf_interface_list[0].beam_idx;
+        pucch->beam_nb = beam_index_allocation(fapi_beam_idx,
+                                               &gNB->common_vars,
+                                               slot,
+                                               NR_NUMBER_OF_SYMBOLS_PER_SLOT,
+                                               pucch_pdu->start_symbol_index,
+                                               pucch_pdu->nr_of_symbols);
+      }
       memcpy((void *)&pucch->pucch_pdu, (void *)pucch_pdu, sizeof(nfapi_nr_pucch_pdu_t));
       LOG_D(PHY,
             "Programming PUCCH[%d] for %d.%d, format %d, nb_harq %d, nb_sr %d, nb_csi %d\n",
@@ -148,12 +159,12 @@ static const int16_t idft12_im[12][12] = {
 };
 //************************************************************************//
 void nr_decode_pucch0(PHY_VARS_gNB *gNB,
+                      c16_t **rxdataF,
                       int frame,
                       int slot,
                       nfapi_nr_uci_pucch_pdu_format_0_1_t *uci_pdu,
                       nfapi_nr_pucch_pdu_t *pucch_pdu)
 {
-  c16_t **rxdataF = gNB->common_vars.rxdataF;
   NR_DL_FRAME_PARMS *frame_parms = &gNB->frame_parms;
   int soffset = (slot & 3) * frame_parms->symbols_per_slot * frame_parms->ofdm_symbol_size;
 
@@ -1037,13 +1048,12 @@ void init_pucch2_luts() {
 
 
 void nr_decode_pucch2(PHY_VARS_gNB *gNB,
+                      c16_t **rxdataF,
                       int frame,
                       int slot,
                       nfapi_nr_uci_pucch_pdu_format_2_3_4_t* uci_pdu,
                       nfapi_nr_pucch_pdu_t* pucch_pdu)
 {
-
-  c16_t **rxdataF = gNB->common_vars.rxdataF;
   NR_DL_FRAME_PARMS *frame_parms = &gNB->frame_parms;
   //pucch_GroupHopping_t pucch_GroupHopping = pucch_pdu->group_hop_flag + (pucch_pdu->sequence_hop_flag<<1);
 
@@ -1102,7 +1112,8 @@ void nr_decode_pucch2(PHY_VARS_gNB *gNB,
       pucch2_lev += signal_energy_nodc(rp[aa][symb], nb_re_pucch);
     }
   }
-  pucch2_lev /= Prx * Prx * pucch_pdu->nr_of_symbols;
+
+  pucch2_lev /= Prx * pucch_pdu->nr_of_symbols;
   int pucch2_levdB = dB_fixed(pucch2_lev);
   int scaling = 0;
   if (pucch2_levdB > 72)
@@ -1114,7 +1125,7 @@ void nr_decode_pucch2(PHY_VARS_gNB *gNB,
   else if (pucch2_levdB > 54)
     scaling = 1;
 
-  LOG_D(PHY,
+  LOG_D(NR_PHY,
         "%d.%d Decoding pucch2 for %d symbols, %d PRB, nb_harq %d, nb_sr %d, nb_csi %d/%d, pucch2_lev %d dB (scaling %d)\n",
         frame,
         slot,
@@ -1380,8 +1391,11 @@ void nr_decode_pucch2(PHY_VARS_gNB *gNB,
 
   uint64_t decodedPayload[2];
   uint8_t corr_dB;
-  int decoderState=2;
-  if (nb_bit < 12) { // short blocklength case
+  int decoderState = 2;
+  if (pucch2_levdB < gNB->measurements.n0_subband_power_avg_dB + (gNB->pucch0_thres / 10))
+    decoderState = 1; // assuming missed detection, only attempt to decode for polar case (with CRC)
+  LOG_D(NR_PHY, "n0+thres %d decoderState %d\n", gNB->measurements.n0_subband_power_avg_dB + (gNB->pucch0_thres / 10), decoderState);
+  if (nb_bit < 12 && decoderState == 2) { // short blocklength case
     simde__m256i *rp_re[Prx2][2];
     simde__m256i *rp2_re[Prx2][2];
     simde__m256i *rp_im[Prx2][2];
@@ -1397,8 +1411,7 @@ void nr_decode_pucch2(PHY_VARS_gNB *gNB,
     simde__m256i prod_re[Prx2],prod_im[Prx2];
     uint64_t corr=0;
     int cw_ML=0;
-    
-    
+
     for (int cw=0;cw<1<<nb_bit;cw++) {
 #ifdef DEBUG_NR_PUCCH_RX
       printf("cw %d:",cw);
@@ -1500,9 +1513,7 @@ void nr_decode_pucch2(PHY_VARS_gNB *gNB,
     printf("slot %d PUCCH2 cw_ML %d, metric %d \n",slot,cw_ML,corr_dB);
 #endif
     decodedPayload[0]=(uint64_t)cw_ML;
-  }
-  else { // polar coded case
-
+  } else if (nb_bit >= 12) { // polar coded case
     simde__m64 *rp_re[Prx2][2];
     simde__m64 *rp2_re[Prx2][2];
     simde__m64 *rp_im[Prx2][2];

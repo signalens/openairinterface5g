@@ -2264,7 +2264,6 @@ static void *timer_thread( void *param ) {
   //double t_diff;
   int external_timer = 0;
   wait_sync("timer_thread");
-  opp_enabled = 1;
 
   // first check if we are receiving timing indications
   if(NFAPI_MODE==NFAPI_UE_STUB_OFFNET) {

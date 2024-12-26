@@ -155,6 +155,7 @@ void L1_nr_prach_procedures(PHY_VARS_gNB *gNB,int frame,int slot) {
 	    max_preamble_delay[0],
 	    gNB->prach_energy_counter);
 
+<<<<<<< HEAD
       if ((gNB->prach_energy_counter == 100) && (max_preamble_energy[0] > gNB->measurements.prach_I0+gNB->prach_thres)) {
 <<<<<<< HEAD
 	
@@ -197,6 +198,10 @@ void L1_nr_prach_procedures(PHY_VARS_gNB *gNB,int frame,int slot) {
 	gNB->prach_pdu_indication_list[pdu_index].preamble_list[0].preamble_pwr       = 0xffffffff;
 	pdu_index++;
 =======
+=======
+      if ((gNB->prach_energy_counter == 100) && (max_preamble_energy[0] > gNB->measurements.prach_I0 + gNB->prach_thres)
+          && (pdu_index < MAX_NUM_NR_RX_RACH_PDUS)) {
+>>>>>>> 6c1d94a3
         LOG_I(NR_PHY,
               "[RAPROC] %d.%d Initiating RA procedure with preamble %d, energy %d.%d dB (I0 %d, thres %d), delay %d start symbol "
               "%u freq index %u\n",

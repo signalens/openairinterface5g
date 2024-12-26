@@ -56,7 +56,7 @@ ARG KPM_VERSION=KPM_V3_00
 RUN /bin/sh oaienv && \ 
     cd cmake_targets && \
     mkdir -p log && \
-    scl enable gcc-toolset-12 "\
+    scl enable gcc-toolset-13 "\
     ./build_oai \
       --gNB \
       --build-lib 'telnetsrv enbscope uescope nrscope' \
@@ -70,7 +70,7 @@ RUN /bin/sh oaienv && \
 ## Build FlexRIC for SM Models
 RUN mkdir -p openair2/E2AP/flexric/build && \
     cd openair2/E2AP/flexric/build && \
-    scl enable gcc-toolset-12 "\
+    scl enable gcc-toolset-13 "\
     cmake -GNinja -DCMAKE_BUILD_TYPE=Release \
           -DXAPP_MULTILANGUAGE=OFF \
           -DKPM_VERSION=$KPM_VERSION \

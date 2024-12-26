@@ -126,6 +126,18 @@ typedef struct {
   char *model_name;  
   /// flags to properly trigger memory free
   unsigned int free_flags;
+  /// time stamp when the time varying channel emulation starts (when client connected)
+  uint64_t start_TS;
+  /// height of LEO satellite
+  float sat_height;
+  /// flag to enable dynamic delay simulation for LEO satellite
+  bool enable_dynamic_delay;
+  /// flag to enable dynamic Doppler simulation for LEO satellite
+  bool enable_dynamic_Doppler;
+  /// Doppler phase increment (might vary over time, e.g. for LEO satellite)
+  float Doppler_phase_inc;
+  /// current Doppler phase of each RX antenna (for continuous phase from one block to the next)
+  float *Doppler_phase_cur;
 } channel_desc_t;
 
 typedef struct {
@@ -218,6 +230,8 @@ typedef enum {
   EPA_low,
   EPA_medium,
   EPA_high,
+  SAT_LEO_TRANS,
+  SAT_LEO_REGEN,
 } SCM_t;
 #define CHANNELMOD_MAP_INIT \
   {"custom",custom},\
@@ -253,6 +267,8 @@ typedef enum {
   {"EPA_low",EPA_low},\
   {"EPA_medium",EPA_medium},\
   {"EPA_high",EPA_high},\
+  {"SAT_LEO_TRANS",SAT_LEO_TRANS},\
+  {"SAT_LEO_REGEN",SAT_LEO_REGEN},\
   {NULL, -1}
 
 #define CONFIG_HLP_SNR     "Set average SNR in dB (for --siml1 option)\n"
@@ -543,7 +559,7 @@ int modelid_fromstrtype(char *modeltype);
 double channelmod_get_snr_dB(void);
 double channelmod_get_sinr_dB(void);
 void init_channelmod(void) ;
-int load_channellist(uint8_t nb_tx, uint8_t nb_rx, double sampling_rate, double channel_bandwidth) ;
+int load_channellist(uint8_t nb_tx, uint8_t nb_rx, double sampling_rate, uint64_t center_freq, double channel_bandwidth) ;
 double N_RB2sampling_rate(uint16_t N_RB);
 double N_RB2channel_bandwidth(uint16_t N_RB);
 

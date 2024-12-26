@@ -41,10 +41,8 @@
 #include "nfapi/open-nFAPI/nfapi/public_inc/nfapi_nr_interface.h"
 
 // Table 6.4.1.1.3-1/2 from TS 38.211
-static const int delta1[8] = {0, 0, 1, 1, 0, 0, 1, 1};
 static const int wf1[8][2] = {{1, 1}, {1, -1}, {1, 1}, {1, -1}, {1, 1}, {1, -1}, {1, 1}, {1, -1}};
 static const int wt1[8][2] = {{1, 1}, {1, 1}, {1, 1}, {1, 1}, {1, -1}, {1, -1}, {1, -1}, {1, -1}};
-static const int delta2[12] = {0, 0, 2, 2, 4, 4, 0, 0, 2, 2, 4, 4};
 static const int wf2[12][2] =
     {{1, 1}, {1, -1}, {1, 1}, {1, -1}, {1, 1}, {1, -1}, {1, 1}, {1, -1}, {1, 1}, {1, -1}, {1, 1}, {1, -1}};
 static const int wt2[12][2] =
@@ -55,14 +53,6 @@ static const c16_t nr_rx_mod_table[7] =
     {{0, 0}, {23170, -23170}, {-23170, 23170}, {23170, -23170}, {23170, 23170}, {-23170, -23170}, {-23170, 23170}};
 static const c16_t nr_rx_nmod_table[7] =
     {{0, 0}, {-23170, 23170}, {23170, -23170}, {-23170, 23170}, {-23170, -23170}, {23170, 23170}, {23170, -23170}};
-
-int nr_pusch_dmrs_delta(uint8_t dmrs_config_type, unsigned short p) {
-  if (dmrs_config_type == pusch_dmrs_type1) {
-    return delta1[p];
-  } else {
-    return delta2[p];
-  }
-}
 
 int nr_pusch_dmrs_rx(PHY_VARS_gNB *gNB,
                      unsigned int Ns,

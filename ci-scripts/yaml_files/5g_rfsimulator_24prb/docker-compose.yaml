@@ -81,7 +81,7 @@ services:
             timeout: 5s
             retries: 5
     oai-gnb:
-        image: oaisoftwarealliance/oai-gnb:develop
+        image: ${REGISTRY:-oaisoftwarealliance}/${GNB_IMG:-oai-gnb}:${TAG:-develop}
         container_name: rfsim5g-oai-gnb
         cap_drop:
             - ALL
@@ -101,7 +101,7 @@ services:
             timeout: 5s
             retries: 5
     oai-nr-ue:
-        image: oaisoftwarealliance/oai-nr-ue:develop
+        image: ${REGISTRY:-oaisoftwarealliance}/${NRUE_IMG:-oai-nr-ue}:${TAG:-develop}
         container_name: rfsim5g-oai-nr-ue
         cap_drop:
             - ALL

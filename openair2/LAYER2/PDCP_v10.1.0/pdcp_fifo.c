@@ -776,7 +776,7 @@ void pdcp_fifo_read_input_sdus_frompc5s (const protocol_ctxt_t *const  ctxt_pP) 
             pc5s_header->destinationL2Id=destinationL2Id; 
           }
         } /* end of !ctxt.enb_flag */
-
+        break;
       default:
         LOG_D(PDCP, "pc5s message type %d, unknown...\n", pc5s_header->traffic_type);
         break;

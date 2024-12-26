@@ -43,6 +43,7 @@ Please see [NOTICE](NOTICE.md) file for third party software that is included in
 
  *  [General overview of documentation](./doc/README.md)
  *  [The implemented features](./doc/FEATURE_SET.md)
+ *  [System Requirements for Using OAI Stack](./doc/system_requirements.md)
  *  [How to build](./doc/BUILD.md)
  *  [How to run the modems](./doc/RUNMODEM.md)
 
@@ -75,7 +76,8 @@ openairinterface5g
 ├── openair3          : Layer 3 (3GPP LTE Rel-10 S1AP/GTP, NR Rel-15 NGAP/GTP)
 ├── openshift         : OpenShift helm charts for some deployment options of OAI
 ├── radio             : Drivers for various radios such as USRP, AW2S, RFsim, 7.2 FHI, ...
-└── targets           : Some configuration files; only historical relevance, and might be deleted in the future
+├── targets           : Some configuration files; only historical relevance, and might be deleted in the future
+└── tools             : Tools for use by the developers/ci machines: code analysis and formatting
 ```
 
 # How to get support from the OAI Community # 

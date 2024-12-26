@@ -41,6 +41,7 @@
 #include "PHY/types.h"
 
 #include "PHY/defs_RU.h"
+#include "common/oai_version.h"
 #include "common/config/config_userapi.h"
 #include "common/utils/load_module_shlib.h"
 
@@ -160,11 +161,8 @@ int main ( int argc, char **argv )
   T_Config_Init();
 #endif
   printf("configuring for RRU\n");
-#ifndef PACKAGE_VERSION
-#define PACKAGE_VERSION "UNKNOWN-EXPERIMENTAL"
-#endif
   // strdup to put the sring in the core file for post mortem identification
-  LOG_I(HW, "Version: %s\n", strdup(PACKAGE_VERSION));
+  LOG_I(HW, "Version: %s\n", strdup(OAI_PACKAGE_VERSION));
 
   /* Read configuration */
 

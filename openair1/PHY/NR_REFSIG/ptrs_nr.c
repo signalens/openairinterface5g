@@ -85,6 +85,13 @@ void set_ptrs_symb_idx(uint16_t *ptrs_symbols,
   }
 }
 
+unsigned int get_first_ptrs_re(const rnti_t rnti, const uint8_t K_ptrs, const uint16_t nRB, const uint8_t k_RE_ref)
+{
+  const uint16_t nRB_Kptrs = nRB % K_ptrs;
+  const uint16_t k_RB_ref = nRB_Kptrs ? (rnti % nRB_Kptrs) : (rnti % K_ptrs);
+  return (k_RE_ref + k_RB_ref * NR_NB_SC_PER_RB);
+}
+
 /*******************************************************************
 *
 * NAME :         is_ptrs_subcarrier

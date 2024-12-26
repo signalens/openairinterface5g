@@ -346,7 +346,7 @@ static bool is_my_dci(NR_UE_MAC_INST_t *mac, nfapi_nr_dl_dci_pdu_t *received_pdu
   if (get_softmodem_params()->sa) {
     if (mac->state == UE_NOT_SYNC)
       return false;
-    if (received_pdu->RNTI == 0xFFFF && mac->phy_config_request_sent)
+    if (received_pdu->RNTI == 0xFFFF)
       return false;
     if (received_pdu->RNTI != mac->crnti && mac->ra.ra_state == nrRA_SUCCEEDED)
       return false;
@@ -1092,9 +1092,10 @@ static int8_t handle_dlsch(NR_UE_MAC_INST_t *mac, nr_downlink_indication_t *dl_i
   if (get_softmodem_params()->emulate_l1)
     dl_info->rx_ind->rx_indication_body[pdu_id].pdsch_pdu.harq_pid = g_harq_pid;
 
-  update_harq_status(mac,
-                     dl_info->rx_ind->rx_indication_body[pdu_id].pdsch_pdu.harq_pid,
-                     dl_info->rx_ind->rx_indication_body[pdu_id].pdsch_pdu.ack_nack);
+  if (mac->ra.ra_state != nrRA_WAIT_RAR) // no HARQ for MSG2
+    update_harq_status(mac,
+                       dl_info->rx_ind->rx_indication_body[pdu_id].pdsch_pdu.harq_pid,
+                       dl_info->rx_ind->rx_indication_body[pdu_id].pdsch_pdu.ack_nack);
   if(dl_info->rx_ind->rx_indication_body[pdu_id].pdsch_pdu.ack_nack)
     nr_ue_send_sdu(mac, dl_info, pdu_id);
 
@@ -1126,7 +1127,7 @@ void update_harq_status(NR_UE_MAC_INST_t *mac, uint8_t harq_pid, uint8_t ack_nac
     LOG_D(PHY,"Updating harq_status for harq_id %d, ack/nak %d\n", harq_pid, current_harq->ack);
     // we can prepare feedback for MSG4 in advance
     if (mac->ra.ra_state == nrRA_WAIT_CONTENTION_RESOLUTION)
-      prepare_msg4_feedback(mac, harq_pid, ack_nack);
+      prepare_msg4_msgb_feedback(mac, harq_pid, ack_nack);
     else {
       current_harq->ack = ack_nack;
       current_harq->ack_received = true;
@@ -1149,7 +1150,7 @@ int nr_ue_ul_indication(nr_uplink_indication_t *ul_info)
 
   LOG_T(NR_MAC, "Not calling scheduler mac->ra.ra_state = %d\n", mac->ra.ra_state);
 
-  if (mac->phy_config_request_sent && is_nr_UL_slot(mac->tdd_UL_DL_ConfigurationCommon, ul_info->slot, mac->frame_type))
+  if (is_nr_UL_slot(mac->tdd_UL_DL_ConfigurationCommon, ul_info->slot, mac->frame_type))
     nr_ue_ul_scheduler(mac, ul_info);
   pthread_mutex_unlock(&mac_IF_mutex);
 
@@ -1179,7 +1180,7 @@ static uint32_t nr_ue_dl_processing(nr_downlink_indication_t *dl_info)
         continue;
       }
       dci_pdu_rel15_t *def_dci_pdu_rel15 = &mac->def_dci_pdu_rel15[dl_info->slot][dci_format];
-      g_harq_pid = def_dci_pdu_rel15->harq_pid;
+      g_harq_pid = def_dci_pdu_rel15->harq_pid.val;
       LOG_T(NR_MAC, "Setting harq_pid = %d and dci_index = %d (based on format)\n", g_harq_pid, dci_format);
 
       ret_mask |= (1 << FAPI_NR_DCI_IND);

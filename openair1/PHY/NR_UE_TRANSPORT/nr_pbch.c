@@ -442,8 +442,9 @@ int nr_rx_pbch(PHY_VARS_NR_UE *ue,
 
   // legacy code use int16, but it is complex16
   if (ue) {
-    UEscopeCopy(ue, pbchRxdataF_comp, pbch_unClipped, sizeof(struct complex16), frame_parms->nb_antennas_rx, pbch_e_rx_idx / 2, 0);
-    UEscopeCopy(ue, pbchLlr, pbch_e_rx, sizeof(int16_t), frame_parms->nb_antennas_rx, pbch_e_rx_idx, 0);
+    metadata meta = {.slot = proc->nr_slot_rx, .frame = proc->frame_rx};
+    UEscopeCopyWithMetadata(ue, pbchRxdataF_comp, pbch_unClipped, sizeof(struct complex16), frame_parms->nb_antennas_rx, pbch_e_rx_idx / 2, 0, &meta);
+    UEscopeCopyWithMetadata(ue, pbchLlr, pbch_e_rx, sizeof(int16_t), frame_parms->nb_antennas_rx, pbch_e_rx_idx, 0, &meta);
   }
 #ifdef DEBUG_PBCH
   for (int cnt = 0; cnt < 864  ; cnt++)

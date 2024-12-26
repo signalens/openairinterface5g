@@ -163,7 +163,7 @@ typedef struct qos_characteristics_s {
       } packet_error_rate;
     } dynamic;
   };
-  fiveQI_type_t qos_type;
+  fiveQI_t qos_type;
 } qos_characteristics_t;
 
 typedef struct ngran_allocation_retention_priority_s {

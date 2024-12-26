@@ -313,6 +313,8 @@ static int trx_usrp_start(openair0_device *device) {
 #endif
 
   switch (device->openair0_cfg->gpio_controller) {
+    case RU_GPIO_CONTROL_NONE:
+      break;
     case RU_GPIO_CONTROL_GENERIC:
       trx_usrp_start_generic_gpio(device, s);
       break;

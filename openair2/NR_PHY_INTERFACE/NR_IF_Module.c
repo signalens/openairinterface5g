@@ -30,7 +30,6 @@
 * \warning
 */
 
-#include "openair1/SCHED_NR/fapi_nr_l1.h"
 #include "openair2/NR_PHY_INTERFACE/NR_IF_Module.h"
 #include "LAYER2/NR_MAC_COMMON/nr_mac_extern.h"
 #include "LAYER2/NR_MAC_gNB/mac_proto.h"
@@ -42,7 +41,6 @@
 #include "openair2/NR_PHY_INTERFACE/nr_sched_response.h"
 
 #define MAX_IF_MODULES 100
-//#define UL_HARQ_PRINT
 
 static NR_IF_Module_t *nr_if_inst[MAX_IF_MODULES];
 extern int oai_nfapi_harq_indication(nfapi_harq_indication_t *harq_ind);
@@ -242,6 +240,8 @@ void handle_nr_srs(NR_UL_IND_t *UL_info) {
   const sub_frame_t slot = UL_info->srs_ind.slot;
   const int num_srs = UL_info->srs_ind.number_of_pdus;
   nfapi_nr_srs_indication_pdu_t *srs_list = UL_info->srs_ind.pdu_list;
+
+  // from here
 
   for (int i = 0; i < num_srs; i++) {
     nfapi_nr_srs_indication_pdu_t *srs_ind = &srs_list[i];

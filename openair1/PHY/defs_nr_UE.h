@@ -311,6 +311,13 @@ typedef struct {
 } NR_UE_CSI_RS;
 
 typedef struct {
+  uint8_t csi_rs_generated_signal_bits;
+  int32_t **csi_rs_generated_signal;
+  bool csi_im_meas_computed;
+  uint32_t interference_plus_noise_power;
+} nr_csi_info_t;
+
+typedef struct {
   bool active;
   fapi_nr_ul_config_srs_pdu srs_config_pdu;
 } NR_UE_SRS;
@@ -384,7 +391,7 @@ typedef struct PHY_VARS_NR_UE_s {
   NR_UE_COMMON    common_vars;
 
   nr_ue_if_module_t *if_inst;
-
+  bool received_config_request;
   fapi_nr_config_request_t nrUE_config;
   nr_synch_request_t synch_request;
 
@@ -450,13 +457,12 @@ typedef struct PHY_VARS_NR_UE_s {
   int dlsch_mtch_errors[MAX_MBSFN_AREA][NUMBER_OF_CONNECTED_gNB_MAX];
   int dlsch_mcch_trials[MAX_MBSFN_AREA][NUMBER_OF_CONNECTED_gNB_MAX];
   int dlsch_mtch_trials[MAX_MBSFN_AREA][NUMBER_OF_CONNECTED_gNB_MAX];
-  uint8_t               decode_SIB;
-  uint8_t               decode_MIB;
-  uint8_t               init_sync_frame;
+  uint8_t init_sync_frame;
   /// temporary offset during cell search prior to MIB decoding
-  int              ssb_offset;
+  int ssb_offset;
   uint16_t symbol_offset; /// offset in terms of symbols for detected ssb in sync
-  int64_t max_pos_avg; /// Timing offset IIR filter
+  int64_t max_pos_iir; /// Timing offset IIR filter
+  int max_pos_acc; /// Timing offset accumuluated error for PI filter
 
   /// Timing Advance updates variables
   /// Timing advance update computed from the TA command signalled from gNB
@@ -621,14 +627,11 @@ typedef struct LDPCDecode_ue_s {
   NR_UE_DLSCH_t *dlsch;
   short* dlsch_llr;
   int dlsch_id;
-  int harq_pid;
   int rv_index;
-  int A;
   int E;
   int Kc;
   int Qm;
   int Kr_bytes;
-  int nbSegments;
   int segment_r;
   int r_offset;
   int offset;
@@ -637,7 +640,6 @@ typedef struct LDPCDecode_ue_s {
   time_stats_t ts_deinterleave;
   time_stats_t ts_rate_unmatch;
   time_stats_t ts_ldpc_decode;
-  UE_nr_rxtx_proc_t proc;
 } ldpcDecode_ue_t;
 
 static inline void start_meas_nr_ue_phy(PHY_VARS_NR_UE *ue, int meas_index) {

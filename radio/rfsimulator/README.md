@@ -71,7 +71,7 @@ The RF simulator is using the configuration module, and its parameters are defin
 
 | CL option                       | usage                                                                          | default                |
 |:---------------------           |:-------------------------------------------------------------------------------|----:                   |
-|`--rfsimulator.serveraddr <addr>`| ip address to connect to, or `server` to behave as a tcp server                | 127.0.0.1              |
+|`--rfsimulator.serveraddr <addr>`| IPv4v6 address or DNS name to connect to, or `server` to behave as a IPv4v6 TCP server | 127.0.0.1      |
 |`--rfsimulator.serverport <port>`| port number to connect to or to listen on (eNB, which behaves as a tcp server) | 4043                   |
 |`--rfsimulator.options`          | list of comma separated run-time options, two are supported: `chanmod`, `saviq`| all options disabled   |
 |`--rfsimulator.options saviq`    | store IQs to a file for future replay                                          | disabled               |

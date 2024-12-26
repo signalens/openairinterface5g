@@ -23,14 +23,10 @@
 
 
 #define _GNU_SOURCE
-#include <sched.h>
-#include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <string.h>
-#include <unistd.h>
 #include <ctype.h>
-#include <sys/sysinfo.h>
 #include <threadPool/thread-pool.h>
 
 

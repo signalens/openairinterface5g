@@ -37,6 +37,7 @@
 #define ORAN_CONFIG_FILE_PREFIX "file_prefix"
 #define ORAN_CONFIG_NETHPERPORT "eth_lines"
 #define ORAN_CONFIG_NETHSPEED "eth_speed"
+#define ORAN_CONFIG_DPDK_MEM_SIZE "dpdk_mem_size"
 
 // clang-format off
 // TODO: PCI addr check
@@ -52,6 +53,7 @@
   {ORAN_CONFIG_FILE_PREFIX,     "DPDK file-prefix\n",                       0,                   .strptr=NULL,     .defstrval="wls_0",  TYPE_STRING,     0}, \
   {ORAN_CONFIG_NETHPERPORT,     "number of links per port\n",               0,                   .uptr=NULL,       .defuintval=1,       TYPE_UINT,       0}, \
   {ORAN_CONFIG_NETHSPEED,       "ethernet speed link\n",                    0,                   .uptr=NULL,       .defuintval=10,      TYPE_UINT,       0}, \
+  {ORAN_CONFIG_DPDK_MEM_SIZE,   "DPDK huge page pre-allocation in MiB\n",   0,                   .uptr=NULL,       .defuintval=8192,    TYPE_UINT,       0}, \
 }
 // clang-format on
 

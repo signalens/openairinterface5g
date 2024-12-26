@@ -23,7 +23,7 @@
 | avra          | 172.21.16.124   | CI-Avra-Usage         | gNB (n78)          | AW2S Jaguar (192.168.80.239)                          |
 | orion         | 172.21.16.134   | CI-Orion-Build-Sanity-Check-Deploy-Test, CI-Orion-DsTester-Deploy-Test | Build | |
 | aerial2       | 172.21.16.131   | CI-Aerial2-Usage      | gNB (PNF/Nvidia CUBB + VNF) | Foxconn RU, _Nvidia Aerial SDK integrated_   |
-| sphex         | 172.21.17.54    | CI-Sphex-Usage        | COTS UE            | Quectel RM520N                                        |
+| cacofonix     | 172.21.16.150   | CI-Cacofonix-Usage    | gNB (n78, FHI7.2)  |                                                       |
 | matix         | 172.21.19.58    | CI-Matix-Usage        | gNB (n77)          | N310                                                  |
 
 Note: The available resources, and their current usage, is indicated here:
@@ -38,7 +38,7 @@ Note: The available resources, and their current usage, is indicated here:
 
 ![5G OTA Testbench](testbenches_doc_resources/5g-ota-bench.png)
 
-[PDF version](testbenches_doc_resources/5g-ota-bench.pdf) | [LaTeX/TikZ version](testbenches_doc_resources/5g-ota-bench.tex) if you want to modify to reflect your setup
+[LaTeX/TikZ version](testbenches_doc_resources/5g-ota-bench.tex) if you want to modify to reflect your setup
 
 
 ### 5G NSA/Faraday Cage Testbench
@@ -141,10 +141,6 @@ information on how the images are built.
   ~4G-LTE
   - obelix (eNB, 1x UE, OAI EPC)
   - L2simulator: skips physical layer and uses proxy between eNB and UE
-- [RAN-L2-Sim-Test-5G](https://jenkins-oai.eurecom.fr/job/RAN-L2-Sim-Test-5G/)
-  ~5G-NR
-  - obelix (gNB, 1x UE, OAI 5GC)
-  - L2simulator: skips physical layer and uses proxy between gNB and UE, currently only ping
 - [RAN-LTE-FDD-LTEBOX-Container](https://jenkins-oai.eurecom.fr/job/RAN-LTE-FDD-LTEBOX-Container/)
   ~4G-LTE
   - hutch + B210, nano w/ ltebox + 2x UE
@@ -172,15 +168,15 @@ information on how the images are built.
   - see [`./physical-simulators.md`](./physical-simulators.md) for an overview
 - [RAN-RF-Sim-Test-4G](https://jenkins-oai.eurecom.fr/job/RAN-RF-Sim-Test-4G/)
   ~4G-LTE
-  - obelix (eNB, lteUE, OAI EPC)
+  - cacofonix (eNB, lteUE, OAI EPC)
   - uses RFsimulator, for FDD 5, 10, 20MHz with core, 5MHz noS1
 - [RAN-RF-Sim-Test-5G](https://jenkins-oai.eurecom.fr/job/RAN-RF-Sim-Test-5G/)
   ~5G-NR
-  - obelix (gNB, nrUE, OAI 5GC)
+  - cacofonix (gNB, nrUE, OAI 5GC)
   - uses RFsimulator, TDD 40MHz, FDD 40MHz, F1 split
 - [RAN-SA-AW2S-CN5G](https://jenkins-oai.eurecom.fr/job/RAN-SA-AW2S-CN5G/)
   ~5G-NR
-  - 5G-NR SA test setup: avra(RHEL9.1) + AW2S, amariue, OAI CN5G
+  - 5G-NR SA test setup: avra + AW2S, amariue, OAI CN5G
   - uses OpenShift cluster for CN deployment and container images for gNB deployment
   - multi UE testing using Amarisoft UE simulator
 - [RAN-SA-B200-Module-SABOX-Container](https://jenkins-oai.eurecom.fr/job/RAN-SA-B200-Module-SABOX-Container/)
@@ -189,11 +185,11 @@ information on how the images are built.
   - basic SA test (20 MHz TDD), F1, reestablishment, ...
 - [RAN-SA-OAIUE-CN5G](https://jenkins-oai.eurecom.fr/job/RAN-SA-OAIUE-CN5G/)
   ~5G-NR
-  - 5G-NR SA test setup: gNB on avra(RHEL9.2) + N310, OAIUE on caracal(RHEL9.1) + N310, OAI CN5G
+  - 5G-NR SA test setup: gNB on avra + N310, OAIUE on caracal + N310, OAI CN5G
   - OpenShift cluster for CN deployment and container images for gNB and UE deployment
 - [RAN-SA-AERIAL-CN5G](https://jenkins-oai.eurecom.fr/job/RAN-SA-AERIAL-CN5G/)
   ~5G-NR
-  - 5G-NR SA test setup: OAI VNF  + PNF/NVIDIA CUBB on Aerial2 (U22) + Foxconn RU, sphex + COTS UE (Quectel RM520N), OAI CN5G
+  - 5G-NR SA test setup: OAI VNF + PNF/NVIDIA CUBB on Aerial2 + Foxconn RU, up2 + COTS UE (Quectel RM520N), OAI CN5G
   - container images for gNB deployment
 - [RAN-SA-2x2-Module-CN5G](https://jenkins-oai.eurecom.fr/view/RAN/job/RAN-SA-2x2-Module-CN5G/)
   ~5G-NR
@@ -201,7 +197,6 @@ information on how the images are built.
   - NR performance tests: 2x2 configuration, 60 MHz and 100 MHz bandwidth
 - [RAN-SA-FHI72-CN5G](https://jenkins-oai.eurecom.fr/view/RAN/job/RAN-SA-FHI72-CN5G/)
   ~5G-NR
-  - cacofonix + FHI72 + Benetel550 (gNB), AmariUE, OAI CN5G
   - cacofonix + FHI72 + VVDN (gNB), up2 (Quectel RM520N UE), OAI CN5G
   - OpenShift cluster for CN deployment
   - FHI 7.2 testing with 100 MHz bandwidth, 2 layers in DL

@@ -223,7 +223,7 @@ void nr_csi_meas_reporting(int Mod_idP,
     NR_UE_sched_ctrl_t *sched_ctrl = &UE->UE_sched_ctrl;
     NR_UE_UL_BWP_t *ul_bwp = &UE->current_UL_BWP;
     const int n_slots_frame = nr_slots_per_frame[ul_bwp->scs];
-    if ((sched_ctrl->rrc_processing_timer > 0) || (sched_ctrl->ul_failure && !get_softmodem_params()->phy_test)) {
+    if (nr_timer_is_active(&sched_ctrl->transm_interrupt) || (sched_ctrl->ul_failure && !get_softmodem_params()->phy_test)) {
       continue;
     }
     const NR_CSI_MeasConfig_t *csi_measconfig = UE->sc_info.csi_MeasConfig;
@@ -279,8 +279,9 @@ void nr_csi_meas_reporting(int Mod_idP,
       int bwp_start = ul_bwp->BWPStart;
 
       // going through the list of PUCCH resources to find the one indexed by resource_id
+      int beam_idx = 0; // TODO proper beam allocation
       const int index = ul_buffer_index(sched_frame, sched_slot, ul_bwp->scs, nrmac->vrb_map_UL_size);
-      uint16_t *vrb_map_UL = &nrmac->common_channels[0].vrb_map_UL[index * MAX_BWP_SIZE];
+      uint16_t *vrb_map_UL = &nrmac->common_channels[0].vrb_map_UL[beam_idx][index * MAX_BWP_SIZE];
       const int m = pucch_Config->resourceToAddModList->list.count;
       for (int j = 0; j < m; j++) {
         NR_PUCCH_Resource_t *pucchres = pucch_Config->resourceToAddModList->list.array[j];
@@ -674,8 +675,8 @@ static void tci_handling(NR_UE_info_t *UE, frame_t frame, slot_t slot)
 static uint8_t pickandreverse_bits(uint8_t *payload, uint16_t bitlen, uint8_t start_bit)
 {
   uint8_t rev_bits = 0;
-  for (int i=0; i<bitlen; i++)
-    rev_bits |= ((payload[(start_bit+i)/8]>>((start_bit+i)%8))&0x01)<<(bitlen-i-1);
+  for (int i = 0; i < bitlen; i++)
+    rev_bits |= ((payload[(start_bit + i) / 8] >> ((start_bit + i) % 8)) & 0x01) << (bitlen - i - 1);
   return rev_bits;
 }
 
@@ -818,18 +819,18 @@ static uint8_t evaluate_pmi_report(uint8_t *payload,
 {
   int x1_bitlen = csi_report->csi_meas_bitlen.pmi_x1_bitlen[ri];
   int x2_bitlen = csi_report->csi_meas_bitlen.pmi_x2_bitlen[ri];
-  int tot_bitlen = x1_bitlen + x2_bitlen;
 
   //in case of 2 port CSI configuration x1 is empty and the information bits are in x2
-  int temp_pmi = pickandreverse_bits(payload, tot_bitlen, cumul_bits);
-
-  sched_ctrl->CSI_report.cri_ri_li_pmi_cqi_report.pmi_x1 = temp_pmi & ((1 << x1_bitlen) - 1);
-  sched_ctrl->CSI_report.cri_ri_li_pmi_cqi_report.pmi_x2 = (temp_pmi >> x1_bitlen) & ((1 << x2_bitlen) - 1);
-  LOG_D(MAC,"PMI Report: X1 %d X2 %d\n",
+  int starting_bit = cumul_bits;
+  sched_ctrl->CSI_report.cri_ri_li_pmi_cqi_report.pmi_x1 = pickandreverse_bits(payload, x1_bitlen, starting_bit);
+  starting_bit += x1_bitlen;
+  sched_ctrl->CSI_report.cri_ri_li_pmi_cqi_report.pmi_x2 = pickandreverse_bits(payload, x2_bitlen, starting_bit);
+  LOG_D(NR_MAC,
+        "PMI Report: X1 %d X2 %d\n",
         sched_ctrl->CSI_report.cri_ri_li_pmi_cqi_report.pmi_x1,
         sched_ctrl->CSI_report.cri_ri_li_pmi_cqi_report.pmi_x2);
 
-  return tot_bitlen;
+  return x1_bitlen + x2_bitlen;
 }
 
 static int evaluate_li_report(uint8_t *payload,
@@ -1047,8 +1048,8 @@ void handle_nr_uci_pucch_0_1(module_id_t mod_id,
       remove_front_nr_list(&sched_ctrl->feedback_dl_harq);
       LOG_D(NR_MAC,"%4d.%2d bit %d pid %d ack/nack %d\n",frame, slot, harq_bit,pid,harq_value);
       handle_dl_harq(UE, pid, harq_value == 0 && harq_confidence == 0, nrmac->dl_bler.harq_round_max);
-      if (!UE->Msg4_ACKed && harq_value == 0 && harq_confidence == 0)
-        UE->Msg4_ACKed = true;
+      if (!UE->Msg4_MsgB_ACKed && harq_value == 0 && harq_confidence == 0)
+        UE->Msg4_MsgB_ACKed = true;
       if (harq_confidence == 1)  UE->mac_stats.pucch0_DTX++;
     }
 
@@ -1125,6 +1126,7 @@ void handle_nr_uci_pucch_2_3_4(module_id_t mod_id,
   }
   /* phy-test has hardcoded allocation, so no use to handle CSI reports */
   if ((uci_234->pduBitmap >> 2) & 0x01 && !get_softmodem_params()->phy_test) {
+    LOG_D(NR_MAC, "CSI CRC %d\n", uci_234->csi_part1.csi_part1_crc);
     if (uci_234->csi_part1.csi_part1_crc != 1) {
       // API to parse the csi report and store it into sched_ctrl
       extract_pucch_csi_report(csi_MeasConfig, uci_234, frame, slot, UE, nrmac->common_channels->ServingCellConfigCommon);
@@ -1246,6 +1248,7 @@ int nr_acknack_scheduling(gNB_MAC_INST *mac,
                           NR_UE_info_t *UE,
                           frame_t frame,
                           sub_frame_t slot,
+                          int beam_index,
                           int r_pucch,
                           int is_common)
 {
@@ -1335,15 +1338,27 @@ int nr_acknack_scheduling(gNB_MAC_INST *mac,
     else { // unoccupied occasion
       // checking if in ul_slot the resources potentially to be assigned to this PUCCH are available
       set_pucch_allocation(ul_bwp, r_pucch, bwp_size, curr_pucch);
+      NR_beam_alloc_t beam = beam_allocation_procedure(&mac->beam_info, pucch_frame, pucch_slot, beam_index, n_slots_frame);
+      if (beam.idx < 0) {
+        LOG_D(NR_MAC,
+              "DL %4d.%2d, UL_ACK %4d.%2d beam resources for this occasion are already occupied, move to the following occasion\n",
+              frame,
+              slot,
+              pucch_frame,
+              pucch_slot);
+        continue;
+      }
       const int index = ul_buffer_index(pucch_frame, pucch_slot, ul_bwp->scs, mac->vrb_map_UL_size);
-      uint16_t *vrb_map_UL = &mac->common_channels[CC_id].vrb_map_UL[index * MAX_BWP_SIZE];
-      bool ret = test_pucch0_vrb_occupation(curr_pucch,
-                                            vrb_map_UL,
-                                            bwp_start,
-                                            bwp_size);
+      uint16_t *vrb_map_UL = &mac->common_channels[CC_id].vrb_map_UL[beam.idx][index * MAX_BWP_SIZE];
+      bool ret = test_pucch0_vrb_occupation(curr_pucch, vrb_map_UL, bwp_start, bwp_size);
       if(!ret) {
-        LOG_D(NR_MAC, "DL %4d.%2d, UL_ACK %4d.%2d PRB resources for this occasion are already occupied, move to the following occasion\n",
-              frame, slot, pucch_frame, pucch_slot);
+        LOG_D(NR_MAC,
+              "DL %4d.%2d, UL_ACK %4d.%2d PRB resources for this occasion are already occupied, move to the following occasion\n",
+              frame,
+              slot,
+              pucch_frame,
+              pucch_slot);
+        reset_beam_status(&mac->beam_info, pucch_frame, pucch_slot, beam_index, n_slots_frame, beam.new_beam);
         continue;
       }
       // allocating a new PUCCH structure for this occasion
@@ -1381,7 +1396,7 @@ void nr_sr_reporting(gNB_MAC_INST *nrmac, frame_t SFN, sub_frame_t slot)
     NR_UE_sched_ctrl_t *sched_ctrl = &UE->UE_sched_ctrl;
     NR_UE_UL_BWP_t *ul_bwp = &UE->current_UL_BWP;
     const int n_slots_frame = nr_slots_per_frame[ul_bwp->scs];
-    if (sched_ctrl->ul_failure || sched_ctrl->rrc_processing_timer > 0)
+    if (sched_ctrl->ul_failure || nr_timer_is_active(&sched_ctrl->transm_interrupt))
       continue;
     NR_PUCCH_Config_t *pucch_Config = ul_bwp->pucch_Config;
 
@@ -1435,8 +1450,9 @@ void nr_sr_reporting(gNB_MAC_INST *nrmac, frame_t SFN, sub_frame_t slot)
         continue;
       }
       else {
+        int beam_idx = 0; // TODO proper beam allocation
         const int index = ul_buffer_index(SFN, slot, ul_bwp->scs, nrmac->vrb_map_UL_size);
-        uint16_t *vrb_map_UL = &nrmac->common_channels[CC_id].vrb_map_UL[index * MAX_BWP_SIZE];
+        uint16_t *vrb_map_UL = &nrmac->common_channels[CC_id].vrb_map_UL[beam_idx][index * MAX_BWP_SIZE];
         const int bwp_start = ul_bwp->BWPStart;
         const int bwp_size = ul_bwp->BWPSize;
         set_pucch_allocation(ul_bwp, -1, bwp_size, curr_pucch);

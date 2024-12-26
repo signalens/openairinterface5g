@@ -58,8 +58,6 @@
 #define PRACH_WRITE_OUTPUT_DEBUG 1
 
 THREAD_STRUCT thread_struct;
-char *parallel_config = NULL;
-char *worker_config = NULL;
 
 char *uecap_file;
 PHY_VARS_gNB *gNB;
@@ -119,7 +117,6 @@ int NB_UE_INST = 1;
 configmodule_interface_t *uniqCfg = NULL;
 int main(int argc, char **argv){
 
-  char c;
   get_softmodem_params()->sl_mode = 0;
   double sigma2, sigma2_dB = 0, SNR, snr0 = -2.0, snr1 = 0.0, ue_speed0 = 0.0, ue_speed1 = 0.0;
   double **s_re, **s_im, **r_re, **r_im, iqim = 0.0, delay_avg = 0, ue_speed = 0, fs=-1, bw;
@@ -137,11 +134,6 @@ int main(int argc, char **argv){
   int prachOccasion = 0;
   double DS_TDL = .03;
 
-  //  int8_t interf1=-19,interf2=-19;
-  //  uint8_t abstraction_flag=0,calibration_flag=0;
-  //  double prach_sinr;
-  //  uint32_t nsymb;
-  //  uint16_t preamble_max, preamble_energy_max;
   FILE *input_fd=NULL;
   char* input_file=NULL;
   int n_bytes=0;
@@ -162,6 +154,7 @@ int main(int argc, char **argv){
 
   randominit(0);
 
+  int c;
   while ((c = getopt (argc, argv, "--:O:hHaA:Cc:l:r:p:g:m:n:s:S:t:x:y:v:V:z:N:F:d:Z:L:R:E")) != -1) {
 
     /* ignore long options starting with '--', option '-O' and their arguments that are handled by configmodule */
@@ -786,22 +779,21 @@ int main(int argc, char **argv){
 
         if (n_frames==1) {
           printf("preamble %d (tx %d) : energy %d, delay %d\n",preamble_rx,preamble_tx,preamble_energy,preamble_delay);
-          #ifdef NR_PRACH_DEBUG
-	  LOG_M("prach0.m","prach0", &txdata[0][prach_start], frame_parms->samples_per_subframe, 1, 1);
-            LOG_M("prachF0.m","prachF0", &gNB->prach_vars.prachF[0], N_ZC, 1, 1);
-            LOG_M("rxsig0.m","rxs0", &ru->common.rxdata[0][subframe*frame_parms->samples_per_subframe], frame_parms->samples_per_subframe, 1, 1);
-            LOG_M("ru_rxsig0.m","rxs0", &ru->common.rxdata[0][subframe*frame_parms->samples_per_subframe], frame_parms->samples_per_subframe, 1, 1);
-            LOG_M("ru_rxsigF0.m","rxsF0", ru->common.rxdataF[0], frame_parms->ofdm_symbol_size*frame_parms->symbols_per_slot, 1, 1);
-            LOG_M("ru_prach_rxsigF0.m","rxsF0", ru->prach_rxsigF[0][0], N_ZC, 1, 1);
-            LOG_M("prach_preamble.m","prachp", &gNB->X_u[0], N_ZC, 1, 1);
-            LOG_M("ue_prach_preamble.m","prachp", &UE->X_u[0], N_ZC, 1, 1);
-          #endif
+#ifdef NR_PRACH_DEBUG
+          LOG_M("prach0.m","prach0", &txdata[0][prach_start], frame_parms->samples_per_subframe, 1, 1);
+          LOG_M("rxsig0.m","rxs0", &ru->common.rxdata[0][subframe*frame_parms->samples_per_subframe], frame_parms->samples_per_subframe, 1, 1);
+          LOG_M("ru_rxsig0.m","rxs0", &ru->common.rxdata[0][subframe*frame_parms->samples_per_subframe], frame_parms->samples_per_subframe, 1, 1);
+          LOG_M("ru_rxsigF0.m","rxsF0", ru->common.rxdataF[0], frame_parms->ofdm_symbol_size*frame_parms->symbols_per_slot, 1, 1);
+          LOG_M("ru_prach_rxsigF0.m","rxsF0", ru->prach_rxsigF[0][0], N_ZC, 1, 1);
+          LOG_M("prach_preamble.m","prachp", &gNB->X_u[0], N_ZC, 1, 1);
+          LOG_M("ue_prach_preamble.m","prachp", &UE->X_u[0], N_ZC, 1, 1);
+#endif
         }
       }
 
       printf("SNR %f dB, UE Speed %f km/h: errors %u/%d (delay %f)\n", SNR, ue_speed, prach_errors, n_frames, delay_avg/(double)(n_frames-prach_errors));
       if (input_fd)
-	break;
+        break;
       if (prach_errors)
         break;
 

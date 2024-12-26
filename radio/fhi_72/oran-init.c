@@ -392,8 +392,8 @@ static void oran_allocate_buffers(void *handle,
     }
   }
 
-  xran_5g_fronthault_config(pi->instanceHandle, src, srccp, dst, dstcp, oai_xran_fh_rx_callback, &portInstances->RxCbTag[0][0]);
-  xran_5g_prach_req(pi->instanceHandle, prach, prachdecomp, oai_xran_fh_rx_prach_callback, &portInstances->PrachCbTag[0][0]);
+  xran_5g_fronthault_config(pi->instanceHandle, src, srccp, dst, dstcp, oai_xran_fh_rx_callback, &portInstances->pusch_tag);
+  xran_5g_prach_req(pi->instanceHandle, prach, prachdecomp, oai_xran_fh_rx_prach_callback, &portInstances->prach_tag);
 }
 
 int *oai_oran_initialize(const openair0_config_t *openair0_cfg)
@@ -432,7 +432,11 @@ int *oai_oran_initialize(const openair0_config_t *openair0_cfg)
     }
 
     int sector = 0;
+    printf("Initialize ORAN port instance %d (%d) sector %d\n", o_xu_id, init.xran_ports, sector);
     oran_port_instance_t *pi = &gPortInst[o_xu_id][sector];
+    struct xran_cb_tag tag = {.cellId = sector, .oXuId = o_xu_id};
+    pi->prach_tag = tag;
+    pi->pusch_tag = tag;
     oran_allocate_buffers(gxran_handle, o_xu_id, 1, pi, &xran_fh_config[o_xu_id]);
 
     if ((xret = xran_reg_physide_cb(gxran_handle, oai_physide_dl_tti_call_back, NULL, 10, XRAN_CB_TTI)) != XRAN_STATUS_SUCCESS) {

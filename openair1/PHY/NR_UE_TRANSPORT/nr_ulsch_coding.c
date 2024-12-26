@@ -116,6 +116,7 @@ int nr_ulsch_encoding(PHY_VARS_NR_UE *ue,
                               &harq_process->Z,
                               &harq_process->F,
                               harq_process->BG);
+    stop_meas_nr_ue_phy(ue, ULSCH_SEGMENTATION_STATS);
     impp.n_segments = harq_process->C;
     impp.K = harq_process->K;
     impp.Kr = impp.K;
@@ -126,7 +127,6 @@ int nr_ulsch_encoding(PHY_VARS_NR_UE *ue,
       LOG_E(PHY, "nr_segmentation.c: too many segments %d, B %d\n", impp.n_segments, B);
       return(-1);
     }
-    stop_meas_nr_ue_phy(ue, ULSCH_SEGMENTATION_STATS);
     VCD_SIGNAL_DUMPER_DUMP_FUNCTION_BY_NAME(VCD_SIGNAL_DUMPER_FUNCTIONS_NR_SEGMENTATION, VCD_FUNCTION_OUT);
 
 #ifdef DEBUG_ULSCH_CODING
@@ -149,19 +149,22 @@ int nr_ulsch_encoding(PHY_VARS_NR_UE *ue,
     VCD_SIGNAL_DUMPER_DUMP_FUNCTION_BY_NAME(VCD_SIGNAL_DUMPER_FUNCTIONS_LDPC_ENCODER_OPTIM, VCD_FUNCTION_IN);
   }
 
-  start_meas_nr_ue_phy(ue, ULSCH_LDPC_ENCODING_STATS);
   if (ldpc_interface_offload.LDPCencoder) {
     for (int j = 0; j < impp.n_segments; j++) {
       impp.perCB[j].E_cb = nr_get_E(G, impp.n_segments, impp.Qm, ulsch->pusch_pdu.nrOfLayers, j);
     }
+    start_meas_nr_ue_phy(ue, ULSCH_LDPC_ENCODING_STATS);
     ldpc_interface_offload.LDPCencoder(harq_process->c, &harq_process->f, &impp);
+    stop_meas_nr_ue_phy(ue, ULSCH_LDPC_ENCODING_STATS);
   } else {
     if (ulsch->pusch_pdu.pusch_data.new_data_indicator) {
+      start_meas_nr_ue_phy(ue, ULSCH_LDPC_ENCODING_STATS);
       for (int j = 0; j < (impp.n_segments / 8 + 1); j++) {
         impp.macro_num = j;
         impp.Kr = impp.K;
         ldpc_interface.LDPCencoder(harq_process->c, harq_process->d, &impp);
       }
+      stop_meas_nr_ue_phy(ue, ULSCH_LDPC_ENCODING_STATS);
       VCD_SIGNAL_DUMPER_DUMP_FUNCTION_BY_NAME(VCD_SIGNAL_DUMPER_FUNCTIONS_LDPC_ENCODER_OPTIM, VCD_FUNCTION_OUT);
 
 #ifdef DEBUG_ULSCH_CODING
@@ -169,7 +172,6 @@ int nr_ulsch_encoding(PHY_VARS_NR_UE *ue,
       write_output("ulsch_enc_output0.m", "enc0", &harq_process->d[0][0], (3 * 8 * Kr_bytes) + 12, 1, 4);
 #endif
     }
-    stop_meas_nr_ue_phy(ue, ULSCH_LDPC_ENCODING_STATS);
 ///////////////////////////////////////////////////////////////////////////////
     for (int r = 0; r < impp.n_segments; r++) { // looping over C segments
       if (impp.F > 0) {

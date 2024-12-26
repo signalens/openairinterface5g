@@ -925,7 +925,7 @@ void init_eNB_proc(int inst) {
 
     AssertFatal(proc->instance_cnt_prach == -1,"instance_cnt_prach = %d\n",proc->instance_cnt_prach);
 
-    if (opp_enabled == 1)
+    if (cpu_meas_enabled)
       threadCreate(&proc->process_stats_thread, process_stats_thread, (void *)eNB, "opp stats", -1, sched_get_priority_min(SCHED_OAI));
     if (!IS_SOFTMODEM_NOSTATS_BIT)
       threadCreate(&proc->L1_stats_thread, L1_stats_thread, (void *)eNB, "L1 stats", -1, sched_get_priority_min(SCHED_OAI));

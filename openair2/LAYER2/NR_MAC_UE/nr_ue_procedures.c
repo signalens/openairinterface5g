@@ -50,7 +50,6 @@
 
 /* PHY */
 #include "executables/softmodem-common.h"
-#include "openair1/PHY/defs_nr_UE.h"
 
 /* utils */
 #include "assertions.h"
@@ -162,6 +161,8 @@ int get_rnti_type(const NR_UE_MAC_INST_t *mac, const uint16_t rnti)
 
   if (rnti == ra->ra_rnti) {
     rnti_type = TYPE_RA_RNTI_;
+  } else if (rnti == ra->MsgB_rnti && (ra->ra_state == nrRA_WAIT_MSGB || ra->ra_state == nrRA_WAIT_CONTENTION_RESOLUTION)) {
+    rnti_type = TYPE_MSGB_RNTI_;
   } else if (rnti == ra->t_crnti && (ra->ra_state == nrRA_WAIT_RAR || ra->ra_state == nrRA_WAIT_CONTENTION_RESOLUTION)) {
     rnti_type = TYPE_TC_RNTI_;
   } else if (rnti == mac->crnti) {
@@ -686,7 +687,7 @@ static int nr_ue_process_dci_dl_10(NR_UE_MAC_INST_t *mac,
 
   dlsch_pdu->pduBitmap = 0;
   NR_UE_DL_BWP_t *current_DL_BWP = mac->current_DL_BWP;
-  NR_PDSCH_Config_t *pdsch_config = (current_DL_BWP || !mac->get_sib1) ? current_DL_BWP->pdsch_Config : NULL;
+  NR_PDSCH_Config_t *pdsch_config = (current_DL_BWP && !mac->get_sib1) ? current_DL_BWP->pdsch_Config : NULL;
   if (dci_ind->ss_type == NR_SearchSpace__searchSpaceType_PR_common) {
     dlsch_pdu->BWPSize =
         mac->type0_PDCCH_CSS_config.num_rbs ? mac->type0_PDCCH_CSS_config.num_rbs : mac->sc_info.initial_dl_BWPSize;
@@ -734,7 +735,7 @@ static int nr_ue_process_dci_dl_10(NR_UE_MAC_INST_t *mac,
     return -1;
   }
   dlsch_pdu->rb_offset = dlsch_pdu->start_rb + dlsch_pdu->BWPStart;
-  if (mac->get_sib1)
+  if (mac->get_sib1 || mac->get_otherSI)
     dlsch_pdu->rb_offset -= dlsch_pdu->BWPStart;
 
   /* TIME_DOM_RESOURCE_ASSIGNMENT */
@@ -805,7 +806,7 @@ static int nr_ue_process_dci_dl_10(NR_UE_MAC_INST_t *mac,
   /* MCS */
   dlsch_pdu->mcs = dci->mcs;
 
-  NR_UE_HARQ_STATUS_t *current_harq = &mac->dl_harq_info[dci->harq_pid];
+  NR_UE_HARQ_STATUS_t *current_harq = &mac->dl_harq_info[dci->harq_pid.val];
   /* NDI (only if CRC scrambled by C-RNTI or CS-RNTI or new-RNTI or TC-RNTI)*/
   if (dl_conf_req->pdu_type == FAPI_NR_DL_CONFIG_TYPE_SI_DLSCH ||
       dl_conf_req->pdu_type == FAPI_NR_DL_CONFIG_TYPE_RA_DLSCH ||
@@ -873,7 +874,7 @@ static int nr_ue_process_dci_dl_10(NR_UE_MAC_INST_t *mac,
   /* RV (only if CRC scrambled by C-RNTI or CS-RNTI or new-RNTI or TC-RNTI)*/
   dlsch_pdu->rv = dci->rv;
   /* HARQ_PROCESS_NUMBER (only if CRC scrambled by C-RNTI or CS-RNTI or new-RNTI or TC-RNTI)*/
-  dlsch_pdu->harq_process_nbr = dci->harq_pid;
+  dlsch_pdu->harq_process_nbr = dci->harq_pid.val;
   /* TB_SCALING (only if CRC scrambled by P-RNTI or RA-RNTI) */
   // according to TS 38.214 Table 5.1.3.2-3
   if (dci->tb_scaling > 3) {
@@ -926,7 +927,7 @@ static int nr_ue_process_dci_dl_10(NR_UE_MAC_INST_t *mac,
     const int tpc[] = {-1, 0, 1, 3};
     set_harq_status(mac,
                     dci->pucch_resource_indicator,
-                    dci->harq_pid,
+                    dci->harq_pid.val,
                     tpc[dci->tpc],
                     feedback_ti,
                     dci->dai[0].val,
@@ -1125,7 +1126,7 @@ static int nr_ue_process_dci_dl_11(NR_UE_MAC_INST_t *mac,
   /* MCS (for transport block 1)*/
   dlsch_pdu->mcs = dci->mcs;
   /* NDI (for transport block 1)*/
-  NR_UE_HARQ_STATUS_t *current_harq = &mac->dl_harq_info[dci->harq_pid];
+  NR_UE_HARQ_STATUS_t *current_harq = &mac->dl_harq_info[dci->harq_pid.val];
   if (dci->ndi != current_harq->last_ndi) {
     // new data
     dlsch_pdu->new_data_indicator = true;
@@ -1145,7 +1146,7 @@ static int nr_ue_process_dci_dl_11(NR_UE_MAC_INST_t *mac,
   /* RV (for transport block 2)*/
   dlsch_pdu->tb2_rv = dci->rv2.val;
   /* HARQ_PROCESS_NUMBER */
-  dlsch_pdu->harq_process_nbr = dci->harq_pid;
+  dlsch_pdu->harq_process_nbr = dci->harq_pid.val;
   /* TPC_PUCCH */
   // according to TS 38.213 Table 7.2.1-1
   if (dci->tpc > 3) {
@@ -1266,7 +1267,7 @@ static int nr_ue_process_dci_dl_11(NR_UE_MAC_INST_t *mac,
   const int tpc[] = {-1, 0, 1, 3};
   set_harq_status(mac,
                   dci->pucch_resource_indicator,
-                  dci->harq_pid,
+                  dci->harq_pid.val,
                   tpc[dci->tpc],
                   feedback_ti,
                   dci->dai[0].val,
@@ -1480,7 +1481,8 @@ void set_harq_status(NR_UE_MAC_INST_t *mac,
   // we need to keep track of how many DAI we received in a slot (dai_cumul) despite the modulo operation
   int highest_dai = -1;
   int temp_dai = dai;
-  for (int i = 0; i < NR_MAX_HARQ_PROCESSES; i++) {
+  const int num_dl_harq = get_nrofHARQ_ProcessesForPDSCH(&mac->sc_info);
+  for (int i = 0; i < num_dl_harq; i++) {
     // looking for other active HARQ processes with feedback in the same frame/slot
     if (i == harq_id)
       continue;
@@ -2317,12 +2319,13 @@ bool get_downlink_ack(NR_UE_MAC_INST_t *mac, frame_t frame, int slot, PUCCH_sche
     number_of_code_word = 2;
   }
 
+  const int num_dl_harq = get_nrofHARQ_ProcessesForPDSCH(&mac->sc_info);
   int res_ind = -1;
 
   /* look for dl acknowledgment which should be done on current uplink slot */
   for (int code_word = 0; code_word < number_of_code_word; code_word++) {
 
-    for (int dl_harq_pid = 0; dl_harq_pid < NR_MAX_HARQ_PROCESSES; dl_harq_pid++) {
+    for (int dl_harq_pid = 0; dl_harq_pid < num_dl_harq; dl_harq_pid++) {
 
       NR_UE_HARQ_STATUS_t *current_harq = &mac->dl_harq_info[dl_harq_pid];
 
@@ -2542,7 +2545,7 @@ int8_t nr_ue_get_SR(NR_UE_MAC_INST_t *mac, frame_t frame, slot_t slot, NR_Schedu
         sr_id); // todo
 
   // TODO check if the PUCCH resource for the SR transmission occasion does not overlap with a UL-SCH resource
-  if (!sr_info->pending || is_nr_timer_active(sr_info->prohibitTimer))
+  if (!sr_info->pending || nr_timer_is_active(&sr_info->prohibitTimer))
     return 0;
 
   if (sr_info->counter < sr_info->maxTransmissions) {
@@ -2952,8 +2955,11 @@ void nr_ue_send_sdu(NR_UE_MAC_INST_t *mac, nr_downlink_indication_t *dl_info, in
 {
   VCD_SIGNAL_DUMPER_DUMP_FUNCTION_BY_NAME(VCD_SIGNAL_DUMPER_FUNCTIONS_UE_SEND_SDU, VCD_FUNCTION_IN);
 
-  LOG_D(MAC, "In [%d.%d] Handling DLSCH PDU type %d\n",
-        dl_info->frame, dl_info->slot, dl_info->rx_ind->rx_indication_body[pdu_id].pdu_type);
+  LOG_D(NR_MAC,
+        "In [%d.%d] Handling DLSCH PDU type %d\n",
+        dl_info->frame,
+        dl_info->slot,
+        dl_info->rx_ind->rx_indication_body[pdu_id].pdu_type);
 
   // Processing MAC PDU
   // it parses MAC CEs subheaders, MAC CEs, SDU subheaderds and SDUs
@@ -2963,15 +2969,19 @@ void nr_ue_send_sdu(NR_UE_MAC_INST_t *mac, nr_downlink_indication_t *dl_info, in
       // DCCH logical channel, or CCCH logical channel
       if (mac->data_inactivity_timer)
         nr_timer_start(mac->data_inactivity_timer);
+      // DL data arrival during RRC_CONNECTED when UL synchronisation status is "non-synchronised"
+      if (!nr_timer_is_active(&mac->time_alignment_timer) && mac->state == UE_CONNECTED && !get_softmodem_params()->phy_test) {
+        trigger_MAC_UE_RA(mac);
+        break;
+      }
       nr_ue_process_mac_pdu(mac, dl_info, pdu_id);
       break;
     case FAPI_NR_RX_PDU_TYPE_RAR :
       nr_ue_process_rar(mac, dl_info, pdu_id);
       break;
-    default:
-      AssertFatal(false, "Invalid PDU type\n");
+    default :
+      AssertFatal(false, "Invalid DLSCH PDU type\n");
   }
-
   VCD_SIGNAL_DUMPER_DUMP_FUNCTION_BY_NAME(VCD_SIGNAL_DUMPER_FUNCTIONS_UE_SEND_SDU, VCD_FUNCTION_OUT);
 }
 
@@ -3058,8 +3068,8 @@ static void extract_10_c_rnti(dci_pdu_rel15_t *dci_pdu_rel15, const uint8_t *dci
     EXTRACT_DCI_ITEM(dci_pdu_rel15->ndi, 1);
     // Redundancy version  2bit
     EXTRACT_DCI_ITEM(dci_pdu_rel15->rv, 2);
-    // HARQ process number  4bit
-    EXTRACT_DCI_ITEM(dci_pdu_rel15->harq_pid, 4);
+    // HARQ process number  4/5 bit
+    EXTRACT_DCI_ITEM(dci_pdu_rel15->harq_pid.val, dci_pdu_rel15->harq_pid.nbits);
     // Downlink assignment index  2bit
     EXTRACT_DCI_ITEM(dci_pdu_rel15->dai[0].val, 2);
     // TPC command for scheduled PUCCH  2bit
@@ -3088,7 +3098,7 @@ static void extract_00_c_rnti(dci_pdu_rel15_t *dci_pdu_rel15, const uint8_t *dci
   // Redundancy version  2bit
   EXTRACT_DCI_ITEM(dci_pdu_rel15->rv, 2);
   // HARQ process number  4bit
-  EXTRACT_DCI_ITEM(dci_pdu_rel15->harq_pid, 4);
+  EXTRACT_DCI_ITEM(dci_pdu_rel15->harq_pid.val, 4);
   // TPC command for scheduled PUSCH  E2 bits
   EXTRACT_DCI_ITEM(dci_pdu_rel15->tpc, 2);
   // UL/SUL indicator  E1 bit
@@ -3115,7 +3125,7 @@ static void extract_10_tc_rnti(dci_pdu_rel15_t *dci_pdu_rel15, const uint8_t *dc
   // Redundancy version - 2 bits
   EXTRACT_DCI_ITEM(dci_pdu_rel15->rv, 2);
   // HARQ process number - 4 bits
-  EXTRACT_DCI_ITEM(dci_pdu_rel15->harq_pid, 4);
+  EXTRACT_DCI_ITEM(dci_pdu_rel15->harq_pid.val, 4);
   // Downlink assignment index - 2 bits
   EXTRACT_DCI_ITEM(dci_pdu_rel15->dai[0].val, 2);
   // TPC command for scheduled PUCCH - 2 bits
@@ -3128,7 +3138,7 @@ static void extract_10_tc_rnti(dci_pdu_rel15_t *dci_pdu_rel15, const uint8_t *dc
 
 static void extract_00_tc_rnti(dci_pdu_rel15_t *dci_pdu_rel15, const uint8_t *dci_pdu, int pos)
 {
-  LOG_D(NR_MAC_DCI, "Received dci 1_0 TC rnti\n");
+  LOG_D(NR_MAC_DCI, "Received dci 0_0 TC rnti\n");
 
   // Frequency domain assignment
   EXTRACT_DCI_ITEM(dci_pdu_rel15->frequency_domain_assignment.val, dci_pdu_rel15->frequency_domain_assignment.nbits);
@@ -3143,7 +3153,7 @@ static void extract_00_tc_rnti(dci_pdu_rel15_t *dci_pdu_rel15, const uint8_t *dc
   // Redundancy version  2bit
   EXTRACT_DCI_ITEM(dci_pdu_rel15->rv, 2);
   // HARQ process number  4bit
-  EXTRACT_DCI_ITEM(dci_pdu_rel15->harq_pid, 4);
+  EXTRACT_DCI_ITEM(dci_pdu_rel15->harq_pid.val, 4);
   // TPC command for scheduled PUSCH  E2 bits
   EXTRACT_DCI_ITEM(dci_pdu_rel15->tpc, 2);
 }
@@ -3182,8 +3192,8 @@ static void extract_11_c_rnti(dci_pdu_rel15_t *dci_pdu_rel15, const uint8_t *dci
   EXTRACT_DCI_ITEM(dci_pdu_rel15->ndi2.val, dci_pdu_rel15->ndi2.nbits);
   // Redundancy version  2bit
   EXTRACT_DCI_ITEM(dci_pdu_rel15->rv2.val, dci_pdu_rel15->rv2.nbits);
-  // HARQ process number  4bit
-  EXTRACT_DCI_ITEM(dci_pdu_rel15->harq_pid, 4);
+  // HARQ process number  4/5 bit
+  EXTRACT_DCI_ITEM(dci_pdu_rel15->harq_pid.val, dci_pdu_rel15->harq_pid.nbits);
   // Downlink assignment index
   EXTRACT_DCI_ITEM(dci_pdu_rel15->dai[0].val, dci_pdu_rel15->dai[0].nbits);
   // TPC command for scheduled PUCCH  2bit
@@ -3231,8 +3241,8 @@ static void extract_01_c_rnti(dci_pdu_rel15_t *dci_pdu_rel15, const uint8_t *dci
   EXTRACT_DCI_ITEM(dci_pdu_rel15->ndi, 1);
   // Redundancy version  2bit
   EXTRACT_DCI_ITEM(dci_pdu_rel15->rv, 2);
-  // HARQ process number  4bit
-  EXTRACT_DCI_ITEM(dci_pdu_rel15->harq_pid, 4);
+  // HARQ process number  4/5 bit
+  EXTRACT_DCI_ITEM(dci_pdu_rel15->harq_pid.val, dci_pdu_rel15->harq_pid.nbits);
   // 1st Downlink assignment index
   EXTRACT_DCI_ITEM(dci_pdu_rel15->dai[0].val, dci_pdu_rel15->dai[0].nbits);
   // 2nd Downlink assignment index
@@ -3339,6 +3349,7 @@ static nr_dci_format_t nr_extract_dci_00_10(NR_UE_MAC_INST_t *mac,
       dci_pdu_rel15->format_indicator = format_indicator;
       break;
     case TYPE_TC_RNTI_ :
+    case TYPE_MSGB_RNTI_:
       // Identifier for DCI formats
       EXTRACT_DCI_ITEM(format_indicator, 1);
       if (format_indicator == 1) {
@@ -3411,6 +3422,116 @@ static nr_dci_format_t nr_extract_dci_info(NR_UE_MAC_INST_t *mac,
   return format;
 }
 
+static void set_time_alignment(NR_UE_MAC_INST_t *mac, int ta, ta_type_t type, int frame, int slot)
+{
+  NR_UL_TIME_ALIGNMENT_t *ul_time_alignment = &mac->ul_time_alignment;
+  ul_time_alignment->ta_command = ta;
+  ul_time_alignment->ta_apply = type;
+
+  const int ntn_ue_koffset = get_NTN_UE_Koffset(mac->sc_info.ntn_Config_r17, mac->current_UL_BWP->scs);
+  const int n_slots_frame = nr_slots_per_frame[mac->current_UL_BWP->scs];
+  ul_time_alignment->frame = (frame + (slot + ntn_ue_koffset) / n_slots_frame) % MAX_FRAME_NUMBER;
+  ul_time_alignment->slot = (slot + ntn_ue_koffset) % n_slots_frame;
+
+  // start or restart the timeAlignmentTimer associated with the indicated TAG
+  nr_timer_start(&mac->time_alignment_timer);
+}
+
+static bool check_ra_contention_resolution(const uint8_t *pdu, const uint8_t *cont_res)
+{
+  if (IS_SOFTMODEM_IQPLAYER) // Control is bypassed when replaying IQs (BMC)
+    return true;
+  for (int i = 0; i < 6; i++) {
+    if (pdu[i] != cont_res[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+static int nr_ue_validate_successrar(uint8_t *pduP,
+                              int32_t pdu_len,
+                              NR_UE_MAC_INST_t *mac,
+                              uint8_t gNB_index,
+                              frame_t frameP,
+                              int slot)
+{
+  // TS 38.321 - Figure 6.1.5a-1: BI MAC subheader
+  // TS 38.321 - Figure 6.1.5a-3: SuccessRAR MAC subheader
+  int n = 0;
+  uint8_t E = 1;
+  uint8_t cont_res_id[6];
+  RA_config_t *ra = &mac->ra;
+
+  while (n < pdu_len && E) {
+    E = (pduP[n] >> 7) & 0x1;
+    uint8_t SUCESS_RAR_header_T1 = (pduP[n] >> 6) & 0x1;
+    if (SUCESS_RAR_header_T1 == 0) { // T2 exist
+      int SUCESS_RAR_header_T2 = (pduP[n] >> 5) & 0x1;
+      if (SUCESS_RAR_header_T2 == 0) { // BI
+        ra->RA_backoff_indicator = pduP[n] & 0x0F;
+        n++;
+      } else { // S
+        n++;
+        // TS 38.321 - Figure 6.2.3a-2: successRAR
+        for (int i = 0; i < 6; ++i)
+          cont_res_id[i] = pduP[n + i];
+        n += 6;
+        // Oct 7
+        ra->MsgB_R = 0;
+        ra->MsgB_CH_ACESS_CPEXT = (pduP[n] >> 5) & 0x3;
+        ra->MsgB_TPC = (pduP[n] >> 3) & 3;
+        ra->MsgB_HARQ_FTI = (int8_t)pduP[n] & 0x7;
+        // Oct 8
+        n++;
+        ra->PUCCH_RI = ((int8_t)pduP[n] >> 4) & 0x0F;
+        // Oct 8 and Oct 9
+        ra->timing_advance_command = ((uint16_t)(pduP[n] & 0xf) << 8) | pduP[n + 1];
+        n += 2;
+        // Oct 10 and Oct 11
+        ra->t_crnti = ((uint16_t)pduP[n] << 8) | pduP[n + 1];
+        n += 2;
+
+        LOG_D(NR_MAC,
+              "successRAR: Contention Resolution ID 0x%02x%02x%02x%02x%02x%02x R 0x%01x CH_ACESS_CPEXT 0x%02x TPC 0x%02x "
+              "HARQ_FTI 0x%03x PUCCH_RI 0x%04x TA 0x%012x CRNTI 0x%04x\n",
+              cont_res_id[0],
+              cont_res_id[1],
+              cont_res_id[2],
+              cont_res_id[3],
+              cont_res_id[4],
+              cont_res_id[5],
+              ra->MsgB_R,
+              ra->MsgB_CH_ACESS_CPEXT,
+              ra->MsgB_TPC,
+              ra->MsgB_HARQ_FTI,
+              ra->PUCCH_RI,
+              ra->timing_advance_command,
+              ra->t_crnti);
+
+        bool ra_success = check_ra_contention_resolution(cont_res_id, ra->cont_res_id);
+
+        if (ra->RA_active && ra_success) {
+          nr_ra_succeeded(mac, gNB_index, frameP, slot);
+        } else if (!ra_success) {
+          // nr_ra_failed(mac, CC_id, &ra->prach_resources, frameP, slot);
+          ra->ra_state = nrRA_UE_IDLE;
+          ra->RA_active = 0;
+        }
+      }
+    } else { // RAPID
+      int RAPID = pduP[n] & 0x3F;
+      n++;
+      LOG_D(MAC, "RAPID %d\n", RAPID);
+      AssertFatal(false, "FallbackRAR not implemented yet!\n");
+    }
+  }
+  const int ta = ((NR_MAC_CE_TA *)pduP)[1].TA_COMMAND;
+
+  set_time_alignment(mac, ta, adjustment_ta, frameP, slot);
+  return n;
+}
+
 ///////////////////////////////////
 // brief:     nr_ue_process_mac_pdu
 // function:  parsing DL PDU header
@@ -3434,9 +3555,12 @@ static nr_dci_format_t nr_extract_dci_info(NR_UE_MAC_INST_t *mac,
 //
 //  |0|1|2|3|4|5|6|7|  bit-wise
 //  |R|R|   LCID    |
-//  LCID: The Logical Channel ID field identifies the logical channel instance of the corresponding MAC SDU or the type of the corresponding MAC CE or padding as described
-//         in Tables 6.2.1-1 and 6.2.1-2 for the DL-SCH and UL-SCH respectively. There is one LCID field per MAC subheader. The LCID field size is 6 bits;
-//  L:    The Length field indicates the length of the corresponding MAC SDU or variable-sized MAC CE in bytes. There is one L field per MAC subheader except for subheaders
+//  LCID: The Logical Channel ID field identifies the logical channel instance of the corresponding MAC SDU or the type of the
+//  corresponding MAC CE or padding as described
+//         in Tables 6.2.1-1 and 6.2.1-2 for the DL-SCH and UL-SCH respectively. There is one LCID field per MAC subheader. The LCID
+//         field size is 6 bits;
+//  L:    The Length field indicates the length of the corresponding MAC SDU or variable-sized MAC CE in bytes. There is one L field
+//  per MAC subheader except for subheaders
 //         corresponding to fixed-sized MAC CEs and padding. The size of the L field is indicated by the F field;
 //  F:    lenght of L is 0:8 or 1:16 bits wide
 //  R:    Reserved bit, set to zero.
@@ -3452,16 +3576,23 @@ void nr_ue_process_mac_pdu(NR_UE_MAC_INST_t *mac, nr_downlink_indication_t *dl_i
   uint8_t done = 0;
   RA_config_t *ra = &mac->ra;
 
-  if (!pduP){
+  if (!pduP) {
     return;
   }
 
-  LOG_D(MAC, "[%d.%d]: processing PDU %d (with length %d) of %d total number of PDUs...\n",
+  LOG_D(MAC,
+        "[%d.%d]: processing PDU %d (with length %d) of %d total number of PDUs...\n",
         frameP,
         slot,
         pdu_id,
         pdu_len,
         dl_info->rx_ind->number_pdus);
+
+  if (ra->ra_type == RA_2_STEP && ra->ra_state == nrRA_WAIT_MSGB) {
+    int n = nr_ue_validate_successrar(pduP, pdu_len, mac, gNB_index, frameP, slot);
+    pduP += n;
+    pdu_len -= n;
+  }
 
   while (!done && pdu_len > 0){
     uint16_t mac_len = 0x0000;
@@ -3562,33 +3693,21 @@ void nr_ue_process_mac_pdu(NR_UE_MAC_INST_t *mac, nr_downlink_indication_t *dl_i
         //  38.321 Ch6.1.3.4
         mac_len = 1;
 
-        /*uint8_t ta_command = ((NR_MAC_CE_TA *)pduP)[1].TA_COMMAND;
-          uint8_t tag_id = ((NR_MAC_CE_TA *)pduP)[1].TAGID;*/
-
         const int ta = ((NR_MAC_CE_TA *)pduP)[1].TA_COMMAND;
         const int tag = ((NR_MAC_CE_TA *)pduP)[1].TAGID;
 
-        NR_UL_TIME_ALIGNMENT_t *ul_time_alignment = &mac->ul_time_alignment;
-        ul_time_alignment->tag_id = tag;
-        ul_time_alignment->ta_command = ta;
-        ul_time_alignment->ta_apply = adjustment_ta;
+        if (tag != mac->tag_Id) {
+          LOG_E(NR_MAC, "MAC CE TAG %d does not correspond to the one configured at MAC %ld\n", tag, mac->tag_Id);
+          done = 1;
+          break;
+        }
 
-        const int ntn_ue_koffset = get_NTN_UE_Koffset(mac->sc_info.ntn_Config_r17, mac->current_UL_BWP->scs);
-        const int n_slots_frame = nr_slots_per_frame[mac->current_UL_BWP->scs];
-        ul_time_alignment->frame = (frameP + (slot + ntn_ue_koffset) / n_slots_frame) % MAX_FRAME_NUMBER;
-        ul_time_alignment->slot = (slot + ntn_ue_koffset) % n_slots_frame;
-
-        /*
-        #ifdef DEBUG_HEADER_PARSING
-        LOG_D(MAC, "[UE] CE %d : UE Timing Advance : %d\n", i, pduP[1]);
-        #endif
-        */
+        set_time_alignment(mac, ta, adjustment_ta, frameP, slot);
 
         if (ta == 31)
           LOG_D(NR_MAC, "[%d.%d] Received TA_COMMAND %u TAGID %u CC_id %d \n", frameP, slot, ta, tag, CC_id);
         else
           LOG_I(NR_MAC, "[%d.%d] Received TA_COMMAND %u TAGID %u CC_id %d \n", frameP, slot, ta, tag, CC_id);
-
         break;
       case DL_SCH_LCID_CON_RES_ID:
         //  Clause 5.1.5 and 6.1.3.3 of 3GPP TS 38.321 version 16.2.1 Release 16
@@ -3607,15 +3726,7 @@ void nr_ue_process_mac_pdu(NR_UE_MAC_INST_t *mac, nr_downlink_indication_t *dl_i
                 pduP[5],
                 pduP[6]);
 
-          bool ra_success = true;
-	  if (!IS_SOFTMODEM_IQPLAYER) { // Control is bypassed when replaying IQs (BMC)
-	    for(int i = 0; i < mac_len; i++) {
-	      if(ra->cont_res_id[i] != pduP[i + 1]) {
-		ra_success = false;
-		break;
-	      }
-	    }
-	  }
+          bool ra_success = check_ra_contention_resolution(&pduP[1], ra->cont_res_id);
 
           if (ra->RA_active && ra_success) {
             nr_ra_succeeded(mac, gNB_index, frameP, slot);
@@ -3932,13 +4043,15 @@ static void nr_ue_process_rar(NR_UE_MAC_INST_t *mac, nr_downlink_indication_t *d
     }
   }
 
-  #ifdef DEBUG_RAR
-  LOG_D(MAC, "[DEBUG_RAR] (%d,%d) number of RAR subheader %d; number of RAR pyloads %d\n",
+#ifdef DEBUG_RAR
+  LOG_D(NR_MAC,
+        "[DEBUG_RAR] (%d,%d) number of RAR subheader %d; number of RAR pyloads %d\n",
         frame,
         slot,
         n_subheaders,
         n_subPDUs);
-  LOG_D(MAC, "[DEBUG_RAR] Received RAR (%02x|%02x.%02x.%02x.%02x.%02x.%02x) for preamble %d/%d\n",
+  LOG_D(NR_MAC,
+        "[DEBUG_RAR] Received RAR (%02x|%02x.%02x.%02x.%02x.%02x.%02x) for preamble %d/%d\n",
         *(uint8_t *) rarh,
         rar[0],
         rar[1],
@@ -3948,30 +4061,18 @@ static void nr_ue_process_rar(NR_UE_MAC_INST_t *mac, nr_downlink_indication_t *d
         rar[5],
         rarh->RAPID,
         preamble_index);
-  #endif
+#endif
 
   if (ra->RA_RAPID_found) {
     RAR_grant_t rar_grant;
 
-    unsigned char tpc_command;
-#ifdef DEBUG_RAR
-    unsigned char csi_req;
-#endif
-
-    // TA command
-    NR_UL_TIME_ALIGNMENT_t *ul_time_alignment = &mac->ul_time_alignment;
-    const int ta = rar->TA2 + (rar->TA1 << 5);
-    ul_time_alignment->ta_command = ta;
-    ul_time_alignment->ta_apply = rar_ta;
-
-    LOG_W(MAC, "received TA command %d\n", 31 + ta);
 #ifdef DEBUG_RAR
     // CSI
-    csi_req = (unsigned char) (rar->UL_GRANT_4 & 0x01);
+    unsigned char csi_req = (unsigned char) (rar->UL_GRANT_4 & 0x01);
 #endif
 
     // TPC
-    tpc_command = (unsigned char) ((rar->UL_GRANT_4 >> 1) & 0x07);
+    unsigned char tpc_command = (unsigned char) ((rar->UL_GRANT_4 >> 1) & 0x07);
     switch (tpc_command){
       case 0:
         ra->Msg3_TPC = -6;
@@ -4009,6 +4110,31 @@ static void nr_ue_process_rar(NR_UE_MAC_INST_t *mac, nr_downlink_indication_t *d
     // frequency hopping
     rar_grant.freq_hopping = (unsigned char) (rar->UL_GRANT_1 >> 2);
 
+    // Schedule Msg3
+    const NR_UE_UL_BWP_t *current_UL_BWP = mac->current_UL_BWP;
+    const NR_UE_DL_BWP_t *current_DL_BWP = mac->current_DL_BWP;
+    const NR_BWP_PDCCH_t *pdcch_config = &mac->config_BWP_PDCCH[current_DL_BWP->bwp_id];
+    NR_tda_info_t tda_info = get_ul_tda_info(current_UL_BWP,
+                                             *pdcch_config->ra_SS->controlResourceSetId,
+                                             pdcch_config->ra_SS->searchSpaceType->present,
+                                             TYPE_RA_RNTI_,
+                                             rar_grant.Msg3_t_alloc);
+    if (!tda_info.valid_tda || tda_info.nrOfSymbols == 0) {
+      LOG_E(MAC, "Cannot schedule Msg3. Something wrong in TDA information\n");
+      return;
+    }
+    const int ntn_ue_koffset = get_NTN_UE_Koffset(mac->sc_info.ntn_Config_r17, mac->current_UL_BWP->scs);
+    ret = nr_ue_pusch_scheduler(mac, is_Msg3, frame, slot, &frame_tx, &slot_tx, tda_info.k2 + ntn_ue_koffset);
+
+    // TA command
+    // if the timeAlignmentTimer associated with this TAG is not running
+    if (!nr_timer_is_active(&mac->time_alignment_timer)) {
+      const int ta = rar->TA2 + (rar->TA1 << 5);
+      set_time_alignment(mac, ta, rar_ta, frame_tx, slot_tx);
+      LOG_W(MAC, "received TA command %d\n", 31 + ta);
+    }
+    // else ignore the received Timing Advance Command
+
 #ifdef DEBUG_RAR
     LOG_I(NR_MAC, "rarh->E = 0x%x\n", rarh->E);
     LOG_I(NR_MAC, "rarh->T = 0x%x\n", rarh->T);
@@ -4039,26 +4165,6 @@ static void nr_ue_process_rar(NR_UE_MAC_INST_t *mac, nr_downlink_indication_t *d
           tpc_command);
 #endif
 
-    // Schedule Msg3
-    const NR_UE_UL_BWP_t *current_UL_BWP = mac->current_UL_BWP;
-    const NR_UE_DL_BWP_t *current_DL_BWP = mac->current_DL_BWP;
-    const NR_BWP_PDCCH_t *pdcch_config = &mac->config_BWP_PDCCH[current_DL_BWP->bwp_id];
-    NR_tda_info_t tda_info = get_ul_tda_info(current_UL_BWP,
-                                             *pdcch_config->ra_SS->controlResourceSetId,
-                                             pdcch_config->ra_SS->searchSpaceType->present,
-                                             TYPE_RA_RNTI_,
-                                             rar_grant.Msg3_t_alloc);
-    if (!tda_info.valid_tda || tda_info.nrOfSymbols == 0) {
-      LOG_E(MAC, "Cannot schedule Msg3. Something wrong in TDA information\n");
-      return;
-    }
-    const int ntn_ue_koffset = get_NTN_UE_Koffset(mac->sc_info.ntn_Config_r17, mac->current_UL_BWP->scs);
-    ret = nr_ue_pusch_scheduler(mac, is_Msg3, frame, slot, &frame_tx, &slot_tx, tda_info.k2 + ntn_ue_koffset);
-
-    const int n_slots_frame = nr_slots_per_frame[current_UL_BWP->scs];
-    ul_time_alignment->frame = (frame_tx + (slot_tx + ntn_ue_koffset) / n_slots_frame) % MAX_FRAME_NUMBER;
-    ul_time_alignment->slot = (slot_tx + ntn_ue_koffset) % n_slots_frame;
-
     if (ret != -1) {
       uint16_t rnti = mac->crnti;
       // Upon successful reception, set the T-CRNTI to the RAR value if the RA preamble is selected among the contention-based RA Preambles
@@ -4088,6 +4194,9 @@ static void nr_ue_process_rar(NR_UE_MAC_INST_t *mac, nr_downlink_indication_t *d
 
   } else {
     ra->t_crnti = 0;
+    // TODO if the Random Access Preamble was not selected by the MAC entity
+    //      among the contention-based Random Access Preamble
+    //      apply the Timing Advance Command and start or restart the timeAlignmentTimer
   }
   return;
 }

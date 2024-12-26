@@ -105,10 +105,18 @@ These modes of operation are supported:
 - MAC <-> PHY data interface using FAPI P7 interface for BCH PDU, DCI PDU, PDSCH PDU
 - Scheduler procedures for SIB1
 - Scheduler procedures for RA
-  - Contention Free RA procedure
-  - Contention Based RA procedure
-    - Msg3 can transfer uplink CCCH, DTCH or DCCH messages
-    - CBRA can be performed using MAC CE or C-RNTI
+    - 4-Step RA
+        - Contention Free RA procedure
+        - Contention Based RA procedure
+            - Msg3 can transfer uplink CCCH, DTCH or DCCH messages
+            - CBRA can be performed using MAC CE for C-RNTI
+            - Is not possible to use 2-Step RA and 4-Step RA at the same time
+    - 2-Step RA
+        - Contention Based RA procedure
+            - MsgA can transfer uplink CCCH, DTCH or DCCH messages
+            - CBRA can be performed using MAC CE for C-RNTI
+            - Is not possible to use 2-Step RA and 4-Step RA at the same time
+            - Fallback not supported
 - Scheduler procedures for CSI-RS
 - MAC downlink scheduler
   - phy-test scheduler (fixed allocation and usable also without UE)
@@ -129,6 +137,7 @@ These modes of operation are supported:
   - evaluation of CQI report
 - MAC scheduling of SR reception
 - Support of up to 16 UEs (can be increased to 32)
+- Intra-frequency handover
 
 ## gNB RLC
 
@@ -197,18 +206,23 @@ These modes of operation are supported:
 ## gNB F1AP
 
 - Integration of F1AP messages and procedures for the control plane exchanges between the CU and DU entities according to 38.473 Rel. 16
-  - F1 Setup request/response/failure
-  - F1 DL/UL RRC message transfer
-  - F1 Initial UL RRC message transfer
-  - F1 UE Context setup request/response
-  - F1 UE Context modification request/response
-  - F1 UE Context modification required
-  - F1 UE Context release req/cmd/complete
+  - F1 Interface Management:
+    * F1 Setup request/response/failure
+  - F1 RRC Message Transfer:
+    * F1 Initial UL RRC Message Transfer
+    * F1 DL RRC Message Transfer
+    * F1 UL RRC Message Transfer
+  - F1 UE Context Management:
+    * F1 UE Context setup request/response
+    * F1 UE Context modification request/response
+    * F1 UE Context modification required
+    * F1 UE Context release req/cmd/complete
   - F1 gNB CU configuration update
   - F1 Reset (handled at DU only, full reset only)
 - Interface with RRC
 - Interface with GTP-u (tunnel creation/handling for F1-U interface)
 - One CU(-CP) can handle multiple DUs
+- Support for intra-CU mobility (across DUs)
 
 ## gNB E1AP
 
@@ -306,9 +320,15 @@ These modes of operation are supported:
 * Random access procedure (needs improvement, there is still not a clear separation between MAC and PHY)
    - Mapping SSBs to multiple ROs
    - Scheduling of PRACH
-   - Processing of RAR
-   - Transmission and re-transmission of Msg3
-   - Msg4 and contention resolution
+  - 4-Step RA
+      - Processing of RAR
+      - Transmission and re-transmission of Msg3
+      - Msg4 and contention resolution
+  - 2-Step RA
+      - Transmission of MsgA-PUSCH
+      - Reception of MsgB
+      - Processing of SuccessRAR
+      - Fallback not supported
 * DCI processing
    - format 10 (RA-RNTI, C-RNTI, SI-RNTI, TC-RNTI)
    - format 00 (C-RNTI, TC-RNTI)

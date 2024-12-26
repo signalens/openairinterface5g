@@ -25,9 +25,13 @@ tags
 nfapi_nr_interface_scf
 *.log
 *.out
+<<<<<<< HEAD
 
 build/
 
 targets/TEST/PACKET_TRACER/.lock-rel8
 
 targets/TEST/PACKET_TRACER/EUTRA-RRC-Definitions.asn
+=======
+CMakeUserPresets.json
+>>>>>>> 6c1d94a3

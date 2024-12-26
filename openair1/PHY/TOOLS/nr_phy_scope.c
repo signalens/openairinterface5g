@@ -686,7 +686,7 @@ STATICFORXSCOPE OAI_phy_scope_t *create_phy_scope_gnb(void)
   fl_end_form( );
   if (fdui->phy_scope)
     fdui->phy_scope->fdui = fdui;
-  fl_show_form (fdui->phy_scope, FL_PLACE_HOTSPOT, FL_FULLBORDER, "LTE UL SCOPE gNB");
+  fl_show_form (fdui->phy_scope, FL_PLACE_HOTSPOT, FL_FULLBORDER, "NR UL SCOPE gNB");
   return fdui;
 }
 

@@ -202,7 +202,7 @@ void nr_scan_ssb(void *arg)
     /* process pss search on received buffer */
     ssbInfo->syncRes.frame_id = frame_id;
     int nid2;
-    int freq_offset_pss;
+    int freq_offset_pss = 0;
     const int sync_pos = pss_synchro_nr((const c16_t **)rxdata,
                                         fp,
                                         pssTime,
@@ -244,12 +244,7 @@ void nr_scan_ssb(void *arg)
     const uint32_t rxdataF_sz = fp->samples_per_slot_wCP;
     __attribute__((aligned(32))) c16_t rxdataF[fp->nb_antennas_rx][rxdataF_sz];
     for (int i = 0; i < NR_N_SYMBOLS_SSB; i++)
-      nr_slot_fep_init_sync(fp,
-                            i,
-                            frame_id * fp->samples_per_frame + ssbInfo->ssbOffset,
-                            (const c16_t **)rxdata,
-                            rxdataF,
-                            link_type_dl);
+      nr_slot_fep(NULL, fp, 0, i, rxdataF, link_type_dl, frame_id * fp->samples_per_frame + ssbInfo->ssbOffset, (c16_t **)rxdata);
 
     int freq_offset_sss = 0;
     int32_t metric_tdd_ncp = 0;

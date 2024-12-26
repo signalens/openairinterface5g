@@ -594,6 +594,125 @@ TEST(test_pcmax, test_non_obvious_bwp_size)
             nr_get_Pcmax(23, nr_band, frame_type, FR1, channel_bandwidth, 2, false, 1, N_RB_UL, false, 6, prb_start));
 }
 
+TEST(test_srs_power, use_pusch_power_adjustment_state)
+{
+  NR_UE_MAC_INST_t mac = {0};
+  NR_UE_UL_BWP_t current_UL_BWP = {0};
+  current_UL_BWP.scs = 1;
+  current_UL_BWP.BWPSize = 106;
+  mac.current_UL_BWP = &current_UL_BWP;
+  NR_SRS_Resource_t srs_resource = {0};
+  NR_SRS_ResourceSet_t srs_resource_set = {0};
+  bool is_configured_for_pusch_on_current_bwp = true;
+  int delta_srs = 0;
+  srs_resource_set.srs_PowerControlAdjustmentStates = NULL;
+  mac.nr_band = 78;
+  mac.f_b_f_c = 0;
+  mac.pusch_power_control_initialized = true;
+  long p0 = 0;
+  srs_resource_set.p0 = &p0;
+
+  int tx_power = get_srs_tx_power_ue(&mac, &srs_resource, &srs_resource_set, delta_srs, is_configured_for_pusch_on_current_bwp);
+
+  mac.f_b_f_c = 4;
+
+  int increased_tx_power =
+      get_srs_tx_power_ue(&mac, &srs_resource, &srs_resource_set, delta_srs, is_configured_for_pusch_on_current_bwp);
+  EXPECT_EQ(tx_power + mac.f_b_f_c, increased_tx_power);
+}
+
+TEST(test_srs_power, no_support_for_two_pusch_power_adjustment_states)
+{
+  NR_UE_MAC_INST_t mac = {0};
+  NR_UE_UL_BWP_t current_UL_BWP = {0};
+  current_UL_BWP.scs = 1;
+  current_UL_BWP.BWPSize = 106;
+  mac.current_UL_BWP = &current_UL_BWP;
+  NR_SRS_Resource_t srs_resource = {0};
+  NR_SRS_ResourceSet_t srs_resource_set = {0};
+  long p0 = 0;
+  srs_resource_set.p0 = &p0;
+  bool is_configured_for_pusch_on_current_bwp = true;
+  int delta_srs = 0;
+  long srs_PowerControlAdjustmentStates = NR_SRS_ResourceSet__srs_PowerControlAdjustmentStates_sameAsFci2;
+  srs_resource_set.srs_PowerControlAdjustmentStates = &srs_PowerControlAdjustmentStates;
+  mac.nr_band = 78;
+  mac.f_b_f_c = 0;
+  mac.pusch_power_control_initialized = true;
+
+  EXPECT_DEATH(get_srs_tx_power_ue(&mac, &srs_resource, &srs_resource_set, delta_srs, is_configured_for_pusch_on_current_bwp),
+               "Two PUSCH power adjustment states not supported");
+}
+
+TEST(test_srs_power, no_tpc_accumulation)
+{
+  NR_UE_MAC_INST_t mac = {0};
+  NR_UE_UL_BWP_t current_UL_BWP = {0};
+  current_UL_BWP.scs = 1;
+  current_UL_BWP.BWPSize = 106;
+  mac.current_UL_BWP = &current_UL_BWP;
+  NR_SRS_Resource_t srs_resource = {0};
+  NR_SRS_ResourceSet_t srs_resource_set = {0};
+  long p0 = 0;
+  srs_resource_set.p0 = &p0;
+  bool is_configured_for_pusch_on_current_bwp = true;
+  int delta_srs = 0;
+  long srs_PowerControlAdjustmentStates = NR_SRS_ResourceSet__srs_PowerControlAdjustmentStates_separateClosedLoop;
+  srs_resource_set.srs_PowerControlAdjustmentStates = &srs_PowerControlAdjustmentStates;
+  mac.nr_band = 78;
+  mac.f_b_f_c = 0;
+  mac.pusch_power_control_initialized = true;
+
+  NR_SRS_Config_t srs_Config = {0};
+  long tpc_Accumulation = 0;
+  srs_Config.tpc_Accumulation = &tpc_Accumulation;
+  current_UL_BWP.srs_Config = &srs_Config;
+
+  int tx_power = get_srs_tx_power_ue(&mac, &srs_resource, &srs_resource_set, delta_srs, is_configured_for_pusch_on_current_bwp);
+
+  delta_srs = 4;
+
+  int increased_tx_power =
+      get_srs_tx_power_ue(&mac, &srs_resource, &srs_resource_set, delta_srs, is_configured_for_pusch_on_current_bwp);
+  EXPECT_EQ(tx_power + delta_srs, increased_tx_power);
+}
+
+TEST(test_srs_power, tpc_accumulation)
+{
+  NR_UE_MAC_INST_t mac = {0};
+  NR_UE_UL_BWP_t current_UL_BWP = {0};
+  current_UL_BWP.scs = 1;
+  current_UL_BWP.BWPSize = 106;
+  mac.current_UL_BWP = &current_UL_BWP;
+  NR_SRS_Resource_t srs_resource = {0};
+  NR_SRS_ResourceSet_t srs_resource_set = {0};
+  long p0 = 0;
+  srs_resource_set.p0 = &p0;
+  bool is_configured_for_pusch_on_current_bwp = true;
+  int delta_srs = 0;
+  long srs_PowerControlAdjustmentStates = NR_SRS_ResourceSet__srs_PowerControlAdjustmentStates_separateClosedLoop;
+  srs_resource_set.srs_PowerControlAdjustmentStates = &srs_PowerControlAdjustmentStates;
+  mac.nr_band = 78;
+  mac.f_b_f_c = 0;
+  mac.pusch_power_control_initialized = true;
+  current_UL_BWP.srs_power_control_initialized = true;
+
+  NR_SRS_Config_t srs_Config = {0};
+  current_UL_BWP.srs_Config = &srs_Config;
+
+  int tx_power = get_srs_tx_power_ue(&mac, &srs_resource, &srs_resource_set, delta_srs, is_configured_for_pusch_on_current_bwp);
+
+  delta_srs = 4;
+
+  int increased_tx_power =
+      get_srs_tx_power_ue(&mac, &srs_resource, &srs_resource_set, delta_srs, is_configured_for_pusch_on_current_bwp);
+  EXPECT_EQ(tx_power + delta_srs, increased_tx_power);
+
+  int more_tx_power =
+      get_srs_tx_power_ue(&mac, &srs_resource, &srs_resource_set, delta_srs, is_configured_for_pusch_on_current_bwp);
+  EXPECT_EQ(tx_power + delta_srs * 2, more_tx_power);
+}
+
 int main(int argc, char** argv)
 {
   logInit();

@@ -53,6 +53,7 @@ There is some general information in the [OpenAirInterface Gitlab Wiki](https://
 - [How to run with E2 agent](../openair2/E2AP/README.md)
 - [How to run the physical simulators](./physical-simulators.md)
 - [How to setup OAI with Nvidia Aerial and Foxconn](./Aerial_FAPI_Split_Tutorial.md)
+- [How to do a handover](./handover-tutorial.md)
 
 Legacy unmaintained files:
 - [`L2NFAPI_NOS1.md`](./L2NFAPI_NOS1.md), [`L2NFAPI_S1.md`](./L2NFAPI_S1.md):
@@ -65,10 +66,11 @@ Legacy unmaintained files:
 
 - General software architecture notes: [SW_archi.md](./SW_archi.md)
 - [Information on E1](./E1AP/E1-design.md)
-- [Information on F1](./F1-design.md)
+- [Information on F1](./F1AP/F1-design.md)
 - [Information on how NR nFAPI works](./NR_NFAPI_archi.md)
 - [Flow graph of the L1 in gNB](SW-archi-graph.md)
 - [L1 threads in NR-UE](./nr-ue-design.md)
+- [Information on gNB MAC](./MAC/mac-usage.md)
 
 Legacy unmaintained files:
 - [`5Gnas.md`](./5Gnas.md)
@@ -106,7 +108,7 @@ The other SDRs (AW2S, LimeSDR, ...) have no READMEs.
 
 ## Special-purpose libraries
 
-- OAI has a scope based on Xforms, described in [this README](../openair1/PHY/TOOLS/readme.md)
+- OAI has two scopes: one based on Xforms and one based on imgui, described in [this README](../openair1/PHY/TOOLS/readme.md)
 - OAI comes with an integrated [telnet server](../common/utils/telnetsrv/DOC/telnethelp.md) to monitor and control
 - OAI comes with an integrated [web server](../common/utils/websrv/DOC/websrv.md)
 
@@ -114,3 +116,8 @@ The other SDRs (AW2S, LimeSDR, ...) have no READMEs.
 
 - [UnitTests.md](./UnitTests.md) explains the unit testing setup
 - [TESTBenches.md](./TESTBenches.md) lists the CI setup and links to pipelines
+
+# Developer tools
+
+- [formatting](../tools/formatting/README.md) is a clang-format error detection tool
+- [iwyu](../tools/iwyu/README.md) is a tool to detect `#include` errors

@@ -174,6 +174,7 @@ typedef struct {
 } udp_ctx_t;
 
 typedef enum {
+  RU_GPIO_CONTROL_NONE,
   RU_GPIO_CONTROL_GENERIC,
   RU_GPIO_CONTROL_INTERDIGITAL,
 } gpio_control_t;
@@ -335,11 +336,6 @@ typedef struct {
   //! compression enable (0: No comp/ 1: A-LAW)
   uint8_t if_compress;
 } eth_params_t;
-
-typedef struct {
-  char *nvipc_shm_prefix;
-  int8_t nvipc_poll_core;
-} nvipc_params_t;
 
 typedef struct {
   //! Tx buffer for if device, keep one per subframe now to allow multithreading

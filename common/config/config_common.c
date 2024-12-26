@@ -24,11 +24,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include <unistd.h>
-#include <errno.h>
-#include <dlfcn.h>
 #include <arpa/inet.h>
-#include "common/platform_types.h"
 #include "config_common.h"
 #include "../utils/LOG/log.h"
 static int managed_ptr_sz(configmodule_interface_t *cfg, void *ptr)

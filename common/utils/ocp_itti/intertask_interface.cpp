@@ -320,7 +320,7 @@ typedef struct timer_elm_s {
                  (char *)itti_get_task_name(task_id),
                  -1,
                  OAI_PRIORITY_RT);
-    LOG_I(ITTI,"Created Posix thread %s\n",  itti_get_task_name(task_id) );
+    LOG_D(ITTI,"Created Posix thread %s\n",  itti_get_task_name(task_id) );
     return 0;
   }
 

@@ -566,7 +566,7 @@ void pdcp_layer_init(void)
   abort();
 }
 
-void nr_pdcp_layer_init(bool uses_e1)
+void nr_pdcp_layer_init(void)
 {
   /* hack: be sure to initialize only once */
   static pthread_mutex_t m = PTHREAD_MUTEX_INITIALIZER;
@@ -586,10 +586,12 @@ void nr_pdcp_layer_init(bool uses_e1)
   if ((RC.nrrrc == NULL) || (!NODE_IS_CU(node_type))) {
     init_nr_rlc_data_req_queue();
   }
-
-  nr_pdcp_e1_if_init(uses_e1);
+  nr_pdcp_e1_if_init(node_type == ngran_gNB_CUUP || node_type == ngran_gNB_CUCP);
   init_nr_pdcp_data_ind_queue();
   nr_pdcp_init_timer_thread(nr_pdcp_ue_manager);
+  if (NODE_IS_CU(node_type)) {
+    nr_pdcp_init_tick_thread();
+  }
 }
 
 #include "nfapi/oai_integration/vendor_ext.h"

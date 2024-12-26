@@ -38,7 +38,7 @@ PROJECT_NAME           = OpenAirInterface
 # could be handy for archiving the generated documentation or if some version
 # control system is used.
 
-PROJECT_NUMBER         =
+PROJECT_NUMBER         = @GIT_COMMIT_HASH@ (@GIT_BRANCH@)
 
 # Using the PROJECT_BRIEF tag one can provide an optional one line description
 # for a project that appears at the top of each page and should give viewer a
@@ -1133,9 +1133,8 @@ INPUT                  = \
 @CMAKE_CURRENT_SOURCE_DIR@/../openair3/UICC/usim_interface.h \
 @CMAKE_CURRENT_SOURCE_DIR@/../openair3/UICC/usim_interface.c \
 @CMAKE_CURRENT_SOURCE_DIR@/../openair3/ocp-gtpu/gtp_itf.h \
-@CMAKE_CURRENT_SOURCE_DIR@/../openair3/NAS/NR_UE/nr_nas_msg_sim.h \
-@CMAKE_CURRENT_SOURCE_DIR@/../openair3/NAS/NR_UE/ue_process_nas.c \
-@CMAKE_CURRENT_SOURCE_DIR@/../openair3/NAS/NR_UE/nr_nas_msg_sim.c \
+@CMAKE_CURRENT_SOURCE_DIR@/../openair3/NAS/NR_UE/nr_nas_msg.h \
+@CMAKE_CURRENT_SOURCE_DIR@/../openair3/NAS/NR_UE/nr_nas_msgc \
 @CMAKE_CURRENT_SOURCE_DIR@/../openair3/NAS/UE/nas_itti_messaging.c \
 @CMAKE_CURRENT_SOURCE_DIR@/../openair3/NAS/UE/user_defs.h \
 @CMAKE_CURRENT_SOURCE_DIR@/../openair3/NAS/UE/EMM/emm_proc.h \
@@ -1584,7 +1583,6 @@ INPUT                  = \
 @CMAKE_CURRENT_SOURCE_DIR@/../openair3/NAS/COMMON/ESM/MSG/ActivateDefaultEpsBearerContextAccept.h \
 @CMAKE_CURRENT_SOURCE_DIR@/../openair3/NAS/COMMON/userDef.h \
 @CMAKE_CURRENT_SOURCE_DIR@/../openair3/NAS/COMMON/nr_common.c \
-@CMAKE_CURRENT_SOURCE_DIR@/../openair3/NAS/gNB/network_process_nas.c \
 @CMAKE_CURRENT_SOURCE_DIR@/../openair3/UTILS/conversions.h \
 @CMAKE_CURRENT_SOURCE_DIR@/../openair2/X2AP/x2ap_eNB_encoder.h \
 @CMAKE_CURRENT_SOURCE_DIR@/../openair2/X2AP/x2ap_eNB_management_procedures.c \
@@ -1886,13 +1884,11 @@ INPUT                  = \
 @CMAKE_CURRENT_SOURCE_DIR@/../openair2/RRC/NR/rrc_gNB_radio_bearers.c \
 @CMAKE_CURRENT_SOURCE_DIR@/../openair2/RRC/NR/rrc_gNB_NGAP.h \
 @CMAKE_CURRENT_SOURCE_DIR@/../openair2/RRC/NR/nr_rrc_proto.h \
-@CMAKE_CURRENT_SOURCE_DIR@/../openair2/RRC/NR/nr_rrc_common.h \
 @CMAKE_CURRENT_SOURCE_DIR@/../openair2/RRC/NR/rrc_gNB_UE_context.h \
 @CMAKE_CURRENT_SOURCE_DIR@/../openair2/RRC/NR/MESSAGES/asn1_msg.h \
 @CMAKE_CURRENT_SOURCE_DIR@/../openair2/RRC/NR/MESSAGES/asn1_msg.c \
 @CMAKE_CURRENT_SOURCE_DIR@/../openair2/RRC/NR/rrc_gNB_UE_context.c \
 @CMAKE_CURRENT_SOURCE_DIR@/../openair2/RRC/NR/cucp_cuup_e1ap.c \
-@CMAKE_CURRENT_SOURCE_DIR@/../openair2/RRC/NR/nr_rrc_common.c \
 @CMAKE_CURRENT_SOURCE_DIR@/../openair2/RRC/NR/rrc_gNB.c \
 @CMAKE_CURRENT_SOURCE_DIR@/../openair2/RRC/NR/nr_rrc_config.h \
 @CMAKE_CURRENT_SOURCE_DIR@/../openair2/RRC/NR/rrc_gNB_radio_bearers.h \
@@ -2256,7 +2252,6 @@ INPUT                  = \
 @CMAKE_CURRENT_SOURCE_DIR@/../openair1/PHY/NR_UE_TRANSPORT/pucch_nr.h \
 @CMAKE_CURRENT_SOURCE_DIR@/../openair1/PHY/NR_UE_TRANSPORT/sss_nr.c \
 @CMAKE_CURRENT_SOURCE_DIR@/../openair1/PHY/NR_UE_TRANSPORT/dci_nr.c \
-@CMAKE_CURRENT_SOURCE_DIR@/../openair1/PHY/NR_UE_TRANSPORT/nr_dlsch_llr_computation.c \
 @CMAKE_CURRENT_SOURCE_DIR@/../openair1/PHY/NR_UE_TRANSPORT/nr_prach.c \
 @CMAKE_CURRENT_SOURCE_DIR@/../openair1/PHY/NR_UE_TRANSPORT/nr_transport_proto_ue.h \
 @CMAKE_CURRENT_SOURCE_DIR@/../openair1/PHY/NR_UE_TRANSPORT/nr_ue_rf_helpers.c \

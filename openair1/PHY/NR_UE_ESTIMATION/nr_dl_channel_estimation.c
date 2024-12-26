@@ -1402,6 +1402,7 @@ void NFAPI_NR_DMRS_TYPE2_average_prb(NR_DL_FRAME_PARMS *frame_parms,
   c16multaddVectRealComplex(filt8_avlip6, &ch, dl_ch, 8);
 #endif
 }
+
 int nr_pdsch_channel_estimation(PHY_VARS_NR_UE *ue,
                                 const UE_nr_rxtx_proc_t *proc,
                                 int nl,
@@ -1632,7 +1633,7 @@ void nr_pdsch_ptrs_processing(PHY_VARS_NR_UE *ue,
                                nr_slot_rx,
                                symbol,
                                frame_parms->ofdm_symbol_size,
-                               (int16_t *)(rxdataF_comp[0][aarx] + symbol * nb_re_pdsch),
+                               (int16_t *)(rxdataF_comp[0][aarx] + symbol * rx_size_symbol),
                                gold,
                                (int16_t *)&phase_per_symbol[symbol],
                                &ptrs_re_symbol[symbol]);
@@ -1653,21 +1654,21 @@ void nr_pdsch_ptrs_processing(PHY_VARS_NR_UE *ue,
       }
 #ifdef DEBUG_DL_PTRS
       LOG_M("ptrsEst.m","est",ptrs_phase_per_slot[aarx],frame_parms->symbols_per_slot,1,1 );
-      LOG_M("rxdataF_bf_ptrs_comp.m", "bf_ptrs_cmp", rxdataF_comp[0][aarx] + (*startSymbIndex) * NR_NB_SC_PER_RB * (*nb_rb), (*nb_rb) * NR_NB_SC_PER_RB * (*nbSymb), 1, 1);
+      LOG_M("rxdataF_bf_ptrs_comp.m", "bf_ptrs_cmp", rxdataF_comp[0][aarx] + (*startSymbIndex) * rx_size_symbol, rx_size_symbol * (*nbSymb), 1, 1);
 #endif
       /*------------------------------------------------------------------------------------------------------- */
       /* 3) Compensated DMRS based estimated signal with PTRS estimation                                        */
       /*--------------------------------------------------------------------------------------------------------*/
-      for(uint8_t i = *startSymbIndex; i< symbInSlot ;i++) {
+      for(uint8_t i = *startSymbIndex; i < symbInSlot; i++) {
         /* DMRS Symbol has 0 phase so no need to rotate the respective symbol */
         /* Skip rotation if the slot processing is wrong */
-        if((!is_dmrs_symbol(i,*dmrsSymbPos)) && (ret == 0)) {
+        if((!is_dmrs_symbol(i, *dmrsSymbPos)) && (ret == 0)) {
 #ifdef DEBUG_DL_PTRS
           printf("[PHY][DL][PTRS]: Rotate Symbol %2d with  %d + j* %d\n", i, phase_per_symbol[i].r,phase_per_symbol[i].i);
 #endif
-          rotate_cpx_vector((c16_t *)&rxdataF_comp[0][aarx][(i * (*nb_rb) * NR_NB_SC_PER_RB)],
+          rotate_cpx_vector((c16_t *)&rxdataF_comp[0][aarx][i * rx_size_symbol],
                             &phase_per_symbol[i],
-                            (c16_t *)&rxdataF_comp[0][aarx][(i * (*nb_rb) * NR_NB_SC_PER_RB)],
+                            (c16_t *)&rxdataF_comp[0][aarx][i * rx_size_symbol],
                             ((*nb_rb) * NR_NB_SC_PER_RB),
                             15);
         }// if not DMRS Symbol

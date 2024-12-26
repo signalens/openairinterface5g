@@ -26,6 +26,7 @@
 #include <signal.h>
 
 #include "T.h"
+#include "common/oai_version.h"
 #include "assertions.h"
 #include "PHY/types.h"
 #include "PHY/defs_nr_UE.h"
@@ -83,7 +84,7 @@ unsigned short config_frames[4] = {2,9,11,13};
 #include "executables/softmodem-common.h"
 #include "executables/thread-common.h"
 
-#include "nr_nas_msg_sim.h"
+#include "nr_nas_msg.h"
 #include <openair1/PHY/MODULATION/nr_modulation.h>
 #include "openair2/GNB_APP/gnb_paramdef.h"
 
@@ -101,7 +102,7 @@ fuzz_nr_duplication_t fuzz_nr_dup;
 
 extern const char *duplex_mode[];
 THREAD_STRUCT thread_struct;
-nrUE_params_t nrUE_params;
+nrUE_params_t nrUE_params = {0};
 
 // Thread variables
 pthread_cond_t nfapi_sync_cond;
@@ -125,30 +126,11 @@ int oai_exit = 0;
 
 static int      tx_max_power[MAX_NUM_CCs] = {0};
 
-int                 vcdflag = 0;
-
 double          rx_gain_off = 0.0;
-char             *usrp_args = NULL;
-char             *tx_subdev = NULL;
-char             *rx_subdev = NULL;
-char       *rrc_config_path = NULL;
-char *reconfig_file = NULL;
-char *rbconfig_file = NULL;
-char            *uecap_file = NULL;
 
 uint64_t        downlink_frequency[MAX_NUM_CCs][4];
 int32_t         uplink_frequency_offset[MAX_NUM_CCs][4];
 uint64_t        sidelink_frequency[MAX_NUM_CCs][4];
-
-#if MAX_NUM_CCs == 1
-rx_gain_t                rx_gain_mode[MAX_NUM_CCs][4] = {{max_gain,max_gain,max_gain,max_gain}};
-double tx_gain[MAX_NUM_CCs][4] = {{20,0,0,0}};
-double rx_gain[MAX_NUM_CCs][4] = {{110,0,0,0}};
-#else
-rx_gain_t                rx_gain_mode[MAX_NUM_CCs][4] = {{max_gain,max_gain,max_gain,max_gain},{max_gain,max_gain,max_gain,max_gain}};
-double tx_gain[MAX_NUM_CCs][4] = {{20,0,0,0},{20,0,0,0}};
-double rx_gain[MAX_NUM_CCs][4] = {{110,0,0,0},{20,0,0,0}};
-#endif
 
 // UE and OAI config variables
 
@@ -233,10 +215,7 @@ static void get_options(configmodule_interface_t *cfg)
   paramdef_t cmdline_params[] =CMDLINE_NRUEPARAMS_DESC ;
   int numparams = sizeofArray(cmdline_params);
   config_get(cfg, cmdline_params, numparams, NULL);
-
-  AssertFatal(rrc_config_path == NULL, "the option \"rrc_config_path\" is deprecated. Please use --reconfig-file and --rbconfig-file separately to point to files reconfig.raw and rbconfig.raw\n");
-
-  if (vcdflag > 0)
+  if (nrUE_params.vcdflag > 0)
     ouput_vcd = 1;
 }
 
@@ -244,15 +223,10 @@ static void get_options(configmodule_interface_t *cfg)
 void set_options(int CC_id, PHY_VARS_NR_UE *UE){
   NR_DL_FRAME_PARMS *fp = &UE->frame_parms;
 
-  // Init power variables
-  tx_max_power[CC_id] = tx_max_power[0];
-  rx_gain[0][CC_id]   = rx_gain[0][0];
-  tx_gain[0][CC_id]   = tx_gain[0][0];
-
   // Set UE variables
-  UE->rx_total_gain_dB     = (int)rx_gain[CC_id][0] + rx_gain_off;
-  UE->tx_total_gain_dB     = (int)tx_gain[CC_id][0];
-  UE->tx_power_max_dBm     = tx_max_power[CC_id];
+  UE->rx_total_gain_dB     = (int)nrUE_params.rx_gain + rx_gain_off;
+  UE->tx_total_gain_dB     = (int)nrUE_params.tx_gain;
+  UE->tx_power_max_dBm     = nrUE_params.tx_max_power;
   UE->rf_map.card          = 0;
   UE->rf_map.chain         = CC_id + 0;
   UE->max_ldpc_iterations  = nrUE_params.max_ldpc_iterations;
@@ -329,9 +303,9 @@ void init_openair0()
 
     openair0_cfg[card].configFilename = get_softmodem_params()->rf_config_file;
 
-    if (usrp_args) openair0_cfg[card].sdr_addrs = usrp_args;
-    if (tx_subdev) openair0_cfg[card].tx_subdev = tx_subdev;
-    if (rx_subdev) openair0_cfg[card].rx_subdev = rx_subdev;
+    if (get_nrUE_params()->usrp_args) openair0_cfg[card].sdr_addrs = get_nrUE_params()->usrp_args;
+    if (get_nrUE_params()->tx_subdev) openair0_cfg[card].tx_subdev = get_nrUE_params()->tx_subdev;
+    if (get_nrUE_params()->rx_subdev) openair0_cfg[card].rx_subdev = get_nrUE_params()->rx_subdev;
 
   }
 }
@@ -355,7 +329,7 @@ static void init_pdcp(int ue_id)
   if (get_softmodem_params()->nsa && rlc_module_init(0) != 0) {
     LOG_I(RLC, "Problem at RLC initiation \n");
   }
-  nr_pdcp_layer_init(false);
+  nr_pdcp_layer_init();
   nr_pdcp_module_init(pdcp_initmask, ue_id);
 }
 
@@ -373,7 +347,7 @@ static void trigger_stop(int sig)
 static void trigger_deregistration(int sig)
 {
   if (!stop_immediately) {
-    MessageDef *msg = itti_alloc_new_message(TASK_RRC_UE_SIM, 0, NAS_DEREGISTRATION_REQ);
+    MessageDef *msg = itti_alloc_new_message(TASK_NAS_NRUE, 0, NAS_DEREGISTRATION_REQ);
     NAS_DEREGISTRATION_REQ(msg).cause = AS_DETACH;
     itti_send_msg_to_task(TASK_NAS_NRUE, 0, msg);
     stop_immediately = true;
@@ -590,11 +564,9 @@ int main(int argc, char **argv)
   if (ouput_vcd) {
     vcd_signal_dumper_init("/tmp/openair_dump_nrUE.vcd");
   }
-#ifndef PACKAGE_VERSION
-#define PACKAGE_VERSION "UNKNOWN-EXPERIMENTAL"
-#endif
   // strdup to put the sring in the core file for post mortem identification
-  LOG_I(HW, "Version: %s\n", strdup(PACKAGE_VERSION));
+  char *pckg = strdup(OAI_PACKAGE_VERSION);
+  LOG_I(HW, "Version: %s\n", pckg);
 
   PHY_vars_UE_g = malloc(sizeof(*PHY_vars_UE_g) * NB_UE_INST);
   for (int inst = 0; inst < NB_UE_INST; inst++) {
@@ -615,7 +587,7 @@ int main(int argc, char **argv)
   else
     init_pdcp(mode_offset + ue_id_g);
 
-  init_NR_UE(NB_UE_INST, uecap_file, reconfig_file, rbconfig_file);
+  init_NR_UE(NB_UE_INST, get_nrUE_params()->uecap_file, get_nrUE_params()->reconfig_file, get_nrUE_params()->rbconfig_file);
 
   if (get_softmodem_params()->emulate_l1) {
     RCconfig_nr_ue_macrlc();
@@ -652,11 +624,7 @@ int main(int argc, char **argv)
                                     get_softmodem_params()->numerology,
                                     nr_band);
         } else {
-          DevAssert(mac->if_module != NULL && mac->if_module->phy_config_request != NULL);
-          mac->if_module->phy_config_request(&mac->phy_config);
-          mac->phy_config_request_sent = true;
           fapi_nr_config_request_t *nrUE_config = &UE[CC_id]->nrUE_config;
-
           nr_init_frame_parms_ue(&UE[CC_id]->frame_parms, nrUE_config, mac->nr_band);
         }
 
@@ -670,7 +638,6 @@ int main(int argc, char **argv)
           phycfg->sl_config_req.sl_carrier_config.sl_num_rx_ant = get_nrUE_params()->nb_antennas_rx;
           phycfg->sl_config_req.sl_carrier_config.sl_num_tx_ant = get_nrUE_params()->nb_antennas_tx;
           mac->if_module->sl_phy_config_request(phycfg);
-          mac->phy_config_request_sent = true;
           sl_nr_ue_phy_params_t *sl_phy = &UE[CC_id]->SL_UE_PHY_PARAMS;
           nr_init_frame_parms_ue_sl(&sl_phy->sl_frame_params,
                                     &sl_phy->sl_config,
@@ -687,8 +654,11 @@ int main(int argc, char **argv)
     init_openair0();
     lock_memory_to_ram();
 
-    if(IS_SOFTMODEM_DOSCOPE) {
-      load_softscope("nr",PHY_vars_UE_g[0][0]);
+    if (IS_SOFTMODEM_DOSCOPE) {
+      load_softscope("nr", PHY_vars_UE_g[0][0]);
+    }
+    if (IS_SOFTMODEM_IMSCOPE_ENABLED) {
+      load_softscope("im", PHY_vars_UE_g[0][0]);
     }
 
     for (int inst = 0; inst < NB_UE_INST; inst++) {
@@ -730,6 +700,7 @@ int main(int argc, char **argv)
     }
   }
 
+  free(pckg);
   return 0;
 }
 

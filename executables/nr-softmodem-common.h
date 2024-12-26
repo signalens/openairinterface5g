@@ -80,15 +80,12 @@
 #define CONFIG_HLP_TNOFORK       "to ease debugging with gdb\n"
 #define CONFIG_HLP_DISABLNBIOT   "disable nb-iot, even if defined in config\n"
 #define CONFIG_HLP_DISABLETIMECORR "disable UE timing correction\n"
-#define CONFIG_HLP_RRC_CFG_PATH  "path for RRC configuration\n"
 #define CONFIG_HLP_RE_CFG_FILE "filename for reconfig.raw in phy-test mode\n"
 #define CONFIG_HLP_RB_CFG_FILE "filename for rbconfig.raw in phy-test mode\n"
 #define CONFIG_HLP_UECAP_FILE    "path for UE Capabilities file\n"
 
 #define CONFIG_HLP_NUMEROLOGY    "adding numerology for 5G\n"
 #define CONFIG_HLP_EMULATE_RF    "Emulated RF enabled(disable by defult)\n"
-#define CONFIG_HLP_PARALLEL_CMD  "three config for level of parallelism 'PARALLEL_SINGLE_THREAD', 'PARALLEL_RU_L1_SPLIT', or 'PARALLEL_RU_L1_TRX_SPLIT'\n"
-#define CONFIG_HLP_WORKER_CMD    "two option for worker 'WORKER_DISABLE' or 'WORKER_ENABLE'\n"
 #define CONFIG_HLP_USRP_THREAD   "having extra thead for usrp tx\n"
 #define CONFIG_HLP_DISABLNBIOT   "disable nb-iot, even if defined in config\n"
 #define CONFIG_HLP_USRP_ARGS     "set the arguments to identify USRP (same syntax as in UHD)\n"
@@ -101,7 +98,6 @@
 #define CONFIG_HLP_TELN          "Start embedded telnet server \n"
 #define CONFIG_HLP_SNR           "Set average SNR in dB (for --siml1 option)\n"
 #define CONFIG_HLP_NOS1          "Disable s1 interface\n"
-#define CONFIG_HLP_AGC "Rx Gain control used for UE"
 
 /*--------------------------------------------------------------------------------------------------------------------------------*/
 /*                                            command line parameters for LOG utility                                             */
