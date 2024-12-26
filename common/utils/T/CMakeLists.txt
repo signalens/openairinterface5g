@@ -1,4 +1,4 @@
-if (CROSS_COMPILE)
+if (CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
   find_package(genids)
 else()
   add_executable(genids genids.c)
@@ -17,7 +17,7 @@ add_custom_command(OUTPUT T_messages.txt.h
                    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-if (CROSS_COMPILE)
+if (CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
   find_package(_check_vcd)
 else ()
   add_executable(_check_vcd check_vcd.c tracer/database.c tracer/utils.c T_IDs.h T_messages.txt.h)
