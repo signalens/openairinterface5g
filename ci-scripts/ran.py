@@ -992,7 +992,7 @@ class RANManagement():
 				NSA_RAPROC_PUSCH_check = 1
 
 			# Collect information on UE DLSCH and ULSCH statistics
-			keys = {'dlsch_rounds','dlsch_total_bytes','ulsch_rounds','ulsch_total_bytes_scheduled'}
+			keys = {'dlsch_rounds','ulsch_rounds'}
 			for k in keys:
 				result = re.search(k, line)
 				if result is None:
@@ -1161,7 +1161,7 @@ class RANManagement():
 				dlcheckers = [] if 'd_retx_th' not in checkers else checkers['d_retx_th']
 				retx_status[ue]['dl'] = self._analyzeUeRetx(dlulstat['dlsch_rounds'], dlcheckers, r'^.*dlsch_rounds\s+(\d+)\/(\d+)\/(\d+)\/(\d+),\s+dlsch_errors\s+(\d+)')
 				ulcheckers = [] if 'u_retx_th' not in checkers else checkers['u_retx_th']
-				retx_status[ue]['ul'] = self._analyzeUeRetx(dlulstat['ulsch_rounds'], ulcheckers, r'^.*ulsch_rounds\s+(\d+)\/(\d+)\/(\d+)\/(\d+),\s+.*,\s+ulsch_errors\s+(\d+)')
+				retx_status[ue]['ul'] = self._analyzeUeRetx(dlulstat['ulsch_rounds'], ulcheckers, r'^.*ulsch_rounds\s+(\d+)\/(\d+)\/(\d+)\/(\d+),\s+ulsch_errors\s+(\d+)')
 
 
 			#real time statistics
@@ -1179,8 +1179,10 @@ class RANManagement():
 				self.datalog_rt_stats=datalog_rt_stats
 				#check if there is a fail => will render the test as failed
 				for k in datalog_rt_stats['Data']:
-					if float(datalog_rt_stats['Data'][k][3])> datalog_rt_stats['Threshold'][k]: #condition for fail : avg/ref is greater than the fixed threshold
-						logging.debug('\u001B[1;30;43m datalog_rt_stats metric ' + k + '=' + datalog_rt_stats['Data'][k][3] + ' > threshold ' + str(datalog_rt_stats['Threshold'][k]) + ' \u001B[0m')
+					valnorm = float(datalog_rt_stats['Data'][k][3])
+					dev = datalog_rt_stats['DeviationThreshold'][k]
+					if valnorm > 1.0 + dev or valnorm < 1.0 - dev: # condition for fail : avg/ref deviates by more than "deviation threshold"
+						logging.debug(f'\u001B[1;30;43m normalized datalog_rt_stats metric {k}={valnorm} deviates by more than {dev}\u001B[0m')
 						RealTimeProcessingIssue = True
 			else:
 				statMsg = 'No real time stats found in the log file\n'

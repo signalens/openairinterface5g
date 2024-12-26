@@ -41,12 +41,10 @@
 There is different modules:
 - OAI Address
 - OAI Components
-- \ref _frame
 
 numbering:
 -# OAI Address
 -# OAI Components
--# \ref _frame
 
 The following diagram is based on graphviz (http://www.graphviz.org/), you need to install the package to view the diagram.
  *
@@ -72,11 +70,6 @@ You need at least to set the some variables in the Doxyfile including "PROJECT_N
 Doxygen help and commands can be found at http://www.stack.nl/~dimitri/doxygen/commands.html#cmdprotocol
 
 \section _arch Architecture
-
-You need to set the IMAGE_PATH in your Doxyfile
-
-\image html arch.png "Architecture"
-\image latex arch.eps "Architecture"
 
 \subsection _mac MAC
 thisis the mac
@@ -549,11 +542,12 @@ void trace_pdu_implementation(int nr, int direction, uint8_t *pdu_buffer, unsign
 int init_opt(void) { 
   paramdef_t opt_params[]          = OPT_PARAMS_DESC ;
   checkedparam_t opt_checkParams[] = OPTPARAMS_CHECK_DESC;
-  config_set_checkfunctions(opt_params, opt_checkParams,
-                            sizeof(opt_params)/sizeof(paramdef_t));
-  config_get( opt_params,sizeof(opt_params)/sizeof(paramdef_t),OPT_CONFIGPREFIX);
+  int sz=sizeofArray(opt_params);
+  AssertFatal(sz == sizeofArray(opt_checkParams), "Error in arrays size (%d!=%lu)\n", sz, sizeofArray(opt_checkParams));
+  config_set_checkfunctions(opt_params, opt_checkParams, sz);
+  config_get(config_get_if(), opt_params, sz, OPT_CONFIGPREFIX);
   subframesSinceCaptureStart = 0;
-  int tmptype = config_get_processedint( &(opt_params[OPTTYPE_IDX]));
+  int tmptype = config_get_processedint(config_get_if(), &(opt_params[OPTTYPE_IDX]));
 
   if (tmptype == OPT_NONE) {
     opt_enabled=0;
@@ -567,7 +561,7 @@ int init_opt(void) {
     opt_type = OPT_WIRESHARK;
   } else {
     LOG_E(OPT,"Invalid OPT configuration\n");
-    config_printhelp(opt_params,sizeof(opt_params)/sizeof(paramdef_t),OPT_CONFIGPREFIX);
+    config_printhelp(opt_params, sizeofArray(opt_params), OPT_CONFIGPREFIX);
   }
 
   // trace_mode
@@ -641,4 +635,4 @@ void terminate_opt(void) {
       break;
   }
 }
-
+/** @}*/

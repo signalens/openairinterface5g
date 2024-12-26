@@ -146,11 +146,12 @@ void *gNB_app_task(void *args_p)
     if (node_type == ngran_gNB_CUCP) {
       if (itti_create_task(TASK_CUCP_E1, E1AP_CUCP_task, NULL) < 0)
         AssertFatal(false, "Create task for E1AP CP failed\n");
-      MessageDef *msg = RCconfig_NR_CU_E1(true);
-      if (msg)
-        itti_send_msg_to_task(TASK_CUCP_E1, 0, msg);
-      else
-        AssertFatal(false, "Send inti to task for E1AP CP failed\n");
+      E1_t e1type = CPtype;
+      MessageDef *msg = RCconfig_NR_CU_E1(&e1type);
+      AssertFatal(msg != NULL, "Send ITTI to task for E1AP CP failed\n");
+      // this sends the E1AP_REGISTER_REQ to CU-CP so it sets up the socket
+      // it does NOT use the E1AP part
+      itti_send_msg_to_task(TASK_CUCP_E1, 0, msg);
     }
 
     if (node_type == ngran_gNB_CUUP) {

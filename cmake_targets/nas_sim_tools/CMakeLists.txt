@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 2.8)
+cmake_minimum_required(VERSION 3.5)
 
 project(NAS_SIM_TOOLS)
 
@@ -6,6 +6,7 @@ include(FindPkgConfig)
 pkg_search_module(CONFIG libconfig REQUIRED)
 include_directories(${CONFIG_INCLUDE_DIRS})
 add_definitions(-std=gnu99)
+include("../macros.cmake")
 
 ENABLE_LANGUAGE(C)
 
@@ -28,22 +29,10 @@ set(CONF2UEDATA_LIB_SRC
     ${OPENAIR_DIR}/openair3/NAS/TOOLS/display.c
     ${OPENAIR_DIR}/openair3/NAS/UE/API/USIM/usim_api.c
     ${OPENAIR_DIR}/openair3/NAS/UE/API/USIM/aka_functions.c
-    ${OPENAIR_DIR}/openair3/NAS/COMMON/UTIL/memory.c
+    ${OPENAIR_DIR}/common/utils/mem/memory.c
     ${OPENAIR_DIR}/openair3/NAS/COMMON/UTIL/OctetString.c
     ${OPENAIR_DIR}/openair3/NAS/COMMON/UTIL/TLVEncoder.c
     ${OPENAIR_DIR}/common/utils/utils.c
-)
-
-set(conf2uedata_HDR
-    ${OPENAIR_DIR}/openair3/NAS/TOOLS/conf2uedata.h
-    ${OPENAIR_DIR}/openair3/NAS/TOOLS/conf_emm.h
-    ${OPENAIR_DIR}/openair3/NAS/UE/API/USIM/usim_api.h
-    ${OPENAIR_DIR}/openair3/NAS/UE/API/USIM/aka_functions.h
-    ${OPENAIR_DIR}/openair3/NAS/COMMON/UTIL/memory.h
-    ${OPENAIR_DIR}/openair3/NAS/COMMON/UTIL/nas_log.h
-    ${OPENAIR_DIR}/openair3/NAS/COMMON/UTIL/OctetString.h
-    ${OPENAIR_DIR}/openair3/NAS/COMMON/UTIL/TLVEncoder.h
-    ${OPENAIR_DIR}/common/utils/utils.h
 )
 
 include_directories(
@@ -65,7 +54,7 @@ set(conf2uedata_SRC
 	${CONF2UEDATA_LIB_SRC}
 )
 
-add_executable(conf2uedata  ${conf2uedata_SRC} ${conf2uedata_HDR} )
+add_executable(conf2uedata  ${conf2uedata_SRC} )
 target_link_libraries(conf2uedata ${CONFIG_LIBRARIES})
 
 # usim binary
@@ -76,7 +65,7 @@ set(usim_SRC
 )
 
 
-add_executable(usim  ${usim_SRC} ${conf2uedata_HDR} )
+add_executable(usim  ${usim_SRC} )
 target_link_libraries(usim ${CONFIG_LIBRARIES})
 
 # nvram binary
@@ -87,5 +76,5 @@ set(nvram_SRC
 )
 
 
-add_executable(nvram  ${nvram_SRC} ${conf2uedata_HDR} )
+add_executable(nvram  ${nvram_SRC})
 target_link_libraries(nvram ${CONFIG_LIBRARIES})

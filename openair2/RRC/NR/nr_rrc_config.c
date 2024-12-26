@@ -41,7 +41,117 @@
 
 const uint8_t slotsperframe[5] = {10, 20, 40, 80, 160};
 
-static NR_SearchSpace_t *rrc_searchspace_config(bool is_common, int searchspaceid, int coresetid)
+static NR_BWP_t clone_generic_parameters(const NR_BWP_t *gp)
+{
+  NR_BWP_t clone = {0};
+  clone.locationAndBandwidth = gp->locationAndBandwidth;
+  clone.subcarrierSpacing = gp->subcarrierSpacing;
+  if (gp->cyclicPrefix) {
+    asn1cCallocOne(clone.cyclicPrefix, *gp->cyclicPrefix);
+  }
+  return clone;
+}
+
+static NR_SetupRelease_RACH_ConfigCommon_t *clone_rach_configcommon(const NR_SetupRelease_RACH_ConfigCommon_t *rcc)
+{
+  if (rcc == NULL || rcc->present == NR_SetupRelease_RACH_ConfigCommon_PR_NOTHING)
+    return NULL;
+  NR_SetupRelease_RACH_ConfigCommon_t *clone = calloc_or_fail(1, sizeof(*clone));
+  clone->present = rcc->present;
+  if (clone->present == NR_SetupRelease_RACH_ConfigCommon_PR_release)
+    return clone;
+
+  uint8_t buf[1024];
+  asn_enc_rval_t enc_rval = uper_encode_to_buffer(&asn_DEF_NR_RACH_ConfigCommon, NULL, rcc->choice.setup, buf, sizeof(buf));
+  AssertFatal(enc_rval.encoded > 0 && enc_rval.encoded < sizeof(buf), "could not clone NR_RACH_ConfigCommon: problem while encoding\n");
+  asn_dec_rval_t dec_rval = uper_decode(NULL, &asn_DEF_NR_RACH_ConfigCommon, (void **)&clone->choice.setup, buf, enc_rval.encoded, 0, 0);
+  AssertFatal(dec_rval.code == RC_OK && dec_rval.consumed == enc_rval.encoded, "could not clone NR_RACH_ConfigCommon: problem while decoding\n");
+  return clone;
+}
+
+static NR_SetupRelease_PUSCH_ConfigCommon_t *clone_pusch_configcommon(const NR_SetupRelease_PUSCH_ConfigCommon_t *pcc)
+{
+  if (pcc == NULL || pcc->present == NR_SetupRelease_PUSCH_ConfigCommon_PR_NOTHING)
+    return NULL;
+  NR_SetupRelease_PUSCH_ConfigCommon_t *clone = calloc_or_fail(1, sizeof(*clone));
+  clone->present = pcc->present;
+  if (clone->present == NR_SetupRelease_PUSCH_ConfigCommon_PR_release)
+    return clone;
+
+  uint8_t buf[1024];
+  asn_enc_rval_t enc_rval = uper_encode_to_buffer(&asn_DEF_NR_PUSCH_ConfigCommon, NULL, pcc->choice.setup, buf, sizeof(buf));
+  AssertFatal(enc_rval.encoded > 0 && enc_rval.encoded < sizeof(buf), "could not clone NR_PUSCH_ConfigCommon: problem while encoding\n");
+  asn_dec_rval_t dec_rval = uper_decode(NULL, &asn_DEF_NR_PUSCH_ConfigCommon, (void **)&clone->choice.setup, buf, enc_rval.encoded, 0, 0);
+  AssertFatal(dec_rval.code == RC_OK && dec_rval.consumed == enc_rval.encoded, "could not clone NR_PUSCH_ConfigCommon: problem while decoding\n");
+  return clone;
+}
+
+static NR_SetupRelease_PUCCH_ConfigCommon_t *clone_pucch_configcommon(const NR_SetupRelease_PUCCH_ConfigCommon_t *pcc)
+{
+  if (pcc == NULL || pcc->present == NR_SetupRelease_PUCCH_ConfigCommon_PR_NOTHING)
+    return NULL;
+  NR_SetupRelease_PUCCH_ConfigCommon_t *clone = calloc_or_fail(1, sizeof(*clone));
+  clone->present = pcc->present;
+  if (clone->present == NR_SetupRelease_PUCCH_ConfigCommon_PR_release)
+    return clone;
+
+  uint8_t buf[1024];
+  asn_enc_rval_t enc_rval = uper_encode_to_buffer(&asn_DEF_NR_PUCCH_ConfigCommon, NULL, pcc->choice.setup, buf, sizeof(buf));
+  AssertFatal(enc_rval.encoded > 0 && enc_rval.encoded < sizeof(buf), "could not clone NR_PUCCH_ConfigCommon: problem while encoding\n");
+  asn_dec_rval_t dec_rval = uper_decode(NULL, &asn_DEF_NR_PUCCH_ConfigCommon, (void **)&clone->choice.setup, buf, enc_rval.encoded, 0, 0);
+  AssertFatal(dec_rval.code == RC_OK && dec_rval.consumed == enc_rval.encoded, "could not clone NR_PUCCH_ConfigCommon: problem while decoding\n");
+  return clone;
+}
+
+static NR_SetupRelease_PDCCH_ConfigCommon_t *clone_pdcch_configcommon(const NR_SetupRelease_PDCCH_ConfigCommon_t *pcc)
+{
+  if (pcc == NULL || pcc->present == NR_SetupRelease_PDCCH_ConfigCommon_PR_NOTHING)
+    return NULL;
+  NR_SetupRelease_PDCCH_ConfigCommon_t *clone = calloc(1, sizeof(*clone));
+  clone->present = pcc->present;
+  if (clone->present == NR_SetupRelease_PDCCH_ConfigCommon_PR_release)
+    return clone;
+
+  uint8_t buf[1024];
+  asn_enc_rval_t enc_rval = uper_encode_to_buffer(&asn_DEF_NR_PDCCH_ConfigCommon, NULL, pcc->choice.setup, buf, sizeof(buf));
+  AssertFatal(enc_rval.encoded > 0 && enc_rval.encoded < sizeof(buf), "could not clone NR_PDCCH_ConfigCommon: problem while encoding\n");
+  asn_dec_rval_t dec_rval = uper_decode(NULL, &asn_DEF_NR_PDCCH_ConfigCommon, (void **)&clone->choice.setup, buf, enc_rval.encoded, 0, 0);
+  AssertFatal(dec_rval.code == RC_OK && dec_rval.consumed == enc_rval.encoded, "could not clone NR_PDCCH_ConfigCommon: problem while decoding\n");
+  return clone;
+}
+
+static NR_SetupRelease_PDSCH_ConfigCommon_t *clone_pdsch_configcommon(const NR_SetupRelease_PDSCH_ConfigCommon_t *pcc)
+{
+  if (pcc == NULL || pcc->present == NR_SetupRelease_PDSCH_ConfigCommon_PR_NOTHING)
+    return NULL;
+  NR_SetupRelease_PDSCH_ConfigCommon_t *clone = calloc_or_fail(1, sizeof(*clone));
+  clone->present = pcc->present;
+  if (clone->present == NR_SetupRelease_PDSCH_ConfigCommon_PR_release)
+    return clone;
+
+  uint8_t buf[1024];
+  asn_enc_rval_t enc_rval = uper_encode_to_buffer(&asn_DEF_NR_PDSCH_ConfigCommon, NULL, pcc->choice.setup, buf, sizeof(buf));
+  AssertFatal(enc_rval.encoded > 0 && enc_rval.encoded < sizeof(buf), "could not clone NR_PDSCH_ConfigCommon: problem while encoding\n");
+  asn_dec_rval_t dec_rval = uper_decode(NULL, &asn_DEF_NR_PDSCH_ConfigCommon, (void **)&clone->choice.setup, buf, enc_rval.encoded, 0, 0);
+  AssertFatal(dec_rval.code == RC_OK && dec_rval.consumed == enc_rval.encoded, "could not clone NR_PDSCH_ConfigCommon: problem while decoding\n");
+  return clone;
+}
+
+static NR_PUSCH_Config_t *clone_pusch_config(const NR_PUSCH_Config_t *pc)
+{
+  if (pc == NULL)
+    return NULL;
+
+  uint8_t buf[1024];
+  asn_enc_rval_t enc_rval = uper_encode_to_buffer(&asn_DEF_NR_PUSCH_Config, NULL, pc, buf, sizeof(buf));
+  AssertFatal(enc_rval.encoded > 0 && enc_rval.encoded < sizeof(buf), "could not clone NR_PUSCH_Config: problem while encoding\n");
+  NR_PUSCH_Config_t *clone = NULL;
+  asn_dec_rval_t dec_rval = uper_decode(NULL, &asn_DEF_NR_PUSCH_Config, (void **)&clone, buf, enc_rval.encoded, 0, 0);
+  AssertFatal(dec_rval.code == RC_OK && dec_rval.consumed == enc_rval.encoded, "could not clone NR_PUSCH_Config: problem while decoding\n");
+  return clone;
+}
+
+NR_SearchSpace_t *rrc_searchspace_config(bool is_common, int searchspaceid, int coresetid)
 {
 
   NR_SearchSpace_t *ss = calloc(1,sizeof(*ss));
@@ -61,15 +171,20 @@ static NR_SearchSpace_t *rrc_searchspace_config(bool is_common, int searchspacei
   ss->nrofCandidates = calloc(1,sizeof(*ss->nrofCandidates));
   // TODO temporary hardcoded implementation
   ss->nrofCandidates->aggregationLevel1 = NR_SearchSpace__nrofCandidates__aggregationLevel1_n0;
-  if (is_common) {
+  if (get_softmodem_params()->usim_test) {
     ss->nrofCandidates->aggregationLevel2 = NR_SearchSpace__nrofCandidates__aggregationLevel2_n0;
     ss->nrofCandidates->aggregationLevel4 = NR_SearchSpace__nrofCandidates__aggregationLevel4_n1;
+    ss->nrofCandidates->aggregationLevel8 = NR_SearchSpace__nrofCandidates__aggregationLevel8_n1;
+  } else {
+    if (is_common) {
+      ss->nrofCandidates->aggregationLevel2 = NR_SearchSpace__nrofCandidates__aggregationLevel2_n0;
+      ss->nrofCandidates->aggregationLevel4 = NR_SearchSpace__nrofCandidates__aggregationLevel4_n1;
+    } else {
+      ss->nrofCandidates->aggregationLevel2 = NR_SearchSpace__nrofCandidates__aggregationLevel2_n2;
+      ss->nrofCandidates->aggregationLevel4 = NR_SearchSpace__nrofCandidates__aggregationLevel4_n0;
+    }
+    ss->nrofCandidates->aggregationLevel8 = NR_SearchSpace__nrofCandidates__aggregationLevel8_n0;
   }
-  else {
-    ss->nrofCandidates->aggregationLevel2 = NR_SearchSpace__nrofCandidates__aggregationLevel2_n2;
-    ss->nrofCandidates->aggregationLevel4 = NR_SearchSpace__nrofCandidates__aggregationLevel4_n0;
-  }
-  ss->nrofCandidates->aggregationLevel8 = NR_SearchSpace__nrofCandidates__aggregationLevel8_n0;
   ss->nrofCandidates->aggregationLevel16 = NR_SearchSpace__nrofCandidates__aggregationLevel16_n0;
   ss->searchSpaceType = calloc(1,sizeof(*ss->searchSpaceType));
   if (is_common) {
@@ -142,11 +257,19 @@ static uint64_t get_ssb_bitmap(const NR_ServingCellConfigCommon_t *scc)
   return bitmap;
 }
 
-static void set_csirs_periodicity(NR_NZP_CSI_RS_Resource_t *nzpcsi0, int id, int nb_slots_per_period, int nb_dl_slots_period)
+static int set_ideal_period(const int n_slots_period, const int n_ul_slots_period)
+{
+  return MAX_MOBILES_PER_GNB * 2 * n_slots_period / n_ul_slots_period; // 2 reports per UE
+}
+
+static void set_csirs_periodicity(NR_NZP_CSI_RS_Resource_t *nzpcsi0,
+                                  int id,
+                                  int ideal_period,
+                                  int nb_slots_per_period,
+                                  int nb_dl_slots_period)
 {
   nzpcsi0->periodicityAndOffset = calloc(1,sizeof(*nzpcsi0->periodicityAndOffset));
   // TODO ideal period to be set according to estimation by the gNB on how fast the channel changes
-  const int ideal_period = 320;
   const int offset = nb_slots_per_period * id;
 
   if (ideal_period < 5) {
@@ -217,14 +340,16 @@ static void config_csirs(const NR_ServingCellConfigCommon_t *servingcellconfigco
                                         &servingcellconfigcommon->tdd_UL_DL_ConfigurationCommon->pattern1 : NULL;
 
     const int n_slots_frame = slotsperframe[*servingcellconfigcommon->ssbSubcarrierSpacing];
-    int nb_slots_per_period = tdd ? n_slots_frame/get_nb_periods_per_frame(tdd->dl_UL_TransmissionPeriodicity): n_slots_frame;
-    int nb_dl_slots_period = tdd ? tdd->nrofDownlinkSlots : n_slots_frame;
+    const int nb_slots_per_period = tdd ? n_slots_frame/get_nb_periods_per_frame(tdd->dl_UL_TransmissionPeriodicity): n_slots_frame;
+    const int nb_dl_slots_period = tdd ? tdd->nrofDownlinkSlots : n_slots_frame;
+    const int n_ul_slots_period = tdd ? (tdd->nrofUplinkSlots + (tdd->nrofUplinkSymbols > 0)) : n_slots_frame;
+    const int ideal_period = set_ideal_period(nb_slots_per_period, n_ul_slots_period); // same periodicity as CSI measurement report
 
     if(!csi_MeasConfig->nzp_CSI_RS_ResourceToAddModList)
       csi_MeasConfig->nzp_CSI_RS_ResourceToAddModList = calloc(1,sizeof(*csi_MeasConfig->nzp_CSI_RS_ResourceToAddModList));
     NR_NZP_CSI_RS_Resource_t *nzpcsi0 = calloc(1,sizeof(*nzpcsi0));
     nzpcsi0->nzp_CSI_RS_ResourceId = id;
-    NR_CSI_RS_ResourceMapping_t resourceMapping;
+    NR_CSI_RS_ResourceMapping_t resourceMapping = {0};
     switch (num_dl_antenna_ports) {
       case 1:
         resourceMapping.frequencyDomainAllocation.present = NR_CSI_RS_ResourceMapping__frequencyDomainAllocation_PR_row2;
@@ -268,7 +393,7 @@ static void config_csirs(const NR_ServingCellConfigCommon_t *servingcellconfigco
     nzpcsi0->powerControlOffsetSS = calloc(1,sizeof(*nzpcsi0->powerControlOffsetSS));
     *nzpcsi0->powerControlOffsetSS = NR_NZP_CSI_RS_Resource__powerControlOffsetSS_db0;
     nzpcsi0->scramblingID = *servingcellconfigcommon->physCellId;
-    set_csirs_periodicity(nzpcsi0, id, nb_slots_per_period, nb_dl_slots_period);
+    set_csirs_periodicity(nzpcsi0, id, ideal_period, nb_slots_per_period, nb_dl_slots_period);
     nzpcsi0->qcl_InfoPeriodicCSI_RS = calloc(1,sizeof(*nzpcsi0->qcl_InfoPeriodicCSI_RS));
     *nzpcsi0->qcl_InfoPeriodicCSI_RS = 0;
     asn1cSeqAdd(&csi_MeasConfig->nzp_CSI_RS_ResourceToAddModList->list,nzpcsi0);
@@ -483,25 +608,27 @@ static struct NR_SRS_Resource__resourceType__periodic *configure_periodic_srs(co
   return periodic_srs;
 }
 
-static void config_srs(const NR_ServingCellConfigCommon_t *scc,
-                       NR_SetupRelease_SRS_Config_t *setup_release_srs_Config,
-                       const NR_UE_NR_Capability_t *uecap,
-                       const int curr_bwp,
-                       const int uid,
-                       const int res_id,
-                       const long maxMIMO_Layers,
-                       const int do_srs)
+static NR_SetupRelease_SRS_Config_t *get_config_srs(const NR_ServingCellConfigCommon_t *scc,
+                                                    const NR_UE_NR_Capability_t *uecap,
+                                                    const int curr_bwp,
+                                                    const int uid,
+                                                    const int res_id,
+                                                    const long maxMIMO_Layers,
+                                                    int do_srs)
 {
-  setup_release_srs_Config->present = NR_SetupRelease_SRS_Config_PR_setup;
-
-  NR_SRS_Config_t *srs_Config;
-  if (setup_release_srs_Config->choice.setup) {
-    srs_Config = setup_release_srs_Config->choice.setup;
-    ASN_STRUCT_FREE(asn_DEF_NR_SRS_Config, srs_Config);
+  // if in the future NUMBER_OF_gNB_MAX is increased, it will be necessary to improve the allocation of SRS resources,
+  // where the startPosition = 2 or 3 and sl160 = 17, 17, 27 ... 157 only give us 30 different allocations.
+  static_assert(NUMBER_OF_gNB_MAX <= 32,
+                "SRS can only handle up to 30 UEs (additional ones are handled gracefully, but don't have SRS enabled\n");
+  if (do_srs && (uid < 0 || uid > 29)) {
+    LOG_E(NR_RRC, "gNB cannot allocate SRS resources for UID %d: available resources exceeded\n", uid);
+    do_srs = 0;
   }
 
+  NR_SetupRelease_SRS_Config_t *setup_release_srs_Config = calloc(1,sizeof(*setup_release_srs_Config));
+  setup_release_srs_Config->present = NR_SetupRelease_SRS_Config_PR_setup;
   setup_release_srs_Config->choice.setup = calloc(1,sizeof(*setup_release_srs_Config->choice.setup));
-  srs_Config = setup_release_srs_Config->choice.setup;
+  NR_SRS_Config_t *srs_Config = setup_release_srs_Config->choice.setup;
 
   srs_Config->srs_ResourceSetToReleaseList = NULL;
 
@@ -608,6 +735,8 @@ static void config_srs(const NR_ServingCellConfigCommon_t *scc,
   srs_res0->spatialRelationInfo->referenceSignal.present = NR_SRS_SpatialRelationInfo__referenceSignal_PR_ssb_Index;
   srs_res0->spatialRelationInfo->referenceSignal.choice.ssb_Index = 0;
   asn1cSeqAdd(&srs_Config->srs_ResourceToAddModList->list,srs_res0);
+
+  return setup_release_srs_Config;
 }
 
 void prepare_sim_uecap(NR_UE_NR_Capability_t *cap,
@@ -1232,10 +1361,13 @@ static void config_downlinkBWP(NR_BWP_Downlink_t *bwp,
   bwp->bwp_Dedicated->pdcch_Config->choice.setup->searchSpacesToAddModList = calloc(1,sizeof(*bwp->bwp_Dedicated->pdcch_Config->choice.setup->searchSpacesToAddModList));
   bwp->bwp_Dedicated->pdcch_Config->choice.setup->controlResourceSetToAddModList = calloc(1,sizeof(*bwp->bwp_Dedicated->pdcch_Config->choice.setup->controlResourceSetToAddModList));
 
-  asn1cSeqAdd(&bwp->bwp_Dedicated->pdcch_Config->choice.setup->controlResourceSetToAddModList->list, coreset);
+  // coreset2 is identical to coreset above, but reallocated to prevent double
+  // frees
+  NR_ControlResourceSet_t *coreset2 = get_coreset_config(bwp->bwp_Id, curr_bwp, ssb_bitmap);
+  asn1cSeqAdd(&bwp->bwp_Dedicated->pdcch_Config->choice.setup->controlResourceSetToAddModList->list, coreset2);
 
   bwp->bwp_Dedicated->pdcch_Config->choice.setup->searchSpacesToAddModList = calloc(1,sizeof(*bwp->bwp_Dedicated->pdcch_Config->choice.setup->searchSpacesToAddModList));
-  NR_SearchSpace_t *ss2 = rrc_searchspace_config(false, 10+bwp->bwp_Id, coreset->controlResourceSetId);
+  NR_SearchSpace_t *ss2 = rrc_searchspace_config(false, 10+bwp->bwp_Id, coreset2->controlResourceSetId);
   asn1cSeqAdd(&bwp->bwp_Dedicated->pdcch_Config->choice.setup->searchSpacesToAddModList->list, ss2);
 
   bwp->bwp_Dedicated->pdcch_Config->choice.setup->searchSpacesToReleaseList = NULL;
@@ -1271,17 +1403,16 @@ static void config_uplinkBWP(NR_BWP_Uplink_t *ubwp,
   }
 
   int curr_bwp = NRRIV2BW(ubwp->bwp_Common->genericParameters.locationAndBandwidth,MAX_BWP_SIZE);
-
-  ubwp->bwp_Common->rach_ConfigCommon  = is_SA ? NULL : scc->uplinkConfigCommon->initialUplinkBWP->rach_ConfigCommon;
-  ubwp->bwp_Common->pusch_ConfigCommon = scc->uplinkConfigCommon->initialUplinkBWP->pusch_ConfigCommon;
+  ubwp->bwp_Common->rach_ConfigCommon  = is_SA ? NULL : clone_rach_configcommon(scc->uplinkConfigCommon->initialUplinkBWP->rach_ConfigCommon);
+  ubwp->bwp_Common->pusch_ConfigCommon = clone_pusch_configcommon(scc->uplinkConfigCommon->initialUplinkBWP->pusch_ConfigCommon);
   ubwp->bwp_Common->pucch_ConfigCommon = CALLOC(1,sizeof(struct NR_SetupRelease_PUCCH_ConfigCommon));
   ubwp->bwp_Common->pucch_ConfigCommon->present= NR_SetupRelease_PUCCH_ConfigCommon_PR_setup;
   ubwp->bwp_Common->pucch_ConfigCommon->choice.setup = CALLOC(1,sizeof(struct NR_PUCCH_ConfigCommon));
   struct NR_PUCCH_ConfigCommon *pucch_ConfigCommon = ubwp->bwp_Common->pucch_ConfigCommon->choice.setup;
   pucch_ConfigCommon->pucch_ResourceCommon = NULL; // for BWP != 0 as per 38.213 section 9.2.1
   pucch_ConfigCommon->pucch_GroupHopping = scc->uplinkConfigCommon->initialUplinkBWP->pucch_ConfigCommon->choice.setup->pucch_GroupHopping;
-  pucch_ConfigCommon->hoppingId = scc->uplinkConfigCommon->initialUplinkBWP->pucch_ConfigCommon->choice.setup->hoppingId;
-  pucch_ConfigCommon->p0_nominal = scc->uplinkConfigCommon->initialUplinkBWP->pucch_ConfigCommon->choice.setup->p0_nominal;
+  asn1cCallocOne(pucch_ConfigCommon->hoppingId, *scc->uplinkConfigCommon->initialUplinkBWP->pucch_ConfigCommon->choice.setup->hoppingId);
+  asn1cCallocOne(pucch_ConfigCommon->p0_nominal, *scc->uplinkConfigCommon->initialUplinkBWP->pucch_ConfigCommon->choice.setup->p0_nominal);
 
   if (!ubwp->bwp_Dedicated) {
     ubwp->bwp_Dedicated = calloc(1,sizeof(*ubwp->bwp_Dedicated));
@@ -1304,7 +1435,8 @@ static void config_uplinkBWP(NR_BWP_Uplink_t *ubwp,
   NR_PUSCH_Config_t *pusch_Config = NULL;
   if(servingcellconfigdedicated->uplinkConfig->uplinkBWP_ToAddModList &&
      bwp_loop < servingcellconfigdedicated->uplinkConfig->uplinkBWP_ToAddModList->list.count) {
-    pusch_Config = servingcellconfigdedicated->uplinkConfig->uplinkBWP_ToAddModList->list.array[bwp_loop]->bwp_Dedicated->pusch_Config->choice.setup;
+    pusch_Config = clone_pusch_config(servingcellconfigdedicated->uplinkConfig->uplinkBWP_ToAddModList->list.array[bwp_loop]
+                                         ->bwp_Dedicated->pusch_Config->choice.setup);
   }
   ubwp->bwp_Dedicated->pusch_Config = config_pusch(pusch_Config, scc, configuration->force_256qam_off ? NULL : uecap);
 
@@ -1315,15 +1447,7 @@ static void config_uplinkBWP(NR_BWP_Uplink_t *ubwp,
                                 && servingcellconfigdedicated->uplinkConfig->pusch_ServingCellConfig->choice.setup->ext1->maxMIMO_Layers ?
                             *servingcellconfigdedicated->uplinkConfig->pusch_ServingCellConfig->choice.setup->ext1->maxMIMO_Layers : 1;
 
-  ubwp->bwp_Dedicated->srs_Config = calloc(1,sizeof(*ubwp->bwp_Dedicated->srs_Config));
-  config_srs(scc,
-             ubwp->bwp_Dedicated->srs_Config,
-             NULL,
-             curr_bwp,
-             uid,
-             bwp_loop+1,
-             maxMIMO_Layers,
-             configuration->do_SRS);
+  ubwp->bwp_Dedicated->srs_Config = get_config_srs(scc, NULL, curr_bwp, uid, bwp_loop + 1, maxMIMO_Layers, configuration->do_SRS);
 
   ubwp->bwp_Dedicated->configuredGrantConfig = NULL;
   ubwp->bwp_Dedicated->beamFailureRecoveryConfig = NULL;
@@ -1345,7 +1469,7 @@ static void set_csi_meas_periodicity(const NR_ServingCellConfigCommon_t *scc, NR
   const int n_slots_frame = slotsperframe[*scc->ssbSubcarrierSpacing];
   const int n_ul_slots_period = tdd ? (tdd->nrofUplinkSlots + (tdd->nrofUplinkSymbols > 0)) : n_slots_frame;
   const int n_slots_period = tdd ? n_slots_frame / get_nb_periods_per_frame(tdd->dl_UL_TransmissionPeriodicity) : n_slots_frame;
-  const int ideal_period = MAX_MOBILES_PER_GNB * 2 * n_slots_period / n_ul_slots_period; // 2 reports per UE
+  const int ideal_period = set_ideal_period(n_slots_period, n_ul_slots_period);
   const int first_ul_slot_period = tdd ? get_first_ul_slot(tdd->nrofDownlinkSlots, tdd->nrofDownlinkSymbols, tdd->nrofUplinkSymbols) : 0;
   const int idx = (uid << 1) + is_rsrp;
   const int offset = first_ul_slot_period + idx % n_ul_slots_period + (idx / n_ul_slots_period) * n_slots_period;
@@ -1640,7 +1764,8 @@ NR_BCCH_BCH_Message_t *get_new_MIB_NR(const NR_ServingCellConfigCommon_t *scc)
   int ssb_subcarrier_offset = 31; // default value for NSA
   if (get_softmodem_params()->sa) {
     ssb_subcarrier_offset = get_ssb_subcarrier_offset(*scc->downlinkConfigCommon->frequencyInfoDL->absoluteFrequencySSB,
-                                                      scc->downlinkConfigCommon->frequencyInfoDL->absoluteFrequencyPointA);
+                                                      scc->downlinkConfigCommon->frequencyInfoDL->absoluteFrequencyPointA,
+                                                      *scc->ssbSubcarrierSpacing);
   }
   mib->message.choice.mib->ssb_SubcarrierOffset = ssb_subcarrier_offset & 15;
 
@@ -1811,7 +1936,7 @@ NR_BCCH_DL_SCH_Message_t *get_SIB1_NR(const NR_ServingCellConfigCommon_t *scc, c
   // servingCellConfigCommon
   asn1cCalloc(sib1->servingCellConfigCommon, ServCellCom);
   NR_BWP_DownlinkCommon_t *initialDownlinkBWP = &ServCellCom->downlinkConfigCommon.initialDownlinkBWP;
-  initialDownlinkBWP->genericParameters = scc->downlinkConfigCommon->initialDownlinkBWP->genericParameters;
+  initialDownlinkBWP->genericParameters = clone_generic_parameters(&scc->downlinkConfigCommon->initialDownlinkBWP->genericParameters);
 
   const NR_FrequencyInfoDL_t *frequencyInfoDL = scc->downlinkConfigCommon->frequencyInfoDL;
   for (int i = 0; i < frequencyInfoDL->frequencyBandList.list.count; i++) {
@@ -1838,26 +1963,19 @@ NR_BCCH_DL_SCH_Message_t *get_SIB1_NR(const NR_ServingCellConfigCommon_t *scc, c
                 frequencyInfoDL->scs_SpecificCarrierList.list.array[i]);
   }
 
-  initialDownlinkBWP->pdcch_ConfigCommon = scc->downlinkConfigCommon->initialDownlinkBWP->pdcch_ConfigCommon;
-  initialDownlinkBWP->pdcch_ConfigCommon->choice.setup->commonSearchSpaceList =
-      CALLOC(1, sizeof(struct NR_PDCCH_ConfigCommon__commonSearchSpaceList));
-  AssertFatal(initialDownlinkBWP->pdcch_ConfigCommon->choice.setup->commonSearchSpaceList != NULL, "out of memory\n");
+  initialDownlinkBWP->pdcch_ConfigCommon = clone_pdcch_configcommon(scc->downlinkConfigCommon->initialDownlinkBWP->pdcch_ConfigCommon);
+  AssertFatal(initialDownlinkBWP->pdcch_ConfigCommon->choice.setup->commonSearchSpaceList != NULL,
+              "expected commonSearchSpaceList to be populated through SCC\n");
+  AssertFatal(initialDownlinkBWP->pdcch_ConfigCommon->choice.setup->searchSpaceSIB1 != NULL,
+              "expected searchSpaceSIB1 to be populated through SCC\n");
+  AssertFatal(initialDownlinkBWP->pdcch_ConfigCommon->choice.setup->ra_SearchSpace != NULL,
+              "expected ra_SearchSpace to be populated through SCC\n");
+  AssertFatal(initialDownlinkBWP->pdcch_ConfigCommon->choice.setup->pagingSearchSpace != NULL,
+              "expected pagingSearchSpace to be populated through SCC\n");
+  AssertFatal(initialDownlinkBWP->pdcch_ConfigCommon->choice.setup->searchSpaceOtherSystemInformation != NULL,
+              "expected searchSpaceOtherSystemInformation to be populated through SCC\n");
 
-  NR_SearchSpace_t *ss1 = rrc_searchspace_config(true, 1, 0);
-  asn1cSeqAdd(&initialDownlinkBWP->pdcch_ConfigCommon->choice.setup->commonSearchSpaceList->list, ss1);
-
-  NR_SearchSpace_t *ss2 = rrc_searchspace_config(true, 2, 0);
-  asn1cSeqAdd(&initialDownlinkBWP->pdcch_ConfigCommon->choice.setup->commonSearchSpaceList->list, ss2);
-
-  NR_SearchSpace_t *ss3 = rrc_searchspace_config(true, 3, 0);
-  asn1cSeqAdd(&initialDownlinkBWP->pdcch_ConfigCommon->choice.setup->commonSearchSpaceList->list, ss3);
-
-  asn1cCallocOne(initialDownlinkBWP->pdcch_ConfigCommon->choice.setup->searchSpaceSIB1,  0);
-  asn1cCallocOne(initialDownlinkBWP->pdcch_ConfigCommon->choice.setup->searchSpaceOtherSystemInformation, 3);
-  asn1cCallocOne(initialDownlinkBWP->pdcch_ConfigCommon->choice.setup->pagingSearchSpace, 2);
-  asn1cCallocOne(initialDownlinkBWP->pdcch_ConfigCommon->choice.setup->ra_SearchSpace, 1);
-   
-  initialDownlinkBWP->pdsch_ConfigCommon = scc->downlinkConfigCommon->initialDownlinkBWP->pdsch_ConfigCommon;
+  initialDownlinkBWP->pdsch_ConfigCommon = clone_pdsch_configcommon(scc->downlinkConfigCommon->initialDownlinkBWP->pdsch_ConfigCommon);
   ServCellCom->downlinkConfigCommon.bcch_Config.modificationPeriodCoeff = NR_BCCH_Config__modificationPeriodCoeff_n2;
   ServCellCom->downlinkConfigCommon.pcch_Config.defaultPagingCycle = NR_PagingCycle_rf256;
   ServCellCom->downlinkConfigCommon.pcch_Config.nAndPagingFrameOffset.present = NR_PCCH_Config__nAndPagingFrameOffset_PR_quarterT;
@@ -1897,12 +2015,13 @@ NR_BCCH_DL_SCH_Message_t *get_SIB1_NR(const NR_ServingCellConfigCommon_t *scc, c
     }
   }
 
-  UL->initialUplinkBWP.genericParameters = scc->uplinkConfigCommon->initialUplinkBWP->genericParameters;
-  UL->initialUplinkBWP.rach_ConfigCommon = scc->uplinkConfigCommon->initialUplinkBWP->rach_ConfigCommon;
-  UL->initialUplinkBWP.pusch_ConfigCommon = scc->uplinkConfigCommon->initialUplinkBWP->pusch_ConfigCommon;
+  UL->initialUplinkBWP.genericParameters = clone_generic_parameters(&scc->uplinkConfigCommon->initialUplinkBWP->genericParameters);
+  UL->initialUplinkBWP.rach_ConfigCommon = clone_rach_configcommon(scc->uplinkConfigCommon->initialUplinkBWP->rach_ConfigCommon);
+  UL->initialUplinkBWP.pusch_ConfigCommon = clone_pusch_configcommon(scc->uplinkConfigCommon->initialUplinkBWP->pusch_ConfigCommon);
+  free(UL->initialUplinkBWP.pusch_ConfigCommon->choice.setup->groupHoppingEnabledTransformPrecoding);
   UL->initialUplinkBWP.pusch_ConfigCommon->choice.setup->groupHoppingEnabledTransformPrecoding = NULL;
 
-  UL->initialUplinkBWP.pucch_ConfigCommon = scc->uplinkConfigCommon->initialUplinkBWP->pucch_ConfigCommon;
+  UL->initialUplinkBWP.pucch_ConfigCommon = clone_pucch_configcommon(scc->uplinkConfigCommon->initialUplinkBWP->pucch_ConfigCommon);
 
   UL->timeAlignmentTimerCommon = NR_TimeAlignmentTimer_infinity;
 
@@ -2104,8 +2223,7 @@ static NR_SpCellConfig_t *get_initial_SpCellConfig(int uid,
                             : 1;
 
   // We are using do_srs = 0 here because the periodic SRS will only be enabled in update_cellGroupConfig() if do_srs == 1
-  initialUplinkBWP->srs_Config = calloc(1, sizeof(*initialUplinkBWP->srs_Config));
-  config_srs(scc, initialUplinkBWP->srs_Config, NULL, curr_bwp, uid, 0, maxMIMO_Layers, 0);
+  initialUplinkBWP->srs_Config = get_config_srs(scc, NULL, curr_bwp, uid, 0, maxMIMO_Layers, 0);
 
   scheduling_request_config(scc, pucch_Config, scc->uplinkConfigCommon->initialUplinkBWP->genericParameters.subcarrierSpacing);
 
@@ -2402,17 +2520,8 @@ void update_cellGroupConfig(NR_CellGroupConfig_t *cellGroupConfig,
 
   // UL and SRS configuration
   if (configuration->do_SRS && uplinkConfig && uplinkConfig->initialUplinkBWP) {
-    if (!uplinkConfig->initialUplinkBWP->srs_Config) {
-      uplinkConfig->initialUplinkBWP->srs_Config = calloc(1, sizeof(*uplinkConfig->initialUplinkBWP->srs_Config));
-    }
-    config_srs(scc,
-               SpCellConfig->spCellConfigDedicated->uplinkConfig->initialUplinkBWP->srs_Config,
-               uecap,
-               curr_bwp,
-               uid,
-               0,
-               maxMIMO_Layers,
-               configuration->do_SRS);
+    ASN_STRUCT_FREE(asn_DEF_NR_SetupRelease_SRS_Config, uplinkConfig->initialUplinkBWP->srs_Config);
+    uplinkConfig->initialUplinkBWP->srs_Config = get_config_srs(scc, uecap, curr_bwp, uid, 0, maxMIMO_Layers, configuration->do_SRS);
   }
 
   // Set DL MCS table
@@ -2447,7 +2556,9 @@ void update_cellGroupConfig(NR_CellGroupConfig_t *cellGroupConfig,
         }
         *pusch_Config->maxRank = ul_max_layers;
       }
-      config_srs(scc, ul_bwp->bwp_Dedicated->srs_Config, uecap, bwp_size, uid, i + 1, maxMIMO_Layers, configuration->do_SRS);
+
+      ASN_STRUCT_FREE(asn_DEF_NR_SetupRelease_SRS_Config, ul_bwp->bwp_Dedicated->srs_Config);
+      ul_bwp->bwp_Dedicated->srs_Config = get_config_srs(scc, uecap, bwp_size, uid, i + 1, maxMIMO_Layers, configuration->do_SRS);
     }
   }
   update_cqitables(bwp_Dedicated->pdsch_Config, SpCellConfig->spCellConfigDedicated->csi_MeasConfig->choice.setup);
@@ -2524,11 +2635,6 @@ NR_CellGroupConfig_t *get_default_secondaryCellGroup(const NR_ServingCellConfigC
 
   if (uecap == NULL)
     LOG_E(RRC, "No UE Capabilities available when programming default CellGroup in NSA\n");
-
-  // This assert will never happen in the current implementation because NUMBER_OF_UE_MAX = 4.
-  // However, if in the future NUMBER_OF_UE_MAX is increased, it will be necessary to improve the allocation of SRS resources,
-  // where the startPosition = 2 or 3 and sl160 = 17, 17, 27 ... 157 only give us 30 different allocations.
-  AssertFatal(uid >= 0 && uid < 30, "gNB cannot allocate the SRS resources\n");
 
   uint64_t bitmap = get_ssb_bitmap(servingcellconfigcommon);
   // See comment at the end of this function regarding ServingCellConfig
@@ -2635,8 +2741,8 @@ NR_CellGroupConfig_t *get_default_secondaryCellGroup(const NR_ServingCellConfigC
 
   NR_PUSCH_Config_t *pusch_Config = NULL;
   if (servingcellconfigdedicated->uplinkConfig->uplinkBWP_ToAddModList) {
-    pusch_Config =
-        servingcellconfigdedicated->uplinkConfig->uplinkBWP_ToAddModList->list.array[0]->bwp_Dedicated->pusch_Config->choice.setup;
+    pusch_Config = clone_pusch_config(
+        servingcellconfigdedicated->uplinkConfig->uplinkBWP_ToAddModList->list.array[0]->bwp_Dedicated->pusch_Config->choice.setup);
   }
   initialUplinkBWP->pusch_Config = config_pusch(pusch_Config, servingcellconfigcommon, uecap);
 
@@ -2649,8 +2755,7 @@ NR_CellGroupConfig_t *get_default_secondaryCellGroup(const NR_ServingCellConfigC
 
   int curr_bwp = NRRIV2BW(servingcellconfigcommon->downlinkConfigCommon->initialDownlinkBWP->genericParameters.locationAndBandwidth,
                           MAX_BWP_SIZE);
-  initialUplinkBWP->srs_Config = calloc(1, sizeof(*initialUplinkBWP->srs_Config));
-  config_srs(servingcellconfigcommon, initialUplinkBWP->srs_Config, NULL, curr_bwp, uid, 0, maxMIMO_Layers, configuration->do_SRS);
+  initialUplinkBWP->srs_Config = get_config_srs(servingcellconfigcommon, NULL, curr_bwp, uid, 0, maxMIMO_Layers, configuration->do_SRS);
 
   // Downlink BWPs
   int n_dl_bwp = 1;

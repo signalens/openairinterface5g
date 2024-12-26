@@ -86,9 +86,6 @@
 #define openair_sched_exit() exit(-1)
 
 #define bzero(s,n) (memset((s),0,(n)))
-#define cmax(a,b)  ((a>b) ? (a) : (b))
-#define cmin(a,b)  ((a<b) ? (a) : (b))
-#define cmax3(a,b,c) ((cmax(a,b)>c) ? (cmax(a,b)) : (c))
 /// suppress compiler warning for unused arguments
 #define UNUSED(x) (void)x;
 
@@ -97,7 +94,7 @@
 #include "time_meas.h"
 #include "PHY/CODING/coding_defs.h"
 #include "PHY/TOOLS/tools_defs.h"
-#include "platform_types.h"
+#include "common/platform_types.h"
 #include "NR_UE_TRANSPORT/nr_transport_ue.h"
 
 #if defined(UPGRADE_RAT_NR)
@@ -254,54 +251,20 @@ typedef struct {
 
 #define MAX_NR_DCI_DECODED_SLOT     10    // This value is not specified
 
-
-
 typedef enum {
-  _format_0_0_found=0,
-  _format_0_1_found=1,
-  _format_1_0_found=2,
-  _format_1_1_found=3,
-  _format_2_0_found=4,
-  _format_2_1_found=5,
-  _format_2_2_found=6,
-  _format_2_3_found=7
+  _format_0_0_found = 0,
+  _format_0_1_found = 1,
+  _format_1_0_found = 2,
+  _format_1_1_found = 3,
+  _format_2_0_found = 4,
+  _format_2_1_found = 5,
+  _format_2_2_found = 6,
+  _format_2_3_found = 7
 } format_found_t;
-#define TOTAL_NBR_SCRAMBLED_VALUES 13
-#define _C_RNTI_           0
-#define _CS_RNTI_          1
-#define _NEW_RNTI_         2
-#define _TC_RNTI_          3
-#define _P_RNTI_           4
-#define _SI_RNTI_          5
-#define _RA_RNTI_          6
-#define _SP_CSI_RNTI_      7
-#define _SFI_RNTI_         8
-#define _INT_RNTI_         9
-#define _TPC_PUSCH_RNTI_  10
-#define _TPC_PUCCH_RNTI_  11
-#define _TPC_SRS_RNTI_    12
-typedef enum {                          /* see 38.321  Table 7.1-2  RNTI usage */
-  _c_rnti         = _C_RNTI_,         /* Cell RNTI */
-  _cs_rnti        = _CS_RNTI_,        /* Configured Scheduling RNTI */
-  _new_rnti       = _NEW_RNTI_,       /* ? */
-  _tc_rnti        = _TC_RNTI_,        /* Temporary C-RNTI */
-  _p_rnti         = _P_RNTI_,         /* Paging RNTI */
-  _si_rnti        = _SI_RNTI_,        /* System information RNTI */
-  _ra_rnti        = _RA_RNTI_,        /* Random Access RNTI */
-  _sp_csi_rnti    = _SP_CSI_RNTI_,    /* Semipersistent CSI reporting on PUSCH */
-  _sfi_rnti       = _SFI_RNTI_,       /* Slot Format Indication on the given cell */
-  _int_rnti       = _INT_RNTI_,       /* Indication pre-emption in DL */
-  _tpc_pusch_rnti = _TPC_PUSCH_RNTI_, /* PUSCH power control */
-  _tpc_pucch_rnti = _TPC_PUCCH_RNTI_, /* PUCCH power control */
-  _tpc_srs_rnti   = _TPC_SRS_RNTI_
-} crc_scrambled_t;
-
 
 #endif
 typedef struct {
   int nb_search_space;
-  uint16_t sfn;
-  uint16_t slot;
   fapi_nr_dl_config_dci_dl_pdu_rel15_t pdcch_config[FAPI_NR_MAX_SS];
 } NR_UE_PDCCH_CONFIG;
 
@@ -362,7 +325,7 @@ typedef struct UE_NR_SCAN_INFO_s {
 } UE_NR_SCAN_INFO_t;
 
 /// Top-level PHY Data Structure for UE
-typedef struct {
+typedef struct PHY_VARS_NR_UE_s {
   /// \brief Module ID indicator for this instance
   uint8_t Mod_id;
   /// \brief Component carrier ID for this PHY instance
@@ -519,12 +482,8 @@ typedef struct {
   uint8_t               init_sync_frame;
   /// temporary offset during cell search prior to MIB decoding
   int              ssb_offset;
-  uint16_t         symbol_offset;  /// offset in terms of symbols for detected ssb in sync
-  int              rx_offset;      /// Timing offset
-  int              rx_offset_diff; /// Timing adjustment for ofdm symbol0 on HW USRP
-  int64_t          max_pos_fil;    /// Timing offset IIR filter
-  bool             apply_timing_offset;     /// Do time sync for current frame
-  int              time_sync_cell;
+  uint16_t symbol_offset; /// offset in terms of symbols for detected ssb in sync
+  int64_t max_pos_avg; /// Timing offset IIR filter
 
   /// Timing Advance updates variables
   /// Timing advance update computed from the TA command signalled from gNB
@@ -545,10 +504,6 @@ typedef struct {
 
   /// Flag to initialize averaging of PHY measurements
   int init_averaging;
-
-  /// \brief sinr for all subcarriers of the current link (used only for abstraction).
-  /// - first index: ? [0..12*N_RB_DL[
-  double *sinr_dB;
 
   /// sinr_effective used for CQI calulcation
   double sinr_eff;
@@ -645,8 +600,7 @@ typedef struct {
   void *phy_sim_pdsch_dl_ch_estimates_ext;
   uint8_t *phy_sim_dlsch_b;
   notifiedFIFO_t phy_config_ind;
-  notifiedFIFO_t *tx_resume_ind_fifo[NR_MAX_SLOTS_PER_FRAME];
-  int tx_wait_for_dlsch[NR_MAX_SLOTS_PER_FRAME];
+  notifiedFIFO_t tx_resume_ind_fifo[NR_MAX_SLOTS_PER_FRAME];
 } PHY_VARS_NR_UE;
 
 typedef struct {
@@ -681,9 +635,9 @@ typedef struct nr_rxtx_thread_data_s {
   UE_nr_rxtx_proc_t proc;
   PHY_VARS_NR_UE    *UE;
   int writeBlockSize;
-  notifiedFIFO_t txFifo;
   nr_phy_data_t phy_data;
   int tx_wait_for_dlsch;
+  int rx_offset;
 } nr_rxtx_thread_data_t;
 
 typedef struct LDPCDecode_ue_s {
@@ -709,7 +663,7 @@ typedef struct LDPCDecode_ue_s {
   time_stats_t ts_deinterleave;
   time_stats_t ts_rate_unmatch;
   time_stats_t ts_ldpc_decode;
-  UE_nr_rxtx_proc_t *proc;
+  UE_nr_rxtx_proc_t proc;
 } ldpcDecode_ue_t;
 
 #include "SIMULATION/ETH_TRANSPORT/defs.h"

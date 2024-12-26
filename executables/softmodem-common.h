@@ -19,13 +19,13 @@
  *      contact@openairinterface.org
  */
 
-/*! \file lte-softmodem-common.h
+/*! \file softmodem-common.h
  * \brief Top-level threads for eNodeB
- * \author 
+ * \author
  * \date 2012
  * \version 0.1
  * \company Eurecom
- * \email: 
+ * \email:
  * \note
  * \warning
  */
@@ -44,7 +44,6 @@ extern "C"
   example: -1,3 launches two working threads one floating, the second set on core 3\n\
   default 8 floating threads\n\
   use N for no pool (runs in calling thread) recommended with rfsim.\n"
-#define CONFIG_HLP_REORDER       "Disable reorder thread\n"
 #define CONFIG_HLP_ULMAXE        "set the eNodeB max ULSCH erros\n"
 #define CONFIG_HLP_CALUER        "set UE RX calibration\n"
 #define CONFIG_HLP_CALUERM       ""
@@ -85,7 +84,9 @@ extern "C"
 #define CONFIG_HLP_ULMCS         "Set the maximum uplink MCS\n"
 
 #define CONFIG_HLP_UE            "Set the lte softmodem as a UE\n"
-#define CONFIG_HLP_TQFS          "Apply three-quarter of sampling frequency, 23.04 Msps to reduce the data rate on USB/PCIe transfers (only valid for 20 MHz)\n"
+#define CONFIG_HLP_TQFS                                                                                                          \
+  "Apply three-quarter of sampling frequency, (example 23.04 Msps for LTE 20MHz) to reduce the data rate on USB/PCIe transfers " \
+  "(only valid for some bandwidths)\n"
 #define CONFIG_HLP_TPORT         "tracer port\n"
 #define CONFIG_HLP_NOTWAIT       "don't wait for tracer, start immediately\n"
 #define CONFIG_HLP_TNOFORK       "to ease debugging with gdb\n"
@@ -102,13 +103,16 @@ extern "C"
 #define CONFIG_HLP_NOKRNMOD      "(noS1 only): Use tun instead of namesh module \n"
 #define CONFIG_HLP_DISABLNBIOT   "disable nb-iot, even if defined in config\n"
 #define CONFIG_HLP_USRP_THREAD   "having extra thead for usrp tx\n"
-#define CONFIG_HLP_NFAPI         "Change the nFAPI mode for NR 'MONOLITHIC', 'PNF', 'VNF','UE_STUB_PNF','UE_STUB_OFFNET','STANDALONE_PNF'\n"
+#define CONFIG_HLP_NFAPI         "Change the nFAPI mode for NR 'MONOLITHIC', 'PNF', 'VNF', 'AERIAL','UE_STUB_PNF','UE_STUB_OFFNET','STANDALONE_PNF'\n"
 #define CONFIG_L1_EMULATOR       "Run in L1 emulated mode (disable PHY layer)\n"
 #define CONFIG_HLP_CONTINUOUS_TX "perform continuous transmission, even in TDD mode (to work around USRP issues)\n"
 #define CONFIG_HLP_STATS_DISABLE "disable globally the stats generation and persistence"
-#define CONFIG_HLP_SYNC_REF      "Sync Reference in Sidelink\n"
-#define CONFIG_HLP_NID1          "Set NID1 value in Sidelink\n"
-#define CONFIG_HLP_NID2          "Set NID2 value in Sidelink\n"
+#define CONFIG_HLP_NOITTI        "Do not start itti threads, call queue processing in place, inside the caller thread"
+#define CONFIG_HLP_LDPC_OFFLOAD  "Enable LDPC offload to AMD Xilinx T2 telco card\n"
+#define CONFIG_HLP_SYNC_REF      "UE acts a Sync Reference in Sidelink. 0-none 1-GNB 2-GNSS 4-localtiming\n"
+#define CONFIG_HLP_TADV                                                                                                      \
+  "Set RF board timing_advance to compensate fix delay inside the RF board between Rx and Tx timestamps (RF board internal " \
+  "issues)\n"
 
 /*-----------------------------------------------------------------------------------------------------------------------------------------------------*/
 /*                                            command line parameters common to eNodeB and UE                                                          */
@@ -141,10 +145,8 @@ extern "C"
 #define EMULATE_L1          softmodem_params.emulate_l1
 #define CONTINUOUS_TX       softmodem_params.continuous_tx
 #define SYNC_REF            softmodem_params.sync_ref
-#define NID1                softmodem_params.nid1
-#define NID2                softmodem_params.nid2
+#define LDPC_OFFLOAD_FLAG   softmodem_params.ldpc_offload_flag
 
-#define REORDER_THREAD_DISABLE    softmodem_params.reorder_thread_disable
 #define DEFAULT_RFCONFIG_FILE    "/usr/local/etc/syriq/ue.band7.tm1.PRB100.NR40.dat";
 
 extern int usrp_tx_thread;
@@ -152,7 +154,6 @@ extern int usrp_tx_thread;
 #define CMDLINE_PARAMS_DESC {  \
   {"rf-config-file",        CONFIG_HLP_RFCFGF,        0,              .strptr=&RF_CONFIG_FILE,                .defstrval=NULL,          TYPE_STRING, 0},  \
   {"thread-pool",           CONFIG_HLP_TPOOL,         0,              .strptr=&TP_CONFIG,                     .defstrval="-1,-1,-1,-1,-1,-1,-1,-1",  TYPE_STRING, 0},     \
-  {"reorder-thread-disable",CONFIG_HLP_REORDER,     PARAMFLAG_BOOL,   .iptr=&REORDER_THREAD_DISABLE,          .defintval=0,                          TYPE_INT,    0},                     \
   {"phy-test",              CONFIG_HLP_PHYTST,        PARAMFLAG_BOOL, .iptr=&PHY_TEST,                        .defintval=0,             TYPE_INT,    0},  \
   {"do-ra",                 CONFIG_HLP_DORA,          PARAMFLAG_BOOL, .iptr=&DO_RA,                           .defintval=0,             TYPE_INT,    0},  \
   {"sa",                    CONFIG_HLP_SA,            PARAMFLAG_BOOL, .iptr=&SA,                              .defintval=0,             TYPE_INT,    0},  \
@@ -188,8 +189,11 @@ extern int usrp_tx_thread;
   {"emulate-l1",            CONFIG_L1_EMULATOR,       PARAMFLAG_BOOL, .iptr=&EMULATE_L1,                      .defintval=0,             TYPE_INT,    0},  \
   {"continuous-tx",         CONFIG_HLP_CONTINUOUS_TX, PARAMFLAG_BOOL, .iptr=&CONTINUOUS_TX,                   .defintval=0,             TYPE_INT,    0},  \
   {"disable-stats",         CONFIG_HLP_STATS_DISABLE, PARAMFLAG_BOOL, .iptr=&stats_disabled,                  .defintval=0,             TYPE_INT,    0},  \
-  {"nid1",                  CONFIG_HLP_NID1,          0,              .iptr=&NID1,                            .defintval=10,            TYPE_INT,    0},  \
-  {"nid2",                  CONFIG_HLP_NID2,          0,              .iptr=&NID2,                            .defintval=1,             TYPE_INT,    0},  \
+  {"no-itti-threads",       CONFIG_HLP_NOITTI,        PARAMFLAG_BOOL, .iptr=&softmodem_params.no_itti,        .defintval=0,             TYPE_INT,    0},  \
+  {"ldpc-offload-enable",   CONFIG_HLP_LDPC_OFFLOAD,  PARAMFLAG_BOOL, .iptr=&LDPC_OFFLOAD_FLAG,               .defstrval=0,             TYPE_INT,    0},  \
+  {"sync-ref",              CONFIG_HLP_SYNC_REF,      0,              .uptr=&SYNC_REF,                        .defintval=0,             TYPE_UINT,   0},  \
+  {"A" ,                    CONFIG_HLP_TADV,          0,             .iptr=&softmodem_params.command_line_sample_advance,.defintval=0,            TYPE_INT,   0},  \
+  {"E" ,                    CONFIG_HLP_TQFS,          PARAMFLAG_BOOL, .iptr=&softmodem_params.threequarter_fs, .defintval=0,            TYPE_INT,    0}, \
 }
 // clang-format on
 
@@ -227,11 +231,13 @@ extern int usrp_tx_thread;
     { .s5 = { NULL } },                     \
     { .s5 = { NULL } },                     \
     { .s5 = { NULL } },                     \
-    { .s5 = { NULL } },                     \
     { .s3a = { config_checkstr_assign_integer, \
-               {"MONOLITHIC", "PNF", "VNF","UE_STUB_PNF","UE_STUB_OFFNET","STANDALONE_PNF"}, \
-               {NFAPI_MONOLITHIC, NFAPI_MODE_PNF, NFAPI_MODE_VNF,NFAPI_UE_STUB_PNF,NFAPI_UE_STUB_OFFNET,NFAPI_MODE_STANDALONE_PNF}, \
-               6 } }, \
+               {"MONOLITHIC", "PNF", "VNF", "AERIAL","UE_STUB_PNF","UE_STUB_OFFNET","STANDALONE_PNF"}, \
+               {NFAPI_MONOLITHIC, NFAPI_MODE_PNF, NFAPI_MODE_VNF, NFAPI_MODE_AERIAL,NFAPI_UE_STUB_PNF,NFAPI_UE_STUB_OFFNET,NFAPI_MODE_STANDALONE_PNF}, \
+               7 } }, \
+    { .s5 = { NULL } },                     \
+    { .s5 = { NULL } },                     \
+    { .s5 = { NULL } },                     \
     { .s5 = { NULL } },                     \
     { .s5 = { NULL } },                     \
     { .s5 = { NULL } },                     \
@@ -319,8 +325,7 @@ typedef struct {
   uint64_t       optmask;
   //THREAD_STRUCT  thread_struct;
   char           *rf_config_file;
-  char           *threadPoolConfig;
-  int            reorder_thread_disable;
+  char *threadPoolConfig;
   int            phy_test;
   int            do_ra;
   int            sa;
@@ -335,7 +340,7 @@ typedef struct {
   uint32_t       clock_source;
   uint32_t       timing_source;
   double         tune_offset;
-  int            hw_timing_advance;
+  int command_line_sample_advance;
   uint32_t       send_dmrs_sync;
   int            use_256qam_table;
   int            chest_time;
@@ -346,28 +351,27 @@ typedef struct {
   int            non_stop;
   int            emulate_l1;
   int            continuous_tx;
-  int            sync_ref;
-  int            nid1;
-  int            nid2;
+  uint32_t       sync_ref;
+  int no_itti;
+  int ldpc_offload_flag;
+  int threequarter_fs;
 } softmodem_params_t;
 
-extern uint64_t get_softmodem_optmask(void);
-extern uint64_t set_softmodem_optmask(uint64_t bitmask);
-extern uint64_t clear_softmodem_optmask(uint64_t bitmask);
-extern softmodem_params_t *get_softmodem_params(void);
-extern void get_common_options(uint32_t execmask);
-extern char *get_softmodem_function(uint64_t *sofmodemfunc_mask_ptr);
+uint64_t get_softmodem_optmask(void);
+uint64_t set_softmodem_optmask(uint64_t bitmask);
+uint64_t clear_softmodem_optmask(uint64_t bitmask);
+softmodem_params_t *get_softmodem_params(void);
+void get_common_options(configmodule_interface_t *cfg, uint32_t execmask);
+char *get_softmodem_function(uint64_t *sofmodemfunc_mask_ptr);
 #define SOFTMODEM_RTSIGNAL  (SIGRTMIN+1)
-extern void set_softmodem_sighandler(void);
+void set_softmodem_sighandler(void);
 extern uint64_t downlink_frequency[MAX_NUM_CCs][4];
 extern int32_t uplink_frequency_offset[MAX_NUM_CCs][4];
 extern int usrp_tx_thread;
 extern uint16_t sl_ahead;
 extern uint16_t sf_ahead;
-extern int ldpc_offload_flag;
 extern int oai_exit;
 
-void tx_func(void *param);
 void rx_func(void *param);
 void ru_tx_func(void *param);
 extern uint8_t nfapi_mode;

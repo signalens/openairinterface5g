@@ -161,6 +161,24 @@ extern "C" {
 #define squaredMod(a) ((a).r*(a).r + (a).i*(a).i)
 #define csum(res, i1, i2) (res).r = (i1).r + (i2).r ; (res).i = (i1).i + (i2).i
 
+  __attribute__((always_inline)) inline c16_t c16conj(const c16_t a) {
+    return (c16_t) {
+      .r =  a.r,
+      .i = (int16_t)-a.i
+    };
+  }
+
+  __attribute__((always_inline)) inline uint32_t c16toI32(const c16_t a) {
+    return *((uint32_t*)&a);
+  }
+
+  __attribute__((always_inline)) inline c16_t c16swap(const c16_t a) {
+    return (c16_t){
+        .r = a.i,
+        .i = a.r
+    };
+  }
+
   __attribute__((always_inline)) inline uint32_t c16amp2(const c16_t a) {
     return a.r * a.r + a.i * a.i;
   }
@@ -193,7 +211,12 @@ extern "C" {
     };
   }
 
-  __attribute__((always_inline)) inline c16_t c16divShift(const c16_t a, const c16_t b, const int Shift) {
+  __attribute__((always_inline)) inline c16_t c16mulRealShift(const c16_t a, const int32_t b, const int Shift)
+  {
+    return (c16_t){.r = (int16_t)((a.r * b) >> Shift), .i = (int16_t)((a.i * b) >> Shift)};
+  }
+  __attribute__((always_inline)) inline c16_t c16MulConjShift(const c16_t a, const c16_t b, const int Shift)
+  {
     return (c16_t) {
       .r = (int16_t)((a.r * b.r + a.i * b.i) >> Shift),
       .i = (int16_t)((a.r * b.i - a.i * b.r) >> Shift)
@@ -377,26 +400,6 @@ int mult_cpx_vector(int16_t *x1,
 void init_fft(uint16_t size,
               uint8_t logsize,
               uint16_t *rev);
-
-/*!\fn void fft(int16_t *x,int16_t *y,int16_t *twiddle,uint16_t *rev,uint8_t log2size,uint8_t scale,uint8_t input_fmt)
-This function performs optimized fixed-point radix-2 FFT/IFFT.
-@param x Input
-@param y Output in format: [Re0,Im0,Re0,Im0, Re1,Im1,Re1,Im1, ....., Re(N-1),Im(N-1),Re(N-1),Im(N-1)]
-@param twiddle Twiddle factors
-@param rev bit-reversed permutation
-@param log2size Base-2 logarithm of FFT size
-@param scale Total number of shifts (should be log2size/2 for normalized FFT)
-@param input_fmt (0 - input is in complex Q1.15 format, 1 - input is in complex redundant Q1.15 format)
-*/
-/*void fft(int16_t *x,
-         int16_t *y,
-         int16_t *twiddle,
-         uint16_t *rev,
-         uint8_t log2size,
-         uint8_t scale,
-         uint8_t input_fmt
-        );
-*/
 
 #define FOREACH_DFTSZ(SZ_DEF) \
   SZ_DEF(12) \
@@ -711,11 +714,6 @@ int32_t sub_cpx_vector16(int16_t *x,
 */
 int32_t signal_energy(int32_t *,uint32_t);
 
-/*!\fn int32_t signal_energy_fixed_p9(int *input, uint32_t length);
-\brief Computes the signal energy per subcarrier
-\ the input signal has a fixed point representation of AMP_SHIFT bits
-\ the ouput energy has a fixed point representation of AMP_SHIFT bits
-*/
 int32_t signal_energy_amp_shift(int32_t *input, uint32_t length);
 
 #ifdef LOCALIZATION
@@ -790,6 +788,11 @@ double interp(double x, double *xs, double *ys, int count);
 
 void simde_mm128_separate_real_imag_parts(simde__m128i *out_re, simde__m128i *out_im, simde__m128i in0, simde__m128i in1);
 void simde_mm256_separate_real_imag_parts(simde__m256i *out_re, simde__m256i *out_im, simde__m256i in0, simde__m256i in1);
+
+static __attribute__((always_inline)) inline int count_bits_set(uint64_t v)
+{
+  return __builtin_popcountll(v);
+}
 
 #ifdef __cplusplus
 }

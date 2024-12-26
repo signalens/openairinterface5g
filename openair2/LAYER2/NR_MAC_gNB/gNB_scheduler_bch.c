@@ -30,7 +30,6 @@
 
  */
 
-#include "GNB_APP/RRC_nr_paramsvalues.h"
 #include "assertions.h"
 #include "NR_MAC_gNB/nr_mac_gNB.h"
 #include "NR_MAC_gNB/mac_proto.h"
@@ -38,7 +37,6 @@
 #include "common/utils/LOG/log.h"
 #include "common/utils/LOG/vcd_signal_dumper.h"
 #include "UTIL/OPT/opt.h"
-#include "RRC/NR/nr_rrc_config.h"
 #include "common/utils/nr/nr_common.h"
 #include "shm_interface/wd_shm_nr_utils.h"
 #include "openair1/PHY/defs_nr_common.h"
@@ -361,8 +359,20 @@ static uint32_t schedule_control_sib1(module_id_t module_id,
                          rbSize, tda_info->nrOfSymbols, N_PRB_DMRS * dmrs_length,0, 0,1) >> 3;
   } while (TBS < gNB_mac->sched_ctrlCommon->num_total_bytes);
 
-  AssertFatal(TBS>=gNB_mac->sched_ctrlCommon->num_total_bytes,"Couldn't allocate enough resources for %d bytes in SIB1 PDSCH\n",
-              gNB_mac->sched_ctrlCommon->num_total_bytes);
+  if (TBS < gNB_mac->sched_ctrlCommon->num_total_bytes) {
+    for (int rb = 0; rb < bwpSize; rb++)
+      LOG_I(NR_MAC, "vrb_map[%d] %x\n", rbStart + rb, vrb_map[rbStart + rb]);
+  }
+  AssertFatal(
+      TBS >= gNB_mac->sched_ctrlCommon->num_total_bytes,
+      "Couldn't allocate enough resources for %d bytes in SIB1 PDSCH (rbStart %d, rbSize %d, bwpSize %d SLmask %x - [%d,%d])\n",
+      gNB_mac->sched_ctrlCommon->num_total_bytes,
+      rbStart,
+      rbSize,
+      bwpSize,
+      SL_to_bitmap(tda_info->startSymbolIndex, tda_info->nrOfSymbols),
+      tda_info->startSymbolIndex,
+      tda_info->nrOfSymbols);
 
   pdsch->rbSize = rbSize;
   pdsch->rbStart = 0;
@@ -403,20 +413,25 @@ static void nr_fill_nfapi_dl_sib1_pdu(int Mod_idP,
   nfapi_nr_dl_tti_request_pdu_t *dl_tti_pdcch_pdu = &dl_req->dl_tti_pdu_list[dl_req->nPDUs];
   memset((void*)dl_tti_pdcch_pdu,0,sizeof(nfapi_nr_dl_tti_request_pdu_t));
   dl_tti_pdcch_pdu->PDUType = NFAPI_NR_DL_TTI_PDCCH_PDU_TYPE;
-  dl_tti_pdcch_pdu->PDUSize = (uint8_t)(2+sizeof(nfapi_nr_dl_tti_pdcch_pdu));
+  dl_tti_pdcch_pdu->PDUSize = (uint16_t)(4+sizeof(nfapi_nr_dl_tti_pdcch_pdu));
   dl_req->nPDUs += 1;
   nfapi_nr_dl_tti_pdcch_pdu_rel15_t *pdcch_pdu_rel15 = &dl_tti_pdcch_pdu->pdcch_pdu.pdcch_pdu_rel15;
   nr_configure_pdcch(pdcch_pdu_rel15,
                      gNB_mac->sched_ctrlCommon->coreset,
-                     true, // sib1
                      &gNB_mac->sched_ctrlCommon->sched_pdcch);
 
   nfapi_nr_dl_tti_request_pdu_t *dl_tti_pdsch_pdu = &dl_req->dl_tti_pdu_list[dl_req->nPDUs];
   memset((void*)dl_tti_pdsch_pdu,0,sizeof(nfapi_nr_dl_tti_request_pdu_t));
   dl_tti_pdsch_pdu->PDUType = NFAPI_NR_DL_TTI_PDSCH_PDU_TYPE;
-  dl_tti_pdsch_pdu->PDUSize = (uint8_t)(2+sizeof(nfapi_nr_dl_tti_pdsch_pdu));
+  dl_tti_pdsch_pdu->PDUSize = (uint16_t)(4+sizeof(nfapi_nr_dl_tti_pdsch_pdu));
   dl_req->nPDUs += 1;
   nfapi_nr_dl_tti_pdsch_pdu_rel15_t *pdsch_pdu_rel15 = &dl_tti_pdsch_pdu->pdsch_pdu.pdsch_pdu_rel15;
+
+  pdsch_pdu_rel15->precodingAndBeamforming.num_prgs=0;
+  pdsch_pdu_rel15->precodingAndBeamforming.prg_size=0;
+  pdsch_pdu_rel15->precodingAndBeamforming.dig_bf_interfaces=0;
+  pdsch_pdu_rel15->precodingAndBeamforming.prgs_list[0].pm_idx = 0;
+  pdsch_pdu_rel15->precodingAndBeamforming.prgs_list[0].dig_bf_interface_list[0].beam_idx = 0;
 
   pdcch_pdu_rel15->CoreSetType = NFAPI_NR_CSET_CONFIG_MIB_SIB1;
 
@@ -496,10 +511,9 @@ static void nr_fill_nfapi_dl_sib1_pdu(int Mod_idP,
   dci_payload.dmrs_sequence_initialization.val = pdsch_pdu_rel15->SCID;
 
   int dci_format = NR_DL_DCI_FORMAT_1_0;
-  int rnti_type = NR_RNTI_SI;
+  int rnti_type = TYPE_SI_RNTI_;
 
-  fill_dci_pdu_rel15(scc,
-                     NULL,
+  fill_dci_pdu_rel15(NULL,
                      NULL,
                      NULL,
                      &pdcch_pdu_rel15->dci_pdu[pdcch_pdu_rel15->numDlDci - 1],
@@ -509,6 +523,7 @@ static void nr_fill_nfapi_dl_sib1_pdu(int Mod_idP,
                      0,
                      gNB_mac->sched_ctrlCommon->search_space,
                      gNB_mac->sched_ctrlCommon->coreset,
+                     0, // parameter not needed for DCI 1_0
                      gNB_mac->cset0_bwp_size);
 
   LOG_D(MAC,"BWPSize: %i\n", pdcch_pdu_rel15->BWPSize);

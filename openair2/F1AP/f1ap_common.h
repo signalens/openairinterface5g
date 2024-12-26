@@ -343,7 +343,7 @@
 #include "f1ap_default_values.h"
 
 #include "conversions.h"
-#include "platform_types.h"
+#include "common/platform_types.h"
 #include "common/utils/LOG/log.h"
 #include "intertask_interface.h"
 #include "sctp_messages_types.h"
@@ -401,7 +401,9 @@ typedef struct f1ap_cudu_inst_s {
   f1ap_net_config_t net_config;
 
   /* SCTP information */
-  sctp_assoc_t assoc_id;
+  struct {
+    sctp_assoc_t assoc_id;
+  } du;
   uint16_t sctp_in_streams;
   uint16_t sctp_out_streams;
 

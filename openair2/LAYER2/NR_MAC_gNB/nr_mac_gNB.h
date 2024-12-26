@@ -78,14 +78,13 @@
 
 /* Interface */
 #include "nfapi_nr_interface_scf.h"
+#include "nfapi_nr_interface.h"
 #include "NR_PHY_INTERFACE/NR_IF_Module.h"
 #include "mac_rrc_ul.h"
 
 /* MAC */
 #include "LAYER2/NR_MAC_COMMON/nr_mac_extern.h"
 #include "LAYER2/NR_MAC_COMMON/nr_mac_common.h"
-#include "LAYER2/MAC/mac.h"
-#include "NR_TAG.h"
 
 #include <openair3/UICC/usim_interface.h>
 
@@ -223,11 +222,13 @@ typedef struct {
   NR_CellGroupConfig_t *CellGroup;
   /// Preambles for contention-free access
   NR_preamble_ue_t preambles;
+  int contention_resolution_timer;
   /// CFRA flag
   bool cfra;
   // BWP for RA
   NR_UE_DL_BWP_t DL_BWP;
   NR_UE_UL_BWP_t UL_BWP;
+  NR_UE_ServingCell_Info_t sc_info;
 } NR_RA_t;
 
 /*! \brief gNB common channels */
@@ -248,14 +249,6 @@ typedef struct {
   /// Outgoing BCCH pdu for PHY
   uint8_t sib1_bcch_pdu[NR_MAX_SIB_LENGTH / 8];
   int sib1_bcch_length;
-  /// Outgoing BCCH DCI allocation
-  uint32_t BCCH_alloc_pdu;
-  /// Outgoing CCCH pdu for PHY
-  CCCH_PDU CCCH_pdu;
-  /// Outgoing PCCH DCI allocation
-  uint32_t PCCH_alloc_pdu;
-  /// Outgoing PCCH pdu for PHY
-  PCCH_PDU PCCH_pdu;
   /// Template for RA computations
   NR_RA_t ra[NR_NB_RA_PROC_MAX];
   /// VRB map for common channels
@@ -378,7 +371,6 @@ typedef struct NR_pusch_dmrs {
   uint16_t ul_dmrs_symb_pos;
   uint8_t num_dmrs_cdm_grps_no_data;
   nfapi_nr_dmrs_type_e dmrs_config_type;
-  NR_DMRS_UplinkConfig_t *NR_DMRS_UplinkConfig;
 } NR_pusch_dmrs_t;
 
 typedef struct NR_sched_pusch {
@@ -537,14 +529,14 @@ typedef struct NR_UE_ul_harq {
   NR_sched_pusch_t sched_pusch;
 } NR_UE_ul_harq_t;
 
+typedef struct NR_QoS_config_s {
+  uint64_t fiveQI;
+  uint64_t priority;
+} NR_QoS_config_t;
+
 /*! \brief scheduling control information set through an API */
 #define MAX_CSI_REPORTS 48
 typedef struct {
-  /// the next active BWP ID in DL
-  NR_BWP_Id_t next_dl_bwp_id;
-  /// the next active BWP ID in UL
-  NR_BWP_Id_t next_ul_bwp_id;
-
   /// CCE index and aggregation, should be coherent with cce_list
   NR_SearchSpace_t *search_space;
   NR_ControlResourceSet_t *coreset;
@@ -640,6 +632,10 @@ typedef struct {
 
   /// sri, ul_ri and tpmi based on SRS
   nr_srs_feedback_t srs_feedback;
+  nssai_t dl_lc_nssai[NR_MAX_NUM_LCID];
+
+  // Information about the QoS configuration for each LCID/DRB
+  NR_QoS_config_t qos_config[NR_MAX_NUM_LCID - 4][NR_MAX_NUM_QFI]; // 0 -CCCH and 1- 3 SRBs(0,1,2)
 } NR_UE_sched_ctrl_t;
 
 typedef struct {
@@ -696,6 +692,7 @@ typedef struct {
   NR_UE_sched_ctrl_t UE_sched_ctrl;
   NR_UE_DL_BWP_t current_DL_BWP;
   NR_UE_UL_BWP_t current_UL_BWP;
+  NR_UE_ServingCell_Info_t sc_info;
   NR_mac_stats_t mac_stats;
   /// currently active CellGroupConfig
   NR_CellGroupConfig_t *CellGroup;
@@ -707,9 +704,9 @@ typedef struct {
   // UE selected beam index
   uint8_t UE_beam_index;
   bool Msg4_ACKed;
-  uint32_t ra_timer;
   float ul_thr_ue;
   float dl_thr_ue;
+  long pdsch_HARQ_ACK_Codebook;
 } NR_UE_info_t;
 
 typedef struct {
@@ -734,6 +731,7 @@ typedef bool (*nr_pp_impl_ul)(module_id_t mod_id,
 typedef struct f1_config_t {
   f1ap_setup_req_t *setup_req;
   f1ap_setup_resp_t *setup_resp;
+  uint32_t gnb_id; // associated gNB's ID, not used in DU itself
 } f1_config_t;
 
 /*! \brief top level eNB MAC structure */
@@ -845,6 +843,7 @@ typedef struct gNB_MAC_INST_s {
   uint8_t min_grant_prb;
   uint8_t min_grant_mcs;
   bool identity_pm;
+  int precoding_matrix_size[NR_MAX_NB_LAYERS];
 
   nr_mac_rrc_ul_if_t mac_rrc;
   f1_config_t f1_config;
@@ -857,3 +856,4 @@ typedef struct gNB_MAC_INST_s {
 } gNB_MAC_INST;
 
 #endif /*__LAYER2_NR_MAC_GNB_H__ */
+/** @}*/

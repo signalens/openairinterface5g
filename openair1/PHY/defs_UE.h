@@ -19,7 +19,7 @@
  *      contact@openairinterface.org
  */
 
-/*! \file PHY/defs.h
+/*! \file defs_UE.h
  \brief Top-level defines and structure definitions
  \author R. Knopp, F. Kaltenberger
  \date 2011
@@ -62,7 +62,7 @@
 #include "time_meas.h"
 #include "PHY/CODING/coding_defs.h"
 #include "PHY/TOOLS/tools_defs.h"
-#include "platform_types.h"
+#include "common/platform_types.h"
 #include "PHY/LTE_UE_TRANSPORT/transport_ue.h"
 #include "PHY/LTE_TRANSPORT/transport_eNB.h" // for SIC
 #include <pthread.h>
@@ -721,8 +721,7 @@ typedef struct {
   int              rx_offset; /// Timing offset
   int              rx_offset_diff; /// Timing adjustment for ofdm symbol0 on HW USRP
   int              time_sync_cell;
-  int              timing_advance; ///timing advance signalled from eNB
-  int              hw_timing_advance;
+  int timing_advance; /// timing advance signalled from eNB
   int              N_TA_offset; ///timing offset used in TDD
   /// Flag to tell if UE is secondary user (cognitive mode)
   unsigned char    is_secondary_ue;
@@ -738,10 +737,6 @@ typedef struct {
 
   /// Flag to initialize averaging of PHY measurements
   int init_averaging;
-
-  /// \brief sinr for all subcarriers of the current link (used only for abstraction).
-  /// - first index: ? [0..12*N_RB_DL[
-  double *sinr_dB;
 
   /// \brief sinr for all subcarriers of first symbol for the CQI Calculation.
   /// - first index: ? [0..12*N_RB_DL[

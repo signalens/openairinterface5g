@@ -20,7 +20,6 @@
  */
 
 #include <math.h>
-#include <cblas.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -73,8 +72,6 @@ static telnetshell_cmddef_t channelmod_cmdarray[] = {
 
 static telnetshell_vardef_t channelmod_vardef[] = {{"", 0, 0, NULL}};
 
-static double snr_dB=25;
-static double sinr_dB=0;
 static unsigned int max_chan;
 static channel_desc_t **defined_channels;
 static char *modellist_name;
@@ -527,15 +524,13 @@ double get_normalization_ch_factor(channel_desc_t *desc)
       bzero(acorr, desc->nb_tx * desc->nb_rx * sizeof(struct complexd));
       for (int aatx = 0; aatx < desc->nb_tx; aatx++) {
         for (int aarx = 0; aarx < desc->nb_rx; aarx++) {
-          cblas_zaxpy(desc->nb_tx * desc->nb_rx,
-                      (void *)&anew[aarx + (aatx * desc->nb_rx)],
-                      (void *)desc->R_sqrt[aarx + (aatx * desc->nb_rx)],
-                      1,
-                      (void *)acorr,
-                      1);
+          for (int inside = 0; inside < desc->nb_tx * desc->nb_rx; inside++) {
+            const cd_t tmp = cdMul(anew[aarx + aatx * desc->nb_rx], desc->R_sqrt[aarx + aatx * desc->nb_rx][inside]);
+            csum(acorr[inside], tmp, acorr[inside]);
+          }
         } // for (int aarx = 0; aarx < desc->nb_rx; aarx++)
       } // for (int aatx = 0; aatx < desc->nb_tx; aatx++)
-      cblas_zcopy(desc->nb_tx * desc->nb_rx, (void *)acorr, 1, (void *)a[l], 1);
+      memcpy(a[l], acorr, desc->nb_tx * desc->nb_rx * sizeof(*acorr));
     } // for (int l = 0; l < (int)desc->nb_taps; l++)
 
     for (int aarx = 0; aarx < desc->nb_rx; aarx++) {
@@ -1759,7 +1754,7 @@ int random_channel(channel_desc_t *desc, uint8_t abstraction_flag) {
         acorr[aarx+(aatx*desc->nb_rx)].i = desc->ch[aarx+(aatx*desc->nb_rx)][0].i;
       }
     }
-    cblas_zcopy(desc->nb_tx*desc->nb_rx, (void *) acorr, 1, (void *) desc->a[0], 1);
+    memcpy(desc->a[0], acorr, desc->nb_tx * desc->nb_rx * sizeof(*acorr));
     stop_meas(&desc->random_channel);
     desc->first_run = 0;
     return 0;
@@ -1810,16 +1805,17 @@ int random_channel(channel_desc_t *desc, uint8_t abstraction_flag) {
     if (desc->modelid >= TDL_A && desc->modelid <= TDL_E) {
       for (aatx = 0; aatx < desc->nb_tx; aatx++) {
         for (aarx=0; aarx<desc->nb_rx; aarx++) {
-          cblas_zaxpy(desc->nb_tx*desc->nb_rx,
-                      (void *) &anew[aarx+(aatx*desc->nb_rx)],
-                      (void *) desc->R_sqrt[aarx+(aatx*desc->nb_rx)],
-                      1,
-                      (void *) acorr,
-                      1);
+          for (int inside = 0; inside < desc->nb_tx * desc->nb_rx; inside++) {
+            const cd_t tmp = cdMul(anew[aarx + aatx * desc->nb_rx], desc->R_sqrt[aarx + aatx * desc->nb_rx][inside]);
+            csum(acorr[inside], tmp, acorr[inside]);
+          }
         }
       }
     } else {
-      cblas_zaxpy(desc->nb_tx*desc->nb_rx, (void *) desc->R_sqrt[i/3], (void *) anew, 1, (void *) acorr, 1);
+      for (int inside = 0; inside < desc->nb_tx * desc->nb_rx; inside++) {
+        const cd_t tmp = cdMul(desc->R_sqrt[i / 3][0], anew[inside]);
+        csum(acorr[inside], tmp, acorr[inside]);
+      }
     }
 
     /*
@@ -1844,7 +1840,7 @@ int random_channel(channel_desc_t *desc, uint8_t abstraction_flag) {
     */
 
     if (desc->first_run==1) {
-      cblas_zcopy(desc->nb_tx*desc->nb_rx, (void *) acorr, 1, (void *) desc->a[i], 1);
+      memcpy(desc->a[i], acorr, desc->nb_tx * desc->nb_rx * sizeof(*acorr));
     } else {
       // a = alpha*acorr+beta*a
       // a = beta*a
@@ -1853,8 +1849,11 @@ int random_channel(channel_desc_t *desc, uint8_t abstraction_flag) {
       alpha.i = 0;
       beta.r = sqrt(desc->forgetting_factor);
       beta.i = 0;
-      cblas_zscal(desc->nb_tx*desc->nb_rx, (void *) &beta, (void *) desc->a[i], 1);
-      cblas_zaxpy(desc->nb_tx*desc->nb_rx, (void *) &alpha, (void *) acorr, 1, (void *) desc->a[i], 1);
+      for (int inside = 0; inside < desc->nb_tx * desc->nb_rx; inside++) {
+        desc->a[i][inside] = cdMul(beta, desc->a[i][inside]);
+        const cd_t tmp = cdMul(alpha, acorr[inside]);
+        csum(desc->a[i][inside], tmp, desc->a[i][inside]);
+      }
       //  desc->a[i][aarx+(aatx*desc->nb_rx)].x = (sqrt(desc->forgetting_factor)*desc->a[i][aarx+(aatx*desc->nb_rx)].x) + sqrt(1-desc->forgetting_factor)*anew.x;
       //  desc->a[i][aarx+(aatx*desc->nb_rx)].y = (sqrt(desc->forgetting_factor)*desc->a[i][aarx+(aatx*desc->nb_rx)].y) + sqrt(1-desc->forgetting_factor)*anew.y;
     }
@@ -2260,18 +2259,10 @@ int modelid_fromstrtype(char *modeltype) {
   return modelid;
 }
 
-double channelmod_get_snr_dB(void) {
-  return snr_dB;
-}
-
-double channelmod_get_sinr_dB(void) {
-  return sinr_dB;
-}
-
 void init_channelmod(void) {
   paramdef_t channelmod_params[] = CHANNELMOD_PARAMS_DESC;
-  int numparams=sizeof(channelmod_params)/sizeof(paramdef_t);
-  int ret = config_get( channelmod_params,numparams,CHANNELMOD_SECTION);
+  int numparams = sizeofArray(channelmod_params);
+  int ret = config_get(config_get_if(), channelmod_params, numparams, CHANNELMOD_SECTION);
   AssertFatal(ret >= 0, "configuration couldn't be performed");
   defined_channels=calloc(max_chan,sizeof( channel_desc_t *));
   AssertFatal(defined_channels!=NULL, "couldn't allocate %u channel descriptors\n",max_chan);
@@ -2289,8 +2280,8 @@ int load_channellist(uint8_t nb_tx, uint8_t nb_rx, double sampling_rate, double 
   paramlist_def_t channel_list;
   memset(&channel_list,0,sizeof(paramlist_def_t));
   memcpy(channel_list.listname,modellist_name,sizeof(channel_list.listname)-1);
-  int numparams = sizeof(achannel_params)/sizeof(paramdef_t);
-  config_getlist( &channel_list,achannel_params,numparams, CHANNELMOD_SECTION);
+  int numparams = sizeofArray(achannel_params);
+  config_getlist(config_get_if(), &channel_list, achannel_params, numparams, CHANNELMOD_SECTION);
   AssertFatal(channel_list.numelt>0, "List %s.%s not found in config file\n",CHANNELMOD_SECTION,channel_list.listname);
   int pindex_NAME = config_paramidx_fromname(achannel_params,numparams, CHANNELMOD_MODEL_NAME_PNAME);
   int pindex_DT = config_paramidx_fromname(achannel_params,numparams, CHANNELMOD_MODEL_DT_PNAME );

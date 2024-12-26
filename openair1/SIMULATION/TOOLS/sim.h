@@ -264,8 +264,6 @@ typedef enum {
 #define CHANNELMOD_HELP_MODELLIST "<list name> channel list name in config file describing the model type and its parameters\n"
 // clang-format off
 #define CHANNELMOD_PARAMS_DESC {  \
-  {"s"      ,                     CONFIG_HLP_SNR,                     PARAMFLAG_CMDLINE_NOPREFIXENABLED,  .dblptr=&snr_dB,              .defdblval=25,                    TYPE_DOUBLE, 0}, \
-  {"sinr_dB",                     NULL,                               0,                                  .dblptr=&sinr_dB,             .defdblval=0 ,                    TYPE_DOUBLE, 0}, \
   {"max_chan",                    "Max number of runtime models",     0,                                  .uptr=&max_chan,              .defintval=10,                    TYPE_UINT,   0}, \
   {CHANNELMOD_MODELLIST_PARANAME, CHANNELMOD_HELP_MODELLIST,          0,                                  .strptr=&modellist_name,      .defstrval="DefaultChannelList",  TYPE_STRING, 0}, \
 }
@@ -302,18 +300,11 @@ typedef struct {
   double r_re_UL[NUMBER_OF_eNB_MAX][2][30720];
   double r_im_UL[NUMBER_OF_eNB_MAX][2][30720];
   int RU_output_mask[NUMBER_OF_UE_MAX];
-  int UE_output_mask[NUMBER_OF_RU_MAX];
   pthread_mutex_t RU_output_mutex[NUMBER_OF_UE_MAX];
   pthread_mutex_t UE_output_mutex[NUMBER_OF_RU_MAX];
-  pthread_mutex_t subframe_mutex;
-  int subframe_ru_mask;
-  int subframe_UE_mask;
   openair0_timestamp current_ru_rx_timestamp[NUMBER_OF_RU_MAX][MAX_NUM_CCs];
   openair0_timestamp current_UE_rx_timestamp[MAX_MOBILES_PER_ENB][MAX_NUM_CCs];
-  openair0_timestamp last_ru_rx_timestamp[NUMBER_OF_RU_MAX][MAX_NUM_CCs];
-  openair0_timestamp last_UE_rx_timestamp[MAX_MOBILES_PER_ENB][MAX_NUM_CCs];
   double ru_amp[NUMBER_OF_RU_MAX];
-  pthread_t rfsim_thread;
 } sim_t;
 
 
@@ -349,14 +340,14 @@ void set_channeldesc_owner(channel_desc_t *cdesc, channelmod_moduleid_t module_i
 /**
 \brief This function set a model name to a model descriptor, can be later used to identify a allocated channel model
 \param cdesc points to the model descriptor
-\param module_name is the C string to use as model name for the channel pointed by cdesc
+\param modelname is the C string to use as model name for the channel pointed by cdesc
 */
 void set_channeldesc_name(channel_desc_t *cdesc,char *modelname);
 
 /** \fn void get_cexp_doppler(struct complexd *cexp_doppler, channel_desc_t *chan_desc, const uint32_t length)
 \brief This routine generates the complex exponential to apply the Doppler shift
 \param cexp_doppler Output with the complex exponential of Doppler shift
-\param desc Pointer to the channel descriptor
+\param chan_desc Pointer to the channel descriptor
 \param length Size of complex exponential of Doppler shift
 */
 void get_cexp_doppler(struct complexd *cexp_doppler, channel_desc_t *chan_desc, const uint32_t length);
@@ -378,6 +369,7 @@ int random_channel(channel_desc_t *desc, uint8_t abstraction_flag);
 \param ts sampling time
 \param delay introduce delay in terms of number of samples
 \param pdu_bit_map bitmap indicating presence of optional PDUs
+\param ptrs_bit_map
 \param nb_antennas_rx number of receive antennas
 */
 void add_noise(c16_t **rxdata,
@@ -467,9 +459,8 @@ void load_pbch_desc(FILE *pbch_file_fd);
 */
 unsigned int taus(void);
 
-
 /**
-\fn void set_taus_seed(unsigned int seed_init)
+\fn set_taus_seed
 \brief Sets the seed for the Tausworthe generator.
 @param seed_init 0 means generate based on CPU time, otherwise provide the seed
 */

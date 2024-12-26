@@ -16,7 +16,7 @@
  * limitations under the License.
  *-------------------------------------------------------------------------------
  * For more information about the OpenAirInterface (OAI) Software Alliance:
- *      conmnc_digit_lengtht@openairinterface.org
+ *      contact@openairinterface.org
  */
 
 #include "nr_mac_gNB.h"
@@ -27,6 +27,7 @@
 static void f1_setup_request_direct(const f1ap_setup_req_t *req)
 {
   MessageDef *msg = itti_alloc_new_message(TASK_MAC_GNB, 0, F1AP_SETUP_REQ);
+  msg->ittiMsgHeader.originInstance = -1; // means monolithic
   f1ap_setup_req_t *f1ap_msg = &F1AP_SETUP_REQ(msg);
   f1ap_msg->gNB_DU_id = req->gNB_DU_id;
   f1ap_msg->gNB_DU_name = strdup(req->gNB_DU_name);
@@ -60,6 +61,7 @@ static void f1_setup_request_direct(const f1ap_setup_req_t *req)
       }
     }
   }
+  memcpy(f1ap_msg->rrc_ver, req->rrc_ver, sizeof(req->rrc_ver));
 
   itti_send_msg_to_task(TASK_RRC_GNB, 0, msg);
 }
@@ -67,10 +69,10 @@ static void f1_setup_request_direct(const f1ap_setup_req_t *req)
 static void ue_context_setup_response_direct(const f1ap_ue_context_setup_t *req, const f1ap_ue_context_setup_t *resp)
 {
   DevAssert(req->drbs_to_be_setup_length == resp->drbs_to_be_setup_length);
-  AssertFatal(req->drbs_to_be_setup_length == 0, "not implemented\n");
 
   (void) req; /* we don't need the request -- it is to set up GTP in F1 case */
   MessageDef *msg = itti_alloc_new_message (TASK_MAC_GNB, 0, F1AP_UE_CONTEXT_SETUP_RESP);
+  msg->ittiMsgHeader.originInstance = -1; // means monolithic
   f1ap_ue_context_setup_t *f1ap_msg = &F1AP_UE_CONTEXT_SETUP_RESP(msg);
   /* copy all fields, but reallocate memory buffers! */
   *f1ap_msg = *resp;
@@ -81,6 +83,13 @@ static void ue_context_setup_response_direct(const f1ap_ue_context_setup_t *req,
     f1ap_msg->srbs_to_be_setup = calloc(f1ap_msg->srbs_to_be_setup_length, sizeof(*f1ap_msg->srbs_to_be_setup));
     for (int i = 0; i < f1ap_msg->srbs_to_be_setup_length; ++i)
       f1ap_msg->srbs_to_be_setup[i] = resp->srbs_to_be_setup[i];
+  }
+  if (resp->drbs_to_be_setup_length > 0) {
+    DevAssert(resp->drbs_to_be_setup != NULL);
+    f1ap_msg->drbs_to_be_setup_length = resp->drbs_to_be_setup_length;
+    f1ap_msg->drbs_to_be_setup = calloc(f1ap_msg->drbs_to_be_setup_length, sizeof(*f1ap_msg->drbs_to_be_setup));
+    for (int i = 0; i < f1ap_msg->drbs_to_be_setup_length; ++i)
+      f1ap_msg->drbs_to_be_setup[i] = resp->drbs_to_be_setup[i];
   }
 
   f1ap_msg->du_to_cu_rrc_information = malloc(sizeof(*resp->du_to_cu_rrc_information));
@@ -100,6 +109,7 @@ static void ue_context_modification_response_direct(const f1ap_ue_context_modif_
 {
   (void)req; /* we don't need the request -- it is to set up GTP in F1 case */
   MessageDef *msg = itti_alloc_new_message(TASK_MAC_GNB, 0, F1AP_UE_CONTEXT_MODIFICATION_RESP);
+  msg->ittiMsgHeader.originInstance = -1; // means monolithic
   f1ap_ue_context_modif_resp_t *f1ap_msg = &F1AP_UE_CONTEXT_MODIFICATION_RESP(msg);
 
   f1ap_msg->gNB_CU_ue_id = resp->gNB_CU_ue_id;
@@ -152,6 +162,7 @@ static void ue_context_modification_response_direct(const f1ap_ue_context_modif_
 static void ue_context_modification_required_direct(const f1ap_ue_context_modif_required_t *required)
 {
   MessageDef *msg = itti_alloc_new_message(TASK_MAC_GNB, 0, F1AP_UE_CONTEXT_MODIFICATION_REQUIRED);
+  msg->ittiMsgHeader.originInstance = -1; // means monolithic
   f1ap_ue_context_modif_required_t *f1ap_msg = &F1AP_UE_CONTEXT_MODIFICATION_REQUIRED(msg);
   f1ap_msg->gNB_CU_ue_id = required->gNB_CU_ue_id;
   f1ap_msg->gNB_DU_ue_id = required->gNB_DU_ue_id;
@@ -177,6 +188,7 @@ static void ue_context_modification_required_direct(const f1ap_ue_context_modif_
 static void ue_context_release_request_direct(const f1ap_ue_context_release_req_t* req)
 {
   MessageDef *msg = itti_alloc_new_message(TASK_MAC_GNB, 0, F1AP_UE_CONTEXT_RELEASE_REQ);
+  msg->ittiMsgHeader.originInstance = -1; // means monolithic
   f1ap_ue_context_release_req_t *f1ap_msg = &F1AP_UE_CONTEXT_RELEASE_REQ(msg);
   *f1ap_msg = *req;
   itti_send_msg_to_task(TASK_RRC_GNB, 0, msg);
@@ -185,6 +197,7 @@ static void ue_context_release_request_direct(const f1ap_ue_context_release_req_
 static void ue_context_release_complete_direct(const f1ap_ue_context_release_complete_t *complete)
 {
   MessageDef *msg = itti_alloc_new_message(TASK_MAC_GNB, 0, F1AP_UE_CONTEXT_RELEASE_COMPLETE);
+  msg->ittiMsgHeader.originInstance = -1; // means monolithic
   f1ap_ue_context_release_complete_t *f1ap_msg = &F1AP_UE_CONTEXT_RELEASE_COMPLETE(msg);
   *f1ap_msg = *complete;
   itti_send_msg_to_task(TASK_RRC_GNB, 0, msg);
@@ -193,6 +206,7 @@ static void ue_context_release_complete_direct(const f1ap_ue_context_release_com
 static void initial_ul_rrc_message_transfer_direct(module_id_t module_id, const f1ap_initial_ul_rrc_message_t *ul_rrc)
 {
   MessageDef *msg = itti_alloc_new_message(TASK_MAC_GNB, 0, F1AP_INITIAL_UL_RRC_MESSAGE);
+  msg->ittiMsgHeader.originInstance = -1; // means monolithic
   /* copy all fields, but reallocate rrc_containers! */
   f1ap_initial_ul_rrc_message_t *f1ap_msg = &F1AP_INITIAL_UL_RRC_MESSAGE(msg);
   *f1ap_msg = *ul_rrc;

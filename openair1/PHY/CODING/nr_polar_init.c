@@ -19,7 +19,7 @@
  *      contact@openairinterface.org
  */
 
-/*!\file PHY/CODING/nr_polar_init.h
+/*! \file nr_polar_init.c
  * \brief
  * \author Turker Yilmaz, Raymond Knopp
  * \date 2018
@@ -28,7 +28,7 @@
  * \email turker.yilmaz@eurecom.fr, raymond.knopp@eurecom.fr
  * \note
  * \warning
-*/
+ */
 
 #include "PHY/CODING/nrPolar_tools/nr_polar_defs.h"
 #include "PHY/NR_TRANSPORT/nr_dci.h"
@@ -48,10 +48,7 @@ static void nr_polar_delete_list(t_nrPolar_params * polarParams) {
     nr_polar_delete_list(polarParams->nextPtr);
   
   delete_decoder_tree(polarParams);
-  //From build_polar_tables()
-  for (int n=0; n < polarParams->N; n++)
-    if (polarParams->G_N_tab[n])
-      free(polarParams->G_N_tab[n]);
+  // From build_polar_tables()
   free(polarParams->G_N_tab);
   free(polarParams->rm_tab);
   if (polarParams->crc_generator_matrix)

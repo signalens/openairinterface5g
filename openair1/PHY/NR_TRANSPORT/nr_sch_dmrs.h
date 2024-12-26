@@ -34,15 +34,14 @@
 #define NR_SCH_DMRS_H
 
 #include "PHY/defs_nr_common.h"
+#include "nfapi/open-nFAPI/nfapi/public_inc/nfapi_nr_interface.h"
 
 #define NR_PDSCH_DMRS_ANTENNA_PORT0 1000
 #define NR_PDSCH_DMRS_NB_ANTENNA_PORTS 12
 
 void get_antenna_ports(uint8_t *ap, uint8_t n_symbs, uint8_t config);
-
-void get_Wt(int8_t *Wt, uint8_t ap, uint8_t config);
-
-void get_Wf(int8_t *Wf, uint8_t ap, uint8_t config);
+void get_Wt(int *Wt, const int ap, const nfapi_nr_dmrs_type_e config);
+void get_Wf(int *Wf, const int ap, const nfapi_nr_dmrs_type_e config);
 
 uint8_t get_delta(uint8_t ap, uint8_t config);
 

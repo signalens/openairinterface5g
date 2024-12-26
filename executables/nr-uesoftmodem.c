@@ -209,7 +209,8 @@ int create_tasks_nrue(uint32_t ue_nb) {
 
   if (ue_nb > 0) {
     LOG_I(NR_RRC,"create TASK_RRC_NRUE \n");
-    if (itti_create_task (TASK_RRC_NRUE, rrc_nrue_task, NULL) < 0) {
+    const ittiTask_parms_t parmsRRC = {NULL, rrc_nrue};
+    if (itti_create_task(TASK_RRC_NRUE, rrc_nrue_task, &parmsRRC) < 0) {
       LOG_E(NR_RRC, "Create task for RRC UE failed\n");
       return -1;
     }
@@ -220,7 +221,8 @@ int create_tasks_nrue(uint32_t ue_nb) {
         return -1;
       }
     }
-    if (itti_create_task (TASK_NAS_NRUE, nas_nrue_task, NULL) < 0) {
+    const ittiTask_parms_t parmsNAS = {NULL, nas_nrue};
+    if (itti_create_task(TASK_NAS_NRUE, nas_nrue_task, &parmsNAS) < 0) {
       LOG_E(NR_RRC, "Create task for NAS UE failed\n");
       return -1;
     }
@@ -268,12 +270,11 @@ uint64_t set_nrUE_optmask(uint64_t bitmask) {
 nrUE_params_t *get_nrUE_params(void) {
   return &nrUE_params;
 }
-
-static void get_options(void) {
-
+static void get_options(configmodule_interface_t *cfg)
+{
   paramdef_t cmdline_params[] =CMDLINE_NRUEPARAMS_DESC ;
-  int numparams = sizeof(cmdline_params)/sizeof(paramdef_t);
-  config_get(cmdline_params,numparams,NULL);
+  int numparams = sizeofArray(cmdline_params);
+  config_get(cfg, cmdline_params, numparams, NULL);
 
   AssertFatal(rrc_config_path == NULL, "the option \"rrc_config_path\" is deprecated. Please use --reconfig-file and --rbconfig-file separately to point to files reconfig.raw and rbconfig.raw\n");
 
@@ -304,7 +305,6 @@ void set_options(int CC_id, PHY_VARS_NR_UE *UE){
   UE->chest_freq           = nrUE_params.chest_freq;
   UE->chest_time           = nrUE_params.chest_time;
   UE->no_timing_correction = nrUE_params.no_timing_correction;
-  UE->timing_advance       = nrUE_params.timing_advance;
 
   LOG_I(PHY,"Set UE_fo_compensation %d, UE_scan_carrier %d, UE_no_timing_correction %d \n, chest-freq %d, chest-time %d\n",
         UE->UE_fo_compensation, UE->UE_scan_carrier, UE->no_timing_correction, UE->chest_freq, UE->chest_time);
@@ -318,7 +318,7 @@ void set_options(int CC_id, PHY_VARS_NR_UE *UE){
 
   fp->nb_antennas_rx       = nrUE_params.nb_antennas_rx;
   fp->nb_antennas_tx       = nrUE_params.nb_antennas_tx;
-  fp->threequarter_fs      = nrUE_params.threequarter_fs;
+  fp->threequarter_fs = get_softmodem_params()->threequarter_fs;
   fp->N_RB_DL              = nrUE_params.N_RB_DL;
   fp->ssb_start_subcarrier = nrUE_params.ssb_start_subcarrier;
   fp->ofdm_offset_divisor  = nrUE_params.ofdm_offset_divisor;
@@ -379,7 +379,8 @@ void init_openair0(void) {
   }
 }
 
-static void init_pdcp(int ue_id) {
+static void init_pdcp(int ue_id)
+{
   uint32_t pdcp_initmask = (!IS_SOFTMODEM_NOS1) ? LINK_ENB_PDCP_TO_GTPV1U_BIT : (LINK_ENB_PDCP_TO_GTPV1U_BIT | PDCP_USE_NETLINK_BIT | LINK_ENB_PDCP_TO_IP_DRIVER_BIT);
 
   /*if (IS_SOFTMODEM_RFSIM || (nfapi_getmode()==NFAPI_UE_STUB_PNF)) {
@@ -392,7 +393,7 @@ static void init_pdcp(int ue_id) {
   if (get_softmodem_params()->nsa && rlc_module_init(0) != 0) {
     LOG_I(RLC, "Problem at RLC initiation \n");
   }
-  nr_pdcp_layer_init();
+  nr_pdcp_layer_init(false);
   nr_pdcp_module_init(pdcp_initmask, ue_id);
   pdcp_set_rlc_data_req_func((send_rlc_data_req_func_t) rlc_data_req);
   pdcp_set_pdcp_data_ind_func((pdcp_data_ind_func_t) pdcp_data_ind);
@@ -413,6 +414,7 @@ static void trigger_deregistration(int sig)
 {
   if (!stop_immediately) {
     MessageDef *msg = itti_alloc_new_message(TASK_RRC_UE_SIM, 0, NAS_DEREGISTRATION_REQ);
+    NAS_DEREGISTRATION_REQ(msg).cause = AS_DETACH;
     itti_send_msg_to_task(TASK_NAS_NRUE, 0, msg);
     stop_immediately = true;
     static const char m[] = "Press ^C again to trigger immediate shutdown\n";
@@ -424,9 +426,10 @@ static void trigger_deregistration(int sig)
   }
 }
 
-static void get_channel_model_mode() {
+static void get_channel_model_mode(configmodule_interface_t *cfg)
+{
   paramdef_t GNBParams[]  = GNBPARAMS_DESC;
-  config_get(GNBParams, sizeof(GNBParams)/sizeof(paramdef_t), NULL);
+  config_get(cfg, GNBParams, sizeofArray(GNBParams), NULL);
   int num_xp_antennas = *GNBParams[GNB_PDSCH_ANTENNAPORTS_XP_IDX].iptr;
 
   if (num_xp_antennas == 2)
@@ -435,7 +438,27 @@ static void get_channel_model_mode() {
     init_bler_table("NR_AWGN_RESULTS_DIR");
 }
 
-int NB_UE_INST = 1;
+void start_oai_nrue_threads()
+{
+    init_queue(&nr_rach_ind_queue);
+    init_queue(&nr_rx_ind_queue);
+    init_queue(&nr_crc_ind_queue);
+    init_queue(&nr_uci_ind_queue);
+    init_queue(&nr_sfn_slot_queue);
+    init_queue(&nr_chan_param_queue);
+    init_queue(&nr_dl_tti_req_queue);
+    init_queue(&nr_tx_req_queue);
+    init_queue(&nr_ul_dci_req_queue);
+    init_queue(&nr_ul_tti_req_queue);
+    
+    if (sem_init(&sfn_slot_semaphore, 0, 0) != 0)
+    {
+      LOG_E(MAC, "sem_init() error\n");
+      abort();
+    }
+
+    init_nrUE_standalone_thread(ue_id_g);
+}
 
 /* FUZZ-NR: duplication */
 int fuzz_nr_dup_cmd(char *cmd, fuzz_nr_duplication_t *dup)
@@ -540,7 +563,15 @@ void *fuzz_nr_dup_thread(void *param)
 /* --------------------- */
 
 
-int main( int argc, char **argv ) {
+
+int NB_UE_INST = 1;
+configmodule_interface_t *uniqCfg = NULL;
+
+// A global var to reduce the changes size
+ldpc_interface_t ldpc_interface = {0}, ldpc_interface_offload = {0};
+
+int main(int argc, char **argv)
+{
   int set_exe_prio = 1;
   if (checkIfFedoraDistribution())
     if (checkIfGenericKernelOnFedora())
@@ -549,11 +580,9 @@ int main( int argc, char **argv ) {
   if (set_exe_prio)
     set_priority(79);
 
-  //uint8_t beta_ACK=0,beta_RI=0,beta_CQI=2;
-  PHY_VARS_NR_UE *UE[MAX_NUM_CCs];
   start_background_system();
 
-  if ( load_configmodule(argc,argv,CONFIG_ENABLECMDLINEONLY) == NULL) {
+  if ((uniqCfg = load_configmodule(argc, argv, CONFIG_ENABLECMDLINEONLY)) == NULL) {
     exit_fun("[SOFTMODEM] Error, configuration module init failed\n");
   }
   //set_softmodem_sighandler();
@@ -564,9 +593,9 @@ int main( int argc, char **argv ) {
   logInit();
   // get options and fill parameters from configuration file
 
-  get_options (); //Command-line options specific for NRUE
+  get_options(uniqCfg); // Command-line options specific for NRUE
 
-  get_common_options(SOFTMODEM_5GUE_BIT);
+  get_common_options(uniqCfg, SOFTMODEM_5GUE_BIT);
   CONFIG_CLEARRTFLAG(CONFIG_NOEXITONHELP);
 
   /* --------------------- */
@@ -596,37 +625,39 @@ int main( int argc, char **argv ) {
   itti_init(TASK_MAX, tasks_info);
 
   init_opt() ;
-  load_nrLDPClib(NULL);
- 
+  load_LDPClib(NULL, &ldpc_interface);
+
   if (ouput_vcd) {
     vcd_signal_dumper_init("/tmp/openair_dump_nrUE.vcd");
   }
-
-  #ifndef PACKAGE_VERSION
-#  define PACKAGE_VERSION "UNKNOWN-EXPERIMENTAL"
+#ifndef PACKAGE_VERSION
+#define PACKAGE_VERSION "UNKNOWN-EXPERIMENTAL"
 #endif
-  LOG_I(HW, "Version: %s\n", PACKAGE_VERSION);
+  // strdup to put the sring in the core file for post mortem identification
+  LOG_I(HW, "Version: %s\n", strdup(PACKAGE_VERSION));
 
-  init_NR_UE(1, uecap_file, reconfig_file, rbconfig_file);
+  PHY_vars_UE_g = malloc(sizeof(*PHY_vars_UE_g));
+  PHY_vars_UE_g[0] = malloc(sizeof(*PHY_vars_UE_g[0]) * MAX_NUM_CCs);
+  for (int CC_id = 0; CC_id < MAX_NUM_CCs; CC_id++) {
+    PHY_vars_UE_g[0][CC_id] = malloc(sizeof(*PHY_vars_UE_g[0][CC_id]));
+    memset(PHY_vars_UE_g[0][CC_id], 0, sizeof(*PHY_vars_UE_g[0][CC_id]));
+  }
 
   int mode_offset = get_softmodem_params()->nsa ? NUMBER_OF_UE_MAX : 1;
   uint16_t node_number = get_softmodem_params()->node_number;
   ue_id_g = (node_number == 0) ? 0 : node_number - 2;
   AssertFatal(ue_id_g >= 0, "UE id is expected to be nonnegative.\n");
-  if(IS_SOFTMODEM_NOS1 || get_softmodem_params()->sa || get_softmodem_params()->nsa) {
-    if(node_number == 0) {
-      init_pdcp(0);
-    }
-    else {
-      init_pdcp(mode_offset + ue_id_g);
-    }
-  }
 
-  PHY_vars_UE_g = malloc(sizeof(PHY_VARS_NR_UE **));
-  PHY_vars_UE_g[0] = malloc(sizeof(PHY_VARS_NR_UE *)*MAX_NUM_CCs);
+  if(node_number == 0)
+    init_pdcp(0);
+  else
+    init_pdcp(mode_offset + ue_id_g);
+
+  init_NR_UE(NB_UE_INST, uecap_file, reconfig_file, rbconfig_file);
+
   if (get_softmodem_params()->emulate_l1) {
     RCconfig_nr_ue_macrlc();
-    get_channel_model_mode();
+    get_channel_model_mode(uniqCfg);
   }
 
   if (get_softmodem_params()->do_ra)
@@ -639,10 +670,9 @@ int main( int argc, char **argv ) {
     start_oai_nrue_threads();
 
   if (!get_softmodem_params()->emulate_l1) {
-    for (int CC_id=0; CC_id<MAX_NUM_CCs; CC_id++) {
-      PHY_vars_UE_g[0][CC_id] = (PHY_VARS_NR_UE *)malloc(sizeof(PHY_VARS_NR_UE));
+    PHY_VARS_NR_UE *UE[MAX_NUM_CCs];
+    for (int CC_id = 0; CC_id < MAX_NUM_CCs; CC_id++) {
       UE[CC_id] = PHY_vars_UE_g[0][CC_id];
-      memset(UE[CC_id],0,sizeof(PHY_VARS_NR_UE));
 
       set_options(CC_id, UE[CC_id]);
       NR_UE_MAC_INST_t *mac = get_mac_inst(0);
@@ -670,9 +700,6 @@ int main( int argc, char **argv ) {
     }
 
     init_openair0();
-    // init UE_PF_PO and mutex lock
-    pthread_mutex_init(&ue_pf_po_mutex, NULL);
-    memset (&UE_PF_PO[0][0], 0, sizeof(UE_PF_PO_t)*NUMBER_OF_UE_MAX*MAX_NUM_CCs);
     set_latency_target();
 
     if(IS_SOFTMODEM_DOSCOPE_QT) {
@@ -698,7 +725,7 @@ int main( int argc, char **argv ) {
   // Sleep a while before checking all parameters have been used
   // Some are used directly in external threads, asynchronously
   sleep(2);
-  config_check_unknown_cmdlineopt(CONFIG_CHECKALLSECTIONS);
+  config_check_unknown_cmdlineopt(uniqCfg, CONFIG_CHECKALLSECTIONS);
 
   // wait for end of program
   printf("Entering ITTI signals handler\n");

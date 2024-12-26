@@ -732,7 +732,7 @@ static int ngap_gNB_handle_initial_context_request(sctp_assoc_t assoc_id, uint32
     asn_INTEGER2ulong(&(ie->value.choice.UEAggregateMaximumBitRate.uEAggregateMaximumBitRateDL),
                       &(msg->ue_ambr.br_dl));
   } else {
-    NGAP_ERROR("could not found NGAP_ProtocolIE_ID_id_UEAggregateMaximumBitRate\n");
+    NGAP_WARN("could not find NGAP_ProtocolIE_ID_id_UEAggregateMaximumBitRate\n");
   }
 
 
@@ -755,6 +755,16 @@ static int ngap_gNB_handle_initial_context_request(sctp_assoc_t assoc_id, uint32
         NGAP_PDUSessionResourceSetupItemCxtReq_t *item_p = ie->value.choice.PDUSessionResourceSetupListCxtReq.list.array[i];
         msg->pdusession_param[i].pdusession_id = item_p->pDUSessionID;
 
+        OCTET_STRING_TO_INT8(&item_p->s_NSSAI.sST, msg->pdusession_param[i].nssai.sst);
+        if (item_p->s_NSSAI.sD != NULL) {
+          uint8_t *sd_p = (uint8_t *)&msg->pdusession_param[i].nssai.sd;
+          sd_p[0] = item_p->s_NSSAI.sD->buf[0];
+          sd_p[1] = item_p->s_NSSAI.sD->buf[1];
+          sd_p[2] = item_p->s_NSSAI.sD->buf[2];
+        } else {
+          msg->pdusession_param[i].nssai.sd = 0xffffff;
+        }
+
         if (item_p->nAS_PDU) {
           allocCopy(&msg->pdusession_param[i].nas_pdu, *item_p->nAS_PDU);
         }
@@ -775,17 +785,19 @@ static int ngap_gNB_handle_initial_context_request(sctp_assoc_t assoc_id, uint32
 
     AssertFatal(ie, "AllowedNSSAI not present, forging 2 NSSAI\n");
 
-    NGAP_INFO("AllowedNSSAI.list.count %d\n", ie->value.choice.AllowedNSSAI.list.count);
+    NGAP_DEBUG("AllowedNSSAI.list.count %d\n", ie->value.choice.AllowedNSSAI.list.count);
     msg->nb_allowed_nssais = ie->value.choice.AllowedNSSAI.list.count;
     
     for(i = 0; i < ie->value.choice.AllowedNSSAI.list.count; i++) {
       allow_nssai_item_p = ie->value.choice.AllowedNSSAI.list.array[i];
-      
-      OCTET_STRING_TO_INT8(&allow_nssai_item_p->s_NSSAI.sST, msg->allowed_nssai[i].sST);
+
+      OCTET_STRING_TO_INT8(&allow_nssai_item_p->s_NSSAI.sST, msg->allowed_nssai[i].sst);
 
       if(allow_nssai_item_p->s_NSSAI.sD != NULL) {
-        msg->allowed_nssai[i].sD_flag = 1;
-        memcpy(msg->allowed_nssai[i].sD, allow_nssai_item_p->s_NSSAI.sD, sizeof(msg->allowed_nssai[i].sD));
+        msg->allowed_nssai[i].sd = 0;
+        BUFFER_TO_INT24((uint8_t *)allow_nssai_item_p->s_NSSAI.sD->buf, msg->allowed_nssai[i].sd);
+      } else {
+        msg->allowed_nssai[i].sd = 0xffffff;
       }
     }
 
@@ -961,12 +973,11 @@ static int ngap_gNB_handle_pdusession_setup_request(sctp_assoc_t assoc_id, uint3
     msg->pdusession_setup_params[i].pdusession_id = item_p->pDUSessionID;
 
     // S-NSSAI
-    OCTET_STRING_TO_INT8(&item_p->s_NSSAI.sST, msg->allowed_nssai[i].sST);
+    OCTET_STRING_TO_INT8(&item_p->s_NSSAI.sST, msg->pdusession_setup_params[i].nssai.sst);
     if (item_p->s_NSSAI.sD != NULL) {
-      msg->allowed_nssai[i].sD_flag = 1;
-      msg->allowed_nssai[i].sD[0] = item_p->s_NSSAI.sD->buf[0];
-      msg->allowed_nssai[i].sD[1] = item_p->s_NSSAI.sD->buf[1];
-      msg->allowed_nssai[i].sD[2] = item_p->s_NSSAI.sD->buf[2];
+      BUFFER_TO_INT24((uint8_t *)item_p->s_NSSAI.sD->buf, msg->pdusession_setup_params[i].nssai.sd);
+    } else {
+      msg->pdusession_setup_params[i].nssai.sd = 0xffffff;
     }
 
     allocCopy(&msg->pdusession_setup_params[i].nas_pdu, *item_p->pDUSessionNAS_PDU);

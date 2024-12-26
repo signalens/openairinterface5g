@@ -87,15 +87,15 @@ int get_reestab_count(char *buf, int debug, telnet_printfunc_t prnt)
     rnti = strtol(buf, NULL, 16);
     if (rnti < 1 || rnti >= 0xfffe)
       ERROR_MSG_RET("RNTI needs to be [1,0xfffe]\n");
-    ue = rrc_gNB_get_ue_context_by_rnti(RC.nrrrc[0], rnti);
+    ue = rrc_gNB_get_ue_context_by_rnti_any_du(RC.nrrrc[0], rnti);
     if (!ue)
       ERROR_MSG_RET("could not find UE with RNTI %04x in RRC\n");
   }
 
-  prnt("UE RNTI %04x reestab %d reconf_after_reestab %d\n",
+  prnt("UE RNTI %04x reestab %d reconfig %d\n",
        ue->ue_context.rnti,
        ue->ue_context.ue_reestablishment_counter,
-       ue->ue_context.ue_reconfiguration_after_reestablishment_counter);
+       ue->ue_context.ue_reconfiguration_counter);
   return 0;
 }
 

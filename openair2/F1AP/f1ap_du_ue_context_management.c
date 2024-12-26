@@ -38,6 +38,7 @@
 
 #include "openair2/LAYER2/NR_MAC_gNB/nr_mac_gNB.h"
 #include <openair3/ocp-gtpu/gtp_itf.h>
+#include "openair2/LAYER2/nr_pdcp/nr_pdcp_oai_api.h"
 
 bool DURecvCb(protocol_ctxt_t *ctxt_pP,
               const srb_flag_t srb_flagP,
@@ -51,8 +52,8 @@ bool DURecvCb(protocol_ctxt_t *ctxt_pP,
               const uint32_t *destinationL2Id)
 {
   // The buffer comes from the stack in gtp-u thread, we have a make a separate buffer to enqueue in a inter-thread message queue
-  mem_block_t *sdu=get_free_mem_block(sdu_buffer_sizeP, __func__);
-  memcpy(sdu->data,  sdu_buffer_pP,  sdu_buffer_sizeP);
+  uint8_t *sdu = malloc16(sdu_buffer_sizeP);
+  memcpy(sdu, sdu_buffer_pP, sdu_buffer_sizeP);
   du_rlc_data_req(ctxt_pP, srb_flagP, false, rb_idP, muiP, confirmP, sdu_buffer_sizeP, sdu);
   return true;
 }
@@ -205,7 +206,8 @@ int DU_handle_UE_CONTEXT_SETUP_REQUEST(instance_t instance, sctp_assoc_t assoc_i
   return 0;
 }
 
-int DU_send_UE_CONTEXT_SETUP_RESPONSE(instance_t instance, f1ap_ue_context_setup_t *resp) {
+int DU_send_UE_CONTEXT_SETUP_RESPONSE(sctp_assoc_t assoc_id, f1ap_ue_context_setup_t *resp)
+{
   F1AP_F1AP_PDU_t                  pdu= {0};
   F1AP_UEContextSetupResponse_t    *out;
   uint8_t  *buffer=NULL;
@@ -329,7 +331,7 @@ int DU_send_UE_CONTEXT_SETUP_RESPONSE(instance_t instance, f1ap_ue_context_setup
         asn1cCalloc(dLUPTNLInformation_ToBeSetup_Item->dLUPTNLInformation.choice.gTPTunnel,gTPTunnel);
         /* transportLayerAddress */
         struct sockaddr_in addr= {0};
-        inet_pton(AF_INET, getCxt(instance)->net_config.DU_f1_ip_address.ipv4_address, &addr.sin_addr.s_addr);
+        inet_pton(AF_INET, getCxt(0)->net_config.DU_f1_ip_address.ipv4_address, &addr.sin_addr.s_addr);
         TRANSPORT_LAYER_ADDRESS_IPv4_TO_BIT_STRING(addr.sin_addr.s_addr,
             &gTPTunnel->transportLayerAddress);
         /* gTP_TEID */
@@ -542,16 +544,18 @@ int DU_send_UE_CONTEXT_SETUP_RESPONSE(instance_t instance, f1ap_ue_context_setup
     return -1;
   }
 
-  f1ap_itti_send_sctp_data_req(instance, buffer, len);
+  f1ap_itti_send_sctp_data_req(assoc_id, buffer, len);
   return 0;
 }
 
-int DU_send_UE_CONTEXT_SETUP_FAILURE(instance_t instance) {
+int DU_send_UE_CONTEXT_SETUP_FAILURE(sctp_assoc_t assoc_id)
+{
   AssertFatal(1==0,"Not implemented yet\n");
 }
-int DU_send_UE_CONTEXT_RELEASE_REQUEST(instance_t instance,
-                                       f1ap_ue_context_release_req_t *req) {
-  F1AP_F1AP_PDU_t                   pdu;
+
+int DU_send_UE_CONTEXT_RELEASE_REQUEST(sctp_assoc_t assoc_id, f1ap_ue_context_release_req_t *req)
+{
+  F1AP_F1AP_PDU_t                   pdu = {0};
   F1AP_UEContextReleaseRequest_t    *out;
   uint8_t  *buffer=NULL;
   uint32_t  len=0;
@@ -617,7 +621,7 @@ int DU_send_UE_CONTEXT_RELEASE_REQUEST(instance_t instance,
     return -1;
   }
 
-  f1ap_itti_send_sctp_data_req(instance, buffer, len);
+  f1ap_itti_send_sctp_data_req(assoc_id, buffer, len);
   return 0;
 }
 
@@ -681,7 +685,7 @@ int DU_handle_UE_CONTEXT_RELEASE_COMMAND(instance_t instance, sctp_assoc_t assoc
   return 0;
 }
 
-int DU_send_UE_CONTEXT_RELEASE_COMPLETE(instance_t instance, f1ap_ue_context_release_complete_t *complete)
+int DU_send_UE_CONTEXT_RELEASE_COMPLETE(sctp_assoc_t assoc_id, f1ap_ue_context_release_complete_t *complete)
 {
   F1AP_F1AP_PDU_t                     pdu= {0};
   F1AP_UEContextReleaseComplete_t    *out;
@@ -764,7 +768,7 @@ int DU_send_UE_CONTEXT_RELEASE_COMPLETE(instance_t instance, f1ap_ue_context_rel
     return -1;
   }
 
-  f1ap_itti_send_sctp_data_req(instance, buffer, len);
+  f1ap_itti_send_sctp_data_req(assoc_id, buffer, len);
   return 0;
 }
 
@@ -879,6 +883,115 @@ int DU_handle_UE_CONTEXT_MODIFICATION_REQUEST(instance_t instance, sctp_assoc_t 
         drb_p->rlc_mode = RLC_MODE_TM;
         break;
       }
+
+      if (drbs_tobesetupmod_item_p->qoSInformation.present == F1AP_QoSInformation_PR_eUTRANQoS) {
+        AssertFatal(false, "Decode of eUTRANQoS is not implemented yet");
+      } // EUTRAN QoS Information
+      else {
+        /* 12.1.2 DRB_Information */
+        if (drbs_tobesetupmod_item_p->qoSInformation.present == F1AP_QoSInformation_PR_choice_extension) {
+          F1AP_QoSInformation_ExtIEs_t *ie =
+              (F1AP_QoSInformation_ExtIEs_t *)drbs_tobesetupmod_item_p->qoSInformation.choice.choice_extension;
+          if (ie->id == F1AP_ProtocolIE_ID_id_DRB_Information && ie->criticality == F1AP_Criticality_reject
+              && ie->value.present == F1AP_QoSInformation_ExtIEs__value_PR_DRB_Information) {
+            F1AP_DRB_Information_t *dRB_Info = &ie->value.choice.DRB_Information;
+            f1ap_drb_information_t *drb_info = &f1ap_ue_context_modification_req->drbs_to_be_setup->drb_info;
+
+            /* 12.1.2.1 dRB_QoS */
+            {
+              /* QoS-Flow-Level-QoS-Parameters */
+              f1ap_qos_flow_level_qos_parameters_t *drb_qos = &drb_info->drb_qos;
+              F1AP_QoSFlowLevelQoSParameters_t *dRB_QoS = &dRB_Info->dRB_QoS;
+              {
+                /* QoS Characteristics*/
+                f1ap_qos_characteristics_t *drb_qos_char = &drb_qos->qos_characteristics;
+                F1AP_QoS_Characteristics_t *dRB_QoS_Char = &dRB_QoS->qoS_Characteristics;
+
+                if (dRB_QoS_Char->present == F1AP_QoS_Characteristics_PR_non_Dynamic_5QI) {
+                  drb_qos_char->qos_type = non_dynamic;
+                  drb_qos_char->non_dynamic.fiveqi = dRB_QoS_Char->choice.non_Dynamic_5QI->fiveQI;
+                  drb_qos_char->non_dynamic.qos_priority_level = (dRB_QoS_Char->choice.non_Dynamic_5QI->qoSPriorityLevel != NULL)
+                                                                     ? *dRB_QoS_Char->choice.non_Dynamic_5QI->qoSPriorityLevel
+                                                                     : -1;
+                } else {
+                  drb_qos_char->qos_type = dynamic;
+                  drb_qos_char->dynamic.fiveqi =
+                      (dRB_QoS_Char->choice.dynamic_5QI->fiveQI != NULL) ? *dRB_QoS_Char->choice.dynamic_5QI->fiveQI : -1;
+                  drb_qos_char->dynamic.qos_priority_level = dRB_QoS_Char->choice.dynamic_5QI->qoSPriorityLevel;
+                  drb_qos_char->dynamic.packet_delay_budget = dRB_QoS_Char->choice.dynamic_5QI->packetDelayBudget;
+                  drb_qos_char->dynamic.packet_error_rate.per_scalar = dRB_QoS_Char->choice.dynamic_5QI->packetErrorRate.pER_Scalar;
+                  drb_qos_char->dynamic.packet_error_rate.per_exponent =
+                      dRB_QoS_Char->choice.dynamic_5QI->packetErrorRate.pER_Exponent;
+                }
+              }
+
+              /* nGRANallocationRetentionPriority */
+              drb_qos->alloc_reten_priority.priority_level = dRB_QoS->nGRANallocationRetentionPriority.priorityLevel;
+              drb_qos->alloc_reten_priority.preemption_vulnerability =
+                  dRB_QoS->nGRANallocationRetentionPriority.pre_emptionVulnerability;
+              drb_qos->alloc_reten_priority.preemption_capability =
+                  dRB_QoS->nGRANallocationRetentionPriority.pre_emptionVulnerability;
+            } // dRB_QoS
+
+            // 12.1.2.4 flows_Mapped_To_DRB_List
+            drb_info->flows_to_be_setup_length = dRB_Info->flows_Mapped_To_DRB_List.list.count;
+            drb_info->flows_mapped_to_drb = calloc(drb_info->flows_to_be_setup_length, sizeof(f1ap_flows_mapped_to_drb_t));
+            AssertFatal(drb_info->flows_mapped_to_drb, "could not allocate memory for drb_p->drb_info.flows_mapped_to_drb\n");
+
+            for (int k = 0; k < drb_p->drb_info.flows_to_be_setup_length; k++) {
+              f1ap_flows_mapped_to_drb_t *flows_mapped_to_drb = drb_info->flows_mapped_to_drb + k;
+              F1AP_Flows_Mapped_To_DRB_Item_t *flows_Mapped_To_Drb = dRB_Info->flows_Mapped_To_DRB_List.list.array[0] + k;
+
+              flows_mapped_to_drb->qfi = flows_Mapped_To_Drb->qoSFlowIdentifier;
+
+              /* QoS-Flow-Level-QoS-Parameters */
+              {
+                f1ap_qos_flow_level_qos_parameters_t *flow_qos = &flows_mapped_to_drb->qos_params;
+                F1AP_QoSFlowLevelQoSParameters_t *Flow_QoS = &flows_Mapped_To_Drb->qoSFlowLevelQoSParameters;
+
+                /* QoS Characteristics*/
+                {
+                  f1ap_qos_characteristics_t *flow_qos_char = &flow_qos->qos_characteristics;
+                  F1AP_QoS_Characteristics_t *Flow_QoS_Char = &Flow_QoS->qoS_Characteristics;
+
+                  if (Flow_QoS_Char->present == F1AP_QoS_Characteristics_PR_non_Dynamic_5QI) {
+                    flow_qos_char->qos_type = non_dynamic;
+                    flow_qos_char->non_dynamic.fiveqi = Flow_QoS_Char->choice.non_Dynamic_5QI->fiveQI;
+                    flow_qos_char->non_dynamic.qos_priority_level =
+                        (Flow_QoS_Char->choice.non_Dynamic_5QI->qoSPriorityLevel != NULL)
+                            ? *Flow_QoS_Char->choice.non_Dynamic_5QI->qoSPriorityLevel
+                            : -1;
+                  } else {
+                    flow_qos_char->qos_type = dynamic;
+                    flow_qos_char->dynamic.fiveqi =
+                        (Flow_QoS_Char->choice.dynamic_5QI->fiveQI != NULL) ? *Flow_QoS_Char->choice.dynamic_5QI->fiveQI : -1;
+                    flow_qos_char->dynamic.qos_priority_level = Flow_QoS_Char->choice.dynamic_5QI->qoSPriorityLevel;
+                    flow_qos_char->dynamic.packet_delay_budget = Flow_QoS_Char->choice.dynamic_5QI->packetDelayBudget;
+                    flow_qos_char->dynamic.packet_error_rate.per_scalar =
+                        Flow_QoS_Char->choice.dynamic_5QI->packetErrorRate.pER_Scalar;
+                    flow_qos_char->dynamic.packet_error_rate.per_exponent =
+                        Flow_QoS_Char->choice.dynamic_5QI->packetErrorRate.pER_Exponent;
+                  }
+                }
+
+                /* nGRANallocationRetentionPriority */
+                flow_qos->alloc_reten_priority.priority_level = Flow_QoS->nGRANallocationRetentionPriority.priorityLevel;
+                flow_qos->alloc_reten_priority.preemption_vulnerability =
+                    Flow_QoS->nGRANallocationRetentionPriority.pre_emptionVulnerability;
+                flow_qos->alloc_reten_priority.preemption_capability =
+                    Flow_QoS->nGRANallocationRetentionPriority.pre_emptionVulnerability;
+              }
+            }
+
+            /* S-NSSAI */
+            OCTET_STRING_TO_INT8(&dRB_Info->sNSSAI.sST, drb_p->nssai.sst);
+            if (dRB_Info->sNSSAI.sD != NULL)
+              memcpy((uint8_t *)&drb_p->nssai.sd, dRB_Info->sNSSAI.sD->buf, 3);
+            else
+              drb_p->nssai.sd = 0xffffff;
+          }
+        }
+      }
     }
   }
 
@@ -965,8 +1078,7 @@ int DU_handle_UE_CONTEXT_MODIFICATION_REQUEST(instance_t instance, sctp_assoc_t 
   return 0;
 }
 
-//void DU_send_UE_CONTEXT_MODIFICATION_RESPONSE(F1AP_UEContextModificationResponse_t *UEContextModificationResponse) {
-int DU_send_UE_CONTEXT_MODIFICATION_RESPONSE(instance_t instance, f1ap_ue_context_modif_resp_t *resp)
+int DU_send_UE_CONTEXT_MODIFICATION_RESPONSE(sctp_assoc_t assoc_id, f1ap_ue_context_modif_resp_t *resp)
 {
   F1AP_F1AP_PDU_t                        pdu= {0};
   F1AP_UEContextModificationResponse_t    *out;
@@ -1058,7 +1170,7 @@ int DU_send_UE_CONTEXT_MODIFICATION_RESPONSE(instance_t instance, f1ap_ue_contex
         transport_layer_addr_t tl_addr = {0};
         memcpy(tl_addr.buffer, &drb->up_ul_tnl[0].tl_address, sizeof(drb->up_ul_tnl[0].tl_address));
         tl_addr.length = sizeof(drb->up_ul_tnl[0].tl_address) * 8;
-        drb->up_dl_tnl[j].teid = newGtpuCreateTunnel(getCxt(instance)->gtpInst,
+        drb->up_dl_tnl[j].teid = newGtpuCreateTunnel(getCxt(0)->gtpInst,
                                                      resp->gNB_DU_ue_id,
                                                      drb->drb_id,
                                                      drb->drb_id,
@@ -1077,7 +1189,7 @@ int DU_send_UE_CONTEXT_MODIFICATION_RESPONSE(instance_t instance, f1ap_ue_contex
         asn1cCalloc(dLUPTNLInformation_ToBeSetup_Item->dLUPTNLInformation.choice.gTPTunnel,gTPTunnel);
         /* transportLayerAddress */
         struct sockaddr_in addr= {0};
-        inet_pton(AF_INET, getCxt(instance)->net_config.DU_f1_ip_address.ipv4_address, &addr.sin_addr.s_addr);
+        inet_pton(AF_INET, getCxt(0)->net_config.DU_f1_ip_address.ipv4_address, &addr.sin_addr.s_addr);
         TRANSPORT_LAYER_ADDRESS_IPv4_TO_BIT_STRING(addr.sin_addr.s_addr,
           &gTPTunnel->transportLayerAddress);
         /* gTP_TEID */
@@ -1115,7 +1227,7 @@ int DU_send_UE_CONTEXT_MODIFICATION_RESPONSE(instance_t instance, f1ap_ue_contex
         asn1cCalloc(dLUPTNLInformation_ToBeSetup_Item->dLUPTNLInformation.choice.gTPTunnel, gTPTunnel);
         /* transportLayerAddress */
         struct sockaddr_in addr= {0};
-        inet_pton(AF_INET, getCxt(instance)->net_config.DU_f1_ip_address.ipv4_address, &addr.sin_addr.s_addr);
+        inet_pton(AF_INET, getCxt(0)->net_config.DU_f1_ip_address.ipv4_address, &addr.sin_addr.s_addr);
         TRANSPORT_LAYER_ADDRESS_IPv4_TO_BIT_STRING(addr.sin_addr.s_addr, &gTPTunnel->transportLayerAddress);
         /* gTP_TEID */
         INT32_TO_OCTET_STRING(resp->drbs_to_be_modified[i].up_dl_tnl[j].teid, &gTPTunnel->gTP_TEID);
@@ -1190,7 +1302,7 @@ int DU_send_UE_CONTEXT_MODIFICATION_RESPONSE(instance_t instance, f1ap_ue_contex
       /* 8.1 SCell_ToBeSetup_Item */
       F1AP_SCell_FailedtoSetupMod_Item_t *scell_failedtoSetupMod_item=&scell_failedtoSetupMod_item_ies->value.choice.SCell_FailedtoSetupMod_Item;
       /* - sCell_ID */
-      addnRCGI(scell_failedtoSetupMod_item->sCell_ID, &getCxt(instance)->setupReq.cell[i].info);
+      addnRCGI(scell_failedtoSetupMod_item->sCell_ID, &getCxt(0)->setupReq.cell[i].info);
       asn1cCalloc(scell_failedtoSetupMod_item->cause, tmp);
       tmp->present = F1AP_Cause_PR_radioNetwork;
       tmp->choice.radioNetwork = F1AP_CauseRadioNetwork_unknown_or_already_allocated_gnb_du_ue_f1ap_id;
@@ -1299,15 +1411,15 @@ int DU_send_UE_CONTEXT_MODIFICATION_RESPONSE(instance_t instance, f1ap_ue_contex
     return -1;
   }
 
-  f1ap_itti_send_sctp_data_req(instance, buffer, len);
+  f1ap_itti_send_sctp_data_req(assoc_id, buffer, len);
   return 0;
 }
 
-int DU_send_UE_CONTEXT_MODIFICATION_FAILURE(instance_t instance) {
+int DU_send_UE_CONTEXT_MODIFICATION_FAILURE(sctp_assoc_t assoc_id) {
   AssertFatal(1==0,"Not implemented yet\n");
 }
 
-int DU_send_UE_CONTEXT_MODIFICATION_REQUIRED(instance_t instance, f1ap_ue_context_modif_required_t *required)
+int DU_send_UE_CONTEXT_MODIFICATION_REQUIRED(sctp_assoc_t assoc_id, f1ap_ue_context_modif_required_t *required)
 {
   /* 0. Message Type */
   F1AP_F1AP_PDU_t pdu = {0};
@@ -1423,7 +1535,7 @@ int DU_send_UE_CONTEXT_MODIFICATION_REQUIRED(instance_t instance, f1ap_ue_contex
     return -1;
   }
 
-  f1ap_itti_send_sctp_data_req(instance, buffer, len);
+  f1ap_itti_send_sctp_data_req(assoc_id, buffer, len);
   return 0;
 }
 

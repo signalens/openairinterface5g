@@ -18,10 +18,23 @@ extern "C" {
 #endif
 
 #define sizeofArray(a) (sizeof(a)/sizeof(*(a)))
+#define CHECK_INDEX(ARRAY, INDEX) assert((INDEX) < sizeofArray(ARRAY))
 
-#define cmax(a,b)  ((a>b) ? (a) : (b))
-#define cmax3(a,b,c) ((cmax(a,b)>c) ? (cmax(a,b)) : (c))
-#define cmin(a,b)  ((a<b) ? (a) : (b))
+// Prevent double evaluation in max macro
+#define cmax(a,b) ({ __typeof__ (a) _a = (a); \
+                     __typeof__ (b) _b = (b); \
+                     _a > _b ? _a : _b; })
+
+
+#define cmax3(a,b,c) ( cmax(cmax(a,b), c) )  
+
+// Prevent double evaluation in min macro
+#define cmin(a,b) ({ __typeof__ (a) _a = (a); \
+                     __typeof__ (b) _b = (b); \
+                     _a < _b ? _a : _b; })
+
+
+
 
 #ifdef __cplusplus
 #ifdef min
@@ -56,23 +69,24 @@ static inline void *malloc16_clear( size_t size ) {
   return ptr;
 }
 
-
-static inline void *calloc_or_fail(size_t size) {
-  void *ptr = calloc(1, size);
+static inline void *calloc_or_fail(size_t nmemb, size_t size)
+{
+  void *ptr = calloc(nmemb, size);
 
   if (ptr == NULL) {
-    fprintf(stderr, "[UE] Failed to calloc %zu bytes", size);
+    fprintf(stderr, "Failed to calloc() %zu elements of %zu bytes: out of memory", nmemb, size);
     exit(EXIT_FAILURE);
   }
 
   return ptr;
 }
 
-static inline void *malloc_or_fail(size_t size) {
+static inline void *malloc_or_fail(size_t size)
+{
   void *ptr = malloc(size);
 
   if (ptr == NULL) {
-    fprintf(stderr, "[UE] Failed to malloc %zu bytes", size);
+    fprintf(stderr, "Failed to malloc() %zu bytes: out of memory", size);
     exit(EXIT_FAILURE);
   }
 
@@ -105,6 +119,10 @@ int hex_string_to_hex_value (uint8_t *hex_value, const char *hex_string, int siz
 void set_priority(int priority);
 
 char *itoa(int i);
+
+#define STRINGIFY(S) #S
+#define TO_STRING(S) STRINGIFY(S)
+int read_version(const char *version, uint8_t *major, uint8_t *minor, uint8_t *patch);
 
 #define findInList(keY, result, list, element_type) {\
     int i;\

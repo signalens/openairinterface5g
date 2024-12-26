@@ -31,6 +31,7 @@ FROM ran-build:latest AS gnb-build
 
 
 FROM ubuntu:focal as oai-nr-cuup
+ARG BUILD_OPTION
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Europe
 
@@ -39,7 +40,14 @@ RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install --yes \
         libsctp1 \
         libconfig9 \
+        iproute2 \
+        net-tools \
         openssl && \
+# if the --sanitize option was used to build, additional packages are required
+    /bin/bash -c 'if [[ "$BUILD_OPTION" = "--sanitize" ]]; then DEBIAN_FRONTEND=noninteractive apt-get install --yes \
+        libasan5 \
+        libubsan1 \
+        liblapacke; fi' && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /opt/oai-gnb/bin
@@ -58,5 +66,6 @@ RUN ldconfig && ldd /opt/oai-gnb/bin/nr-cuup
 WORKDIR /opt/oai-gnb/etc
 
 WORKDIR /opt/oai-gnb
-ENTRYPOINT ["/opt/oai-gnb/bin/entrypoint.sh"]
+COPY --from=gnb-base /tini /tini
+ENTRYPOINT ["/tini", "-v", "--", "/opt/oai-gnb/bin/entrypoint.sh"]
 CMD ["/opt/oai-gnb/bin/nr-cuup", "-O", "/opt/oai-gnb/etc/gnb.conf"]

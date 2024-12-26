@@ -1150,7 +1150,7 @@ void UE_config_stub_pnf(void) {
   paramdef_t L1_Params[] = L1PARAMS_DESC;
   paramlist_def_t L1_ParamList = {CONFIG_STRING_L1_LIST, NULL, 0};
 
-  config_getlist(&L1_ParamList, L1_Params, sizeof(L1_Params) / sizeof(paramdef_t), NULL);
+  config_getlist(config_get_if(), &L1_ParamList, L1_Params, sizeofArray(L1_Params), NULL);
   if (L1_ParamList.numelt > 0) {
     for (j = 0; j < L1_ParamList.numelt; j++) {
       // nb_L1_CC = *(L1_ParamList.paramarray[j][L1_CC_IDX].uptr); // Number of
@@ -1957,7 +1957,7 @@ static int get_mcs_from_sinr(float sinr)
 static int get_cqi_from_mcs(void)
 {
   static const int mcs_to_cqi[] = {0, 1, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13, 14, 14, 15, 15};
-  assert(NUM_ELEMENTS(mcs_to_cqi) == NUM_MCS);
+  assert(sizeofArray(mcs_to_cqi) == NUM_MCS);
   int sf = 0;
   while(sf < NUM_NFAPI_SUBFRAME)
   {

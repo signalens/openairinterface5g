@@ -35,7 +35,7 @@
 #include <libconfig.h>
 
 #include "commonDef.h"
-#include "platform_types.h"
+#include "common/platform_types.h"
 #include "common/platform_constants.h"
 #include "PHY/defs_eNB.h"
 #include "s1ap_messages_types.h"
@@ -92,11 +92,11 @@ typedef struct ru_config_s {
 } ru_config_t;
 */
 
-void RCconfig_verify(ngran_node_t node_type);
+void RCconfig_verify(configmodule_interface_t *cfg, ngran_node_t node_type);
 extern void NRRCconfig_RU(void);
 extern void RCconfig_nr_prs(void);
 extern void RCconfig_NR_L1(void);
-extern void RCconfig_nr_macrlc(void);
+extern void RCconfig_nr_macrlc(configmodule_interface_t *cfg);
 extern void NRRCConfig(void);
 
 //void                          enb_config_display(void);
@@ -107,7 +107,7 @@ int RCconfig_NR_NG(MessageDef *msg_p, uint32_t i);
 int RCconfig_NR_X2(MessageDef *msg_p, uint32_t i);
 void wait_f1_setup_response(void);
 int gNB_app_handle_f1ap_gnb_cu_configuration_update(f1ap_gnb_cu_configuration_update_t *gnb_cu_cfg_update);
-MessageDef *RCconfig_NR_CU_E1(bool separate_CUUP_process);
+MessageDef *RCconfig_NR_CU_E1(const E1_t *entity);
 ngran_node_t get_node_type(void);
 
 #ifdef E2_AGENT

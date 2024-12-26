@@ -150,8 +150,11 @@ void initNamedTpool(char *params,tpool_t *pool, bool performanceMeas, char *name
         //Configure the thread scheduler policy for Linux
         // set the thread name for debugging
         sprintf(pool->allthreads->name,"%s%d_%d",tname,pool->nbThreads,pool->allthreads->coreID);
+        // we set the maximum priority for thread pool threads (which is close
+        // but not equal to Linux maximum). See also the corresponding commit
+        // message; initially introduced for O-RAN 7.2 fronthaul split
         threadCreate(&pool->allthreads->threadID, one_thread, (void *)pool->allthreads,
-                     pool->allthreads->name, pool->allthreads->coreID, OAI_PRIORITY_RT);
+                     pool->allthreads->name, pool->allthreads->coreID, OAI_PRIORITY_RT_MAX);
         pool->nbThreads++;
     }
 
@@ -178,7 +181,7 @@ void initFloatingCoresTpool(int nbThreads,tpool_t *pool, bool performanceMeas, c
 }
 
 #ifdef TEST_THREAD_POOL
-volatile int oai_exit=0;
+int oai_exit = 0;
 
 void exit_function(const char *file, const char *function, const int line, const char *s, const int assert)
 {

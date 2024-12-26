@@ -24,8 +24,8 @@
 
 #include <netinet/in.h>
 #include <netinet/sctp.h>
-#include "rlc.h"
 #include "s1ap_messages_types.h"
+#include "ngap_messages_types.h"
 
 //-------------------------------------------------------------------------------------------//
 // Defines to access message fields.
@@ -74,12 +74,7 @@
 #define F1AP_MAX_NO_OF_TNL_ASSOCIATIONS 32
 #define F1AP_MAX_NO_UE_ID 1024
 
-typedef struct f1ap_net_ip_address_s {
-  unsigned ipv4:1;
-  unsigned ipv6:1;
-  char ipv4_address[16];
-  char ipv6_address[46];
-} f1ap_net_ip_address_t;
+typedef net_ip_address_t f1ap_net_ip_address_t;
 
 typedef struct f1ap_net_config_t {
   f1ap_net_ip_address_t CU_f1_ip_address;
@@ -151,11 +146,16 @@ typedef struct f1ap_gnb_du_system_info_t {
 } f1ap_gnb_du_system_info_t;
 
 typedef struct f1ap_setup_req_s {
+  /// ulong transaction id
+  uint64_t transaction_id;
 
   // F1_Setup_Req payload
   uint64_t gNB_DU_id;
   char *gNB_DU_name;
-  
+
+  /// rrc version
+  uint8_t rrc_ver[3];
+
   /// number of DU cells available
   uint16_t num_cells_available; //0< num_cells_available <= 512;
   struct {
@@ -184,11 +184,17 @@ typedef struct served_cells_to_activate_s {
 } served_cells_to_activate_t;
 
 typedef struct f1ap_setup_resp_s {
+  /// ulong transaction id
+  uint64_t transaction_id;
   /// string holding gNB_CU_name
   char     *gNB_CU_name;
   /// number of DU cells to activate
   uint16_t num_cells_to_activate; //0< num_cells_to_activate <= 512;
   served_cells_to_activate_t cells_to_activate[F1AP_MAX_NB_CELLS];
+
+  /// rrc version
+  uint8_t rrc_ver[3];
+
 } f1ap_setup_resp_t;
 
 typedef struct f1ap_gnb_cu_configuration_update_s {
@@ -283,13 +289,66 @@ typedef struct f1ap_up_tnl_s {
   uint16_t port;
 } f1ap_up_tnl_t;
 
+typedef enum preemption_capability_e {
+  SHALL_NOT_TRIGGER_PREEMPTION,
+  MAY_TRIGGER_PREEMPTION,
+} preemption_capability_t;
+
+typedef enum preemption_vulnerability_e {
+  NOT_PREEMPTABLE,
+  PREEMPTABLE,
+} preemption_vulnerability_t;
+
+typedef struct f1ap_qos_characteristics_s {
+  union {
+    struct {
+      long fiveqi;
+      long qos_priority_level;
+    } non_dynamic;
+    struct {
+      long fiveqi; // -1 -> optional
+      long qos_priority_level;
+      long packet_delay_budget;
+      struct {
+        long per_scalar;
+        long per_exponent;
+      } packet_error_rate;
+    } dynamic;
+  };
+  fiveQI_type_t qos_type;
+} f1ap_qos_characteristics_t;
+
+typedef struct f1ap_ngran_allocation_retention_priority_s {
+  uint16_t priority_level;
+  preemption_capability_t preemption_capability;
+  preemption_vulnerability_t preemption_vulnerability;
+} f1ap_ngran_allocation_retention_priority_t;
+
+typedef struct f1ap_qos_flow_level_qos_parameters_s {
+  f1ap_qos_characteristics_t qos_characteristics;
+  f1ap_ngran_allocation_retention_priority_t alloc_reten_priority;
+} f1ap_qos_flow_level_qos_parameters_t;
+
+typedef struct f1ap_flows_mapped_to_drb_s {
+  long qfi; // qos flow identifier
+  f1ap_qos_flow_level_qos_parameters_t qos_params;
+} f1ap_flows_mapped_to_drb_t;
+
+typedef struct f1ap_drb_information_s {
+  f1ap_qos_flow_level_qos_parameters_t drb_qos;
+  f1ap_flows_mapped_to_drb_t *flows_mapped_to_drb;
+  uint8_t flows_to_be_setup_length;
+} f1ap_drb_information_t;
+
 typedef struct f1ap_drb_to_be_setup_s {
   long           drb_id;
   f1ap_up_tnl_t  up_ul_tnl[2];
   uint8_t        up_ul_tnl_length;
   f1ap_up_tnl_t  up_dl_tnl[2];
   uint8_t        up_dl_tnl_length;
+  f1ap_drb_information_t drb_info;
   rlc_mode_t     rlc_mode;
+  nssai_t nssai;
 } f1ap_drb_to_be_setup_t;
 
 typedef struct f1ap_srb_to_be_setup_s {

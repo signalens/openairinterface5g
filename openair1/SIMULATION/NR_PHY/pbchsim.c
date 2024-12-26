@@ -97,42 +97,32 @@ nfapi_mode_t nfapi_getmode(void) { return NFAPI_MODE_UNKNOWN; }
 void nr_fill_dl_indication(nr_downlink_indication_t *dl_ind,
                            fapi_nr_dci_indication_t *dci_ind,
                            fapi_nr_rx_indication_t *rx_ind,
-                           UE_nr_rxtx_proc_t *proc,
+                           const UE_nr_rxtx_proc_t *proc,
                            PHY_VARS_NR_UE *ue,
-                           void *phy_data) {}
+                           void *phy_data)
+{
+}
 void nr_fill_rx_indication(fapi_nr_rx_indication_t *rx_ind,
                            uint8_t pdu_type,
                            PHY_VARS_NR_UE *ue,
                            NR_UE_DLSCH_t *dlsch0,
                            NR_UE_DLSCH_t *dlsch1,
                            uint16_t n_pdus,
-                           UE_nr_rxtx_proc_t *proc,
+                           const UE_nr_rxtx_proc_t *proc,
                            void *typeSpecific,
-                           uint8_t *b) {}
+                           uint8_t *b)
+{
+}
 
 int nr_ue_pdcch_procedures(PHY_VARS_NR_UE *ue,
-			   UE_nr_rxtx_proc_t *proc,
-         int32_t pdcch_est_size,
-         int32_t pdcch_dl_ch_estimates[][pdcch_est_size],
-         nr_phy_data_t *phy_data,
-         int n_ss,
-         c16_t rxdataF[][ue->frame_parms.samples_per_slot_wCP]) {
+                           const UE_nr_rxtx_proc_t *proc,
+                           int32_t pdcch_est_size,
+                           c16_t pdcch_dl_ch_estimates[][pdcch_est_size],
+                           nr_phy_data_t *phy_data,
+                           int n_ss,
+                           c16_t rxdataF[][ue->frame_parms.samples_per_slot_wCP])
+{
   return 0;
-}
-
-int nr_ue_pdsch_procedures(PHY_VARS_NR_UE *ue,
-                           UE_nr_rxtx_proc_t *proc,
-                           NR_UE_DLSCH_t dlsch[2],
-                           int16_t *llr[2],
-                           c16_t rxdataF[][ue->frame_parms.samples_per_slot_wCP]) {
-  return 0;
-}
-
-bool nr_ue_dlsch_procedures(PHY_VARS_NR_UE *ue,
-                            UE_nr_rxtx_proc_t *proc,
-                            NR_UE_DLSCH_t dlsch[2],
-                            int16_t *llr[2]) {
-  return false;
 }
 
 void nr_phy_config_request_sim_pbchsim(PHY_VARS_gNB *gNB,
@@ -184,6 +174,7 @@ void nr_phy_config_request_sim_pbchsim(PHY_VARS_gNB *gNB,
   gNB->configured    = 1;
   LOG_I(PHY,"gNB configured\n");
 }
+configmodule_interface_t *uniqCfg = NULL;
 int main(int argc, char **argv)
 {
   char c;
@@ -249,7 +240,7 @@ int main(int argc, char **argv)
 
   cpuf = get_cpu_freq_GHz();
 
-  if ( load_configmodule(argc,argv,CONFIG_ENABLECMDLINEONLY) == 0) {
+  if ((uniqCfg = load_configmodule(argc, argv, CONFIG_ENABLECMDLINEONLY)) == 0) {
     exit_fun("[NR_PBCHSIM] Error, configuration module init failed\n");
   }
 
@@ -775,21 +766,22 @@ int main(int argc, char **argv)
       }
       if (UE->is_synchronized == 0) {
 	UE_nr_rxtx_proc_t proc={0};
-	ret = nr_initial_sync(&proc, UE, 1, 0);
-	printf("nr_initial_sync1 returns %d\n",ret);
-	if (ret<0) n_errors++;
+  nr_initial_sync_t ret = nr_initial_sync(&proc, UE, 1, 0);
+  printf("nr_initial_sync1 returns %d\n", ret.cell_notdetected);
+  if (ret.cell_notdetected)
+    n_errors++;
       }
       else {
         UE_nr_rxtx_proc_t proc={0};
 
-	UE->rx_offset=0;
-	uint8_t ssb_index = 0;
-  const int estimateSz = frame_parms->symbols_per_slot * frame_parms->ofdm_symbol_size;
-  __attribute__((aligned(32))) struct complex16 dl_ch_estimates[frame_parms->nb_antennas_rx][estimateSz];
-  __attribute__((aligned(32))) struct complex16 dl_ch_estimates_time[frame_parms->nb_antennas_rx][frame_parms->ofdm_symbol_size];
-  while (!((SSB_positions >> ssb_index) & 0x01))
-    ssb_index++; // to select the first transmitted ssb
-  UE->symbol_offset = nr_get_ssb_start_symbol(frame_parms, ssb_index);
+        uint8_t ssb_index = 0;
+        const int estimateSz = frame_parms->symbols_per_slot * frame_parms->ofdm_symbol_size;
+        __attribute__((aligned(32))) struct complex16 dl_ch_estimates[frame_parms->nb_antennas_rx][estimateSz];
+        __attribute__((
+            aligned(32))) struct complex16 dl_ch_estimates_time[frame_parms->nb_antennas_rx][frame_parms->ofdm_symbol_size];
+        while (!((SSB_positions >> ssb_index) & 0x01))
+          ssb_index++; // to select the first transmitted ssb
+        UE->symbol_offset = nr_get_ssb_start_symbol(frame_parms, ssb_index);
 
         int ssb_slot = (UE->symbol_offset/14)+(n_hf*(frame_parms->slots_per_frame>>1));
         proc.nr_slot_rx = ssb_slot;

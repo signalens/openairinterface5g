@@ -62,7 +62,7 @@ static void release_rlc_entity_from_lcid(nr_rlc_ue_t *ue, logical_chan_id_t chan
     return;
   if (rb->type == NR_RLC_SRB) {
     int id = rb->choice.srb_id - 1;
-    AssertFatal(id > 0, "logic bug: impossible to have srb0 here\n");
+    AssertFatal(id >= 0, "logic bug: impossible to have srb0 here\n");
     if (ue->srb[id]) {
       ue->srb[id]->delete_entity(ue->srb[id]);
       ue->srb[id] = NULL;
@@ -293,7 +293,6 @@ rlc_buffer_occupancy_t mac_rlc_get_buffer_occupancy_ind(const module_id_t module
   return ret;
 }
 
-
 rlc_op_status_t rlc_data_req(const protocol_ctxt_t *const ctxt_pP,
                              const srb_flag_t srb_flagP,
                              const MBMS_flag_t MBMS_flagP,
@@ -301,7 +300,7 @@ rlc_op_status_t rlc_data_req(const protocol_ctxt_t *const ctxt_pP,
                              const mui_t muiP,
                              confirm_t confirmP,
                              sdu_size_t sdu_sizeP,
-                             mem_block_t *sdu_pP,
+                             uint8_t *sdu_pP,
                              const uint32_t *const sourceL2Id,
                              const uint32_t *const destinationL2Id)
 {
@@ -309,9 +308,8 @@ rlc_op_status_t rlc_data_req(const protocol_ctxt_t *const ctxt_pP,
   nr_rlc_ue_t *ue;
   nr_rlc_entity_t *rb;
 
-  LOG_D(RLC, "%s rnti %d srb_flag %d rb_id %ld mui %d confirm %d sdu_size %d MBMS_flag %d\n",
-        __FUNCTION__, rnti, srb_flagP, rb_idP, muiP, confirmP, sdu_sizeP,
-        MBMS_flagP);
+  LOG_D(RLC, "rnti %d srb_flag %d rb_id %ld mui %d confirm %d sdu_size %d MBMS_flag %d\n",
+        rnti, srb_flagP, rb_idP, muiP, confirmP, sdu_sizeP, MBMS_flagP);
 
   if (ctxt_pP->enb_flag)
     T(T_ENB_RLC_DL, T_INT(ctxt_pP->module_id), T_INT(ctxt_pP->rntiMaybeUEid), T_INT(rb_idP), T_INT(sdu_sizeP));
@@ -331,14 +329,14 @@ rlc_op_status_t rlc_data_req(const protocol_ctxt_t *const ctxt_pP,
 
   if (rb != NULL) {
     rb->set_time(rb, nr_rlc_current_time);
-    rb->recv_sdu(rb, (char *)sdu_pP->data, sdu_sizeP, muiP);
+    rb->recv_sdu(rb, (char *)sdu_pP, sdu_sizeP, muiP);
   } else {
     LOG_E(RLC, "%s:%d:%s: fatal: SDU sent to unknown RB\n", __FILE__, __LINE__, __FUNCTION__);
   }
 
   nr_rlc_manager_unlock(nr_rlc_ue_manager);
 
-  free_mem_block(sdu_pP, __func__);
+  free(sdu_pP);
 
   return RLC_OP_STATUS_OK;
 }
@@ -402,7 +400,7 @@ static void deliver_sdu(void *_ue, nr_rlc_entity_t *entity, char *buf, int size)
   int is_srb;
   int rb_id;
   protocol_ctxt_t ctx;
-  mem_block_t *memblock;
+  uint8_t *memblock;
   int i;
   int is_enb;
 
@@ -500,12 +498,12 @@ rb_found:
   }
 
   /* UE or monolithic gNB */
-  memblock = get_free_mem_block(size, __func__);
+  memblock = malloc16(size);
   if (memblock == NULL) {
-    LOG_E(RLC, "%s:%d:%s: ERROR: get_free_mem_block failed\n", __FILE__, __LINE__, __FUNCTION__);
+    LOG_E(RLC, "%s:%d:%s: ERROR: malloc16 failed\n", __FILE__, __LINE__, __FUNCTION__);
     exit(1);
   }
-  memcpy(memblock->data, buf, size);
+  memcpy(memblock, buf, size);
   LOG_D(PDCP, "Calling PDCP layer from RLC in %s\n", __FUNCTION__);
   if (!pdcp_data_ind(&ctx, is_srb, 0, rb_id, size, memblock, NULL, NULL)) {
     LOG_E(RLC, "%s:%d:%s: ERROR: pdcp_data_ind failed\n", __FILE__, __LINE__, __FUNCTION__);
@@ -647,7 +645,7 @@ void nr_rlc_reestablish_entity(int rnti, int lc_id)
   nr_rlc_manager_unlock(nr_rlc_ue_manager);
 }
 
-void nr_rlc_reconfigure_entity(int rnti, int lc_id, struct NR_RLC_Config *rlc_Config, struct NR_LogicalChannelConfig *lc_Config)
+void nr_rlc_reconfigure_entity(int rnti, int lc_id, NR_RLC_Config_t *rlc_Config)
 {
   nr_rlc_manager_lock(nr_rlc_ue_manager);
   nr_rlc_ue_t *ue = nr_rlc_manager_get_ue(nr_rlc_ue_manager, rnti);
@@ -656,12 +654,6 @@ void nr_rlc_reconfigure_entity(int rnti, int lc_id, struct NR_RLC_Config *rlc_Co
     LOG_E(RLC, "RLC instance for the given UE was not found \n");
 
   nr_rlc_entity_t *rb = get_rlc_entity_from_lcid(ue, lc_id);
-  if (lc_Config) {
-    if (lc_Config->ul_SpecificParameters && lc_Config->ul_SpecificParameters->logicalChannelGroup)
-      AssertFatal(*lc_Config->ul_SpecificParameters->logicalChannelGroup < 2,
-                  "LCG %ld not supported as per limitation when creating RBs\n",
-                  *lc_Config->ul_SpecificParameters->logicalChannelGroup);
-  }
   if (rlc_Config) {
     AssertFatal(rb->stats.mode != NR_RLC_TM, "Cannot reconfigure TM mode\n");
     if (rb->stats.mode == NR_RLC_AM) {
@@ -718,9 +710,6 @@ void nr_rlc_reconfigure_entity(int rnti, int lc_id, struct NR_RLC_Config *rlc_Co
 void nr_rlc_add_srb(int rnti, int srb_id, const NR_RLC_BearerConfig_t *rlc_BearerConfig)
 {
   struct NR_RLC_Config *r = rlc_BearerConfig->rlc_Config;
-  struct NR_LogicalChannelConfig *l = rlc_BearerConfig->mac_LogicalChannelConfig;
-  int logical_channel_group;
-
   int t_status_prohibit;
   int t_poll_retransmit;
   int poll_pdu;
@@ -732,17 +721,6 @@ void nr_rlc_add_srb(int rnti, int srb_id, const NR_RLC_BearerConfig_t *rlc_Beare
   LOG_D(RLC, "Trying to add SRB %d\n", srb_id);
   AssertFatal(srb_id > 0 && srb_id < 4,
               "Invalid srb id %d\n", srb_id);
-
-  if (l && l->ul_SpecificParameters && l->ul_SpecificParameters->logicalChannelGroup)
-    logical_channel_group = *l->ul_SpecificParameters->logicalChannelGroup;
-  else
-    logical_channel_group = 0; // default value as in 9.2.1 of 38.331
-
-  /* TODO: accept other values? */
-  if (logical_channel_group != 0) {
-    LOG_E(RLC, "%s:%d:%s: fatal error\n", __FILE__, __LINE__, __FUNCTION__);
-    exit(1);
-  }
 
   if (r && r->present == NR_RLC_Config_PR_am) {
     struct NR_RLC_Config__am *am;
@@ -800,8 +778,6 @@ void nr_rlc_add_srb(int rnti, int srb_id, const NR_RLC_BearerConfig_t *rlc_Beare
 static void add_drb_am(int rnti, int drb_id, const NR_RLC_BearerConfig_t *rlc_BearerConfig)
 {
   struct NR_RLC_Config *r = rlc_BearerConfig->rlc_Config;
-  struct NR_LogicalChannelConfig *l = rlc_BearerConfig->mac_LogicalChannelConfig;
-  int logical_channel_group;
 
   int t_status_prohibit;
   int t_poll_retransmit;
@@ -813,14 +789,6 @@ static void add_drb_am(int rnti, int drb_id, const NR_RLC_BearerConfig_t *rlc_Be
 
   AssertFatal(drb_id > 0 && drb_id <= MAX_DRBS_PER_UE,
               "Invalid DRB ID %d\n", drb_id);
-
-  logical_channel_group = *l->ul_SpecificParameters->logicalChannelGroup;
-
-  /* TODO: accept other values? */
-  if (logical_channel_group != 1) {
-    LOG_E(RLC, "%s:%d:%s: fatal error\n", __FILE__, __LINE__, __FUNCTION__);
-    //exit(1);
-  }
 
   switch (r->present) {
   case NR_RLC_Config_PR_am: {
@@ -875,22 +843,12 @@ static void add_drb_am(int rnti, int drb_id, const NR_RLC_BearerConfig_t *rlc_Be
 static void add_drb_um(int rnti, int drb_id, const NR_RLC_BearerConfig_t *rlc_BearerConfig)
 {
   struct NR_RLC_Config *r = rlc_BearerConfig->rlc_Config;
-  struct NR_LogicalChannelConfig *l = rlc_BearerConfig->mac_LogicalChannelConfig;
-  int logical_channel_group;
 
   int sn_field_length;
   int t_reassembly;
 
   AssertFatal(drb_id > 0 && drb_id <= MAX_DRBS_PER_UE,
               "Invalid DRB ID %d\n", drb_id);
-
-  logical_channel_group = *l->ul_SpecificParameters->logicalChannelGroup;
-
-  /* TODO: accept other values? */
-  if (logical_channel_group != 1) {
-    LOG_E(RLC, "%s:%d:%s: fatal error\n", __FILE__, __LINE__, __FUNCTION__);
-    exit(1);
-  }
 
   switch (r->present) {
   case NR_RLC_Config_PR_um_Bi_Directional: {

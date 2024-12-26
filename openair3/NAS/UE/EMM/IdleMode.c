@@ -107,7 +107,7 @@ static IdleMode_callback_t _emm_indication_notify;
  ***************************************************************************/
 void IdleMode_initialize(nas_user_t *user, IdleMode_callback_t cb)
 {
-  emm_plmn_list_t *emm_plmn_list = calloc_or_fail( sizeof(emm_plmn_list_t));
+  emm_plmn_list_t *emm_plmn_list = calloc_or_fail(1, sizeof(emm_plmn_list_t));
   user->emm_plmn_list = emm_plmn_list;
   /* Initialize the list of available PLMNs */
   emm_plmn_list->n_plmns = 0;
@@ -679,7 +679,7 @@ int emm_proc_plmn_selection_end(nas_user_t *user, int found, tac_t tac, ci_t ci,
 {
   LOG_FUNC_IN;
 
-  emm_sap_t emm_sap;
+  emm_sap_t emm_sap = {0};
   int rc = RETURNerror;
   emm_data_t *emm_data = user->emm_data;
   emm_plmn_list_t *emm_plmn_list = user->emm_plmn_list;

@@ -72,7 +72,7 @@ rrc_gNB_ue_context_t *rrc_gNB_allocate_new_ue_context(gNB_RRC_INST *rrc_instance
   for(int i = 0; i < NB_RB_MAX; i++)
     new_p->ue_context.pduSession[i].xid = -1;
 
-  LOG_I(NR_RRC, "Returning new RRC UE context RRC ue id: %d\n", new_p->ue_context.rrc_ue_id);
+  LOG_D(NR_RRC, "Returning new RRC UE context RRC ue id: %d\n", new_p->ue_context.rrc_ue_id);
   return(new_p);
 }
 
@@ -87,7 +87,19 @@ rrc_gNB_ue_context_t *rrc_gNB_get_ue_context(gNB_RRC_INST *rrc_instance_pP, ue_i
   return RB_FIND(rrc_nr_ue_tree_s, &rrc_instance_pP->rrc_ue_head, &temp);
 }
 
-rrc_gNB_ue_context_t *rrc_gNB_get_ue_context_by_rnti(gNB_RRC_INST *rrc_instance_pP, rnti_t rntiP)
+rrc_gNB_ue_context_t *rrc_gNB_get_ue_context_by_rnti(gNB_RRC_INST *rrc_instance_pP, sctp_assoc_t assoc_id, rnti_t rntiP)
+{
+  rrc_gNB_ue_context_t *ue_context_p;
+  RB_FOREACH(ue_context_p, rrc_nr_ue_tree_s, &(rrc_instance_pP->rrc_ue_head)) {
+    f1_ue_data_t ue_data = cu_get_f1_ue_data(ue_context_p->ue_context.rrc_ue_id);
+    if (ue_data.du_assoc_id == assoc_id && ue_context_p->ue_context.rnti == rntiP)
+      return ue_context_p;
+  }
+  LOG_W(NR_RRC, "search by RNTI %04x and assoc_id %d: no UE found\n", rntiP, assoc_id);
+  return NULL;
+}
+
+rrc_gNB_ue_context_t *rrc_gNB_get_ue_context_by_rnti_any_du(gNB_RRC_INST *rrc_instance_pP, rnti_t rntiP)
 {
   rrc_gNB_ue_context_t *ue_context_p;
   RB_FOREACH(ue_context_p, rrc_nr_ue_tree_s, &(rrc_instance_pP->rrc_ue_head))
@@ -157,7 +169,8 @@ rrc_gNB_ue_context_t *rrc_gNB_ue_context_5g_s_tmsi_exist(gNB_RRC_INST *rrc_insta
 
 //-----------------------------------------------------------------------------
 // return a new ue context structure if ue_identityP, rnti not found in collection
-rrc_gNB_ue_context_t *rrc_gNB_create_ue_context(rnti_t rnti,
+rrc_gNB_ue_context_t *rrc_gNB_create_ue_context(sctp_assoc_t assoc_id,
+                                                rnti_t rnti,
                                                 gNB_RRC_INST *rrc_instance_pP,
                                                 const uint64_t ue_identityP,
                                                 uint32_t du_ue_id)
@@ -170,11 +183,12 @@ rrc_gNB_ue_context_t *rrc_gNB_create_ue_context(rnti_t rnti,
   gNB_RRC_UE_t *ue = &ue_context_p->ue_context;
   ue->rnti = rnti;
   ue->random_ue_identity = ue_identityP;
-  f1_ue_data_t ue_data = {.secondary_ue = du_ue_id};
+  f1_ue_data_t ue_data = {.secondary_ue = du_ue_id, .du_assoc_id = assoc_id};
   AssertFatal(!cu_exists_f1_ue_data(ue->rrc_ue_id),
               "UE F1 Context for ID %d already exists, logic bug\n",
               ue->rrc_ue_id);
   cu_add_f1_ue_data(ue->rrc_ue_id, &ue_data);
+  ue->max_delays_pdu_session = 20; /* see rrc_gNB_process_NGAP_PDUSESSION_SETUP_REQ() */
 
   RB_INSERT(rrc_nr_ue_tree_s, &rrc_instance_pP->rrc_ue_head, ue_context_p);
   LOG_I(NR_RRC,

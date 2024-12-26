@@ -96,7 +96,7 @@ int load_lib(openair0_device *device,
   loader_shlibfunc_t shlib_fdesc[1];
   int ret=0;
   char *deflibname=OAI_RF_LIBNAME;
-  
+  openair0_cfg->command_line_sample_advance = get_softmodem_params()->command_line_sample_advance;
   openair0_cfg->recplay_mode = read_recplayconfig(&(openair0_cfg->recplay_conf),&(device->recplay_state));
 
   if (openair0_cfg->recplay_mode == RECPLAY_RECORDMODE) {
@@ -125,12 +125,12 @@ int load_lib(openair0_device *device,
   
   char *devname=NULL;
   paramdef_t device_params[]=DEVICE_PARAMS_DESC ;
-  int numparams = sizeof(device_params)/sizeof(paramdef_t);
+  int numparams = sizeofArray(device_params);
   int devname_pidx = config_paramidx_fromname(device_params,numparams, CONFIG_DEVICEOPT_NAME);
   device_params[devname_pidx].defstrval=deflibname;
-  
-  config_get(device_params,numparams,DEVICE_SECTION);
-  
+
+  config_get(config_get_if(), device_params, numparams, DEVICE_SECTION);
+
   ret=load_module_shlib(devname,shlib_fdesc,1,NULL);
   AssertFatal( (ret >= 0),
   	           "Library %s couldn't be loaded\n",devname);

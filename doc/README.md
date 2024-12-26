@@ -21,6 +21,7 @@
 - [BUILD.md](./BUILD.md): how to build the sources
 - [cross-compile.md](./cross-compile.md): how to cross-compile OAI for ARM
 - [clang-format.md](./clang-format.md): how to format the code
+- [sanitizers.md](./dev_tools/sanitizers.md): how to run with ASan/UBSan/MemSAN/TSan
 - [environment-variables.md](./environment-variables.md): the environment variables used by OAI
 
 There is some general information in the [OpenAirInterface Gitlab Wiki](https://gitlab.eurecom.fr/oai/openairinterface5g/-/wikis/home)
@@ -38,9 +39,11 @@ There is some general information in the [OpenAirInterface Gitlab Wiki](https://
   * (5G) Using SDAP and custom DRBs
   * IF setups and arbitrary frequencies
   * MIMO
+- [How to run OAI with O-RAN 7.2 FHI](./ORAN_FHI7.2_Tutorial.md)
 - [How to run a 5G-NSA setup](./TESTING_GNB_W_COTS_UE.md)
 - [How to run a 4G setup using L1 simulator](./L1SIM.md) _Note: we recommend the RFsimulator_
 - [How to use the L2 simulator](./L2NFAPI.md)
+- [How to use the OAI channel simulator](../openair1/SIMULATION/TOOLS/DOC/channel_simulation.md)
 - [How to use multiple BWPs](./RUN_NR_multiple_BWPs.md)
 - [How to run OAI-VNF and OAI-PNF](./RUN_NR_NFAPI.md) _Note: does not work currently_
 - [How to use the positioning reference signal (PRS)](./RUN_NR_PRS.md)
@@ -55,7 +58,7 @@ Legacy unmaintained files:
 # Designs
 
 - General software architecture notes: [SW_archi.md](./SW_archi.md)
-- [Information on E1](./E1-design.md)
+- [Information on E1](./E1AP/E1-design.md)
 - [Information on F1](./F1-design.md)
 - [Information on how NR nFAPI works](./NR_NFAPI_archi.md)
 - [Flow graph of the L1 in gNB](SW-archi-graph.md)

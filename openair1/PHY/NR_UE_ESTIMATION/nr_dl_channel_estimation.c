@@ -19,7 +19,6 @@
  *      contact@openairinterface.org
  */
 
-
 #include <string.h>
 #include "SCHED_NR_UE/defs.h"
 #include "nr_estimation.h"
@@ -34,6 +33,8 @@
 #include "filt16a_32.h"
 #include "T.h"
 #include <openair1/PHY/TOOLS/phy_scope_interface.h>
+#include "nfapi/open-nFAPI/nfapi/public_inc/nfapi_nr_interface.h"
+
 extern openair0_config_t openair0_cfg[];
 
 //#define DEBUG_PDSCH
@@ -74,7 +75,7 @@ int nr_prs_channel_estimation(uint8_t gNB_id,
                               uint8_t rsc_id,
                               uint8_t rep_num,
                               PHY_VARS_NR_UE *ue,
-                              UE_nr_rxtx_proc_t *proc,
+                              const UE_nr_rxtx_proc_t *proc,
                               NR_DL_FRAME_PARMS *frame_params,
                               c16_t rxdataF[][ue->frame_parms.samples_per_slot_wCP])
 {
@@ -129,6 +130,8 @@ int nr_prs_channel_estimation(uint8_t gNB_id,
     printf("[gNB %d][rsc %d] PRS config l %d k_prime %d:\nprs_cfg->SymbolStart %d\nprs_cfg->NumPRSSymbols %d\nprs_cfg->NumRB %d\nprs_cfg->CombSize %d\n", gNB_id, rsc_id, l, k_prime, prs_cfg->SymbolStart, prs_cfg->NumPRSSymbols, prs_cfg->NumRB, prs_cfg->CombSize);
 #endif
     // Pilots generation and modulation
+
+    AssertFatal(num_pilots > 0, "num_pilots needs to be gt 0 or mod_prs[0] UB");
     for (int m = 0; m < num_pilots; m++) 
     {
       idx = (((nr_gold_prs[l][(m<<1)>>5])>>((m<<1)&0x1f))&3);
@@ -628,7 +631,7 @@ int nr_prs_channel_estimation(uint8_t gNB_id,
 }
 
 int nr_pbch_dmrs_correlation(PHY_VARS_NR_UE *ue,
-                             UE_nr_rxtx_proc_t *proc,
+                             const UE_nr_rxtx_proc_t *proc,
                              unsigned char symbol,
                              int dmrss,
                              NR_UE_SSB *current_ssb,
@@ -658,7 +661,8 @@ int nr_pbch_dmrs_correlation(PHY_VARS_NR_UE *ue,
 #endif
 
   // generate pilot
-  nr_pbch_dmrs_rx(dmrss,ue->nr_gold_pbch[n_hf][ssb_index], &pilot[0]);
+  // Note: pilot returned by the following function is already the complex conjugate of the transmitted DMRS
+  nr_pbch_dmrs_rx(dmrss, ue->nr_gold_pbch[n_hf][ssb_index], &pilot[0]);
 
   for (int aarx=0; aarx<ue->frame_parms.nb_antennas_rx; aarx++) {
 
@@ -782,7 +786,7 @@ int nr_pbch_channel_estimation(PHY_VARS_NR_UE *ue,
                                int estimateSz,
                                struct complex16 dl_ch_estimates[][estimateSz],
                                struct complex16 dl_ch_estimates_time[][ue->frame_parms.ofdm_symbol_size],
-                               UE_nr_rxtx_proc_t *proc,
+                               const UE_nr_rxtx_proc_t *proc,
                                unsigned char symbol,
                                int dmrss,
                                uint8_t ssb_index,
@@ -898,7 +902,8 @@ int nr_pbch_channel_estimation(PHY_VARS_NR_UE *ue,
   }
   
   // generate pilot
-  nr_pbch_dmrs_rx(dmrss,ue->nr_gold_pbch[n_hf][ssb_index], &pilot[0]);
+  // Note: pilot returned by the following function is already the complex conjugate of the transmitted DMRS
+  nr_pbch_dmrs_rx(dmrss, ue->nr_gold_pbch[n_hf][ssb_index], &pilot[0]);
 
   for (int aarx=0; aarx<ue->frame_parms.nb_antennas_rx; aarx++) {
 
@@ -1054,13 +1059,13 @@ int nr_pbch_channel_estimation(PHY_VARS_NR_UE *ue,
 }
 
 void nr_pdcch_channel_estimation(PHY_VARS_NR_UE *ue,
-                                 UE_nr_rxtx_proc_t *proc,
+                                 const UE_nr_rxtx_proc_t *proc,
                                  unsigned char symbol,
                                  fapi_nr_coreset_t *coreset,
                                  uint16_t first_carrier_offset,
                                  uint16_t BWPStart,
                                  int32_t pdcch_est_size,
-                                 int32_t pdcch_dl_ch_estimates[][pdcch_est_size],
+                                 c16_t pdcch_dl_ch_estimates[][pdcch_est_size],
                                  c16_t rxdataF[][ue->frame_parms.samples_per_slot_wCP])
 {
 
@@ -1111,7 +1116,8 @@ void nr_pdcch_channel_estimation(PHY_VARS_NR_UE *ue,
     dmrs_ref = BWPStart;
   // generate pilot
   int pilot[(nb_rb_coreset + dmrs_ref) * 3] __attribute__((aligned(16)));
-  nr_pdcch_dmrs_rx(ue,Ns,ue->nr_gold_pdcch[gNB_id][Ns][symbol], &pilot[0],2000,(nb_rb_coreset+dmrs_ref));
+  // Note: pilot returned by the following function is already the complex conjugate of the transmitted DMRS
+  nr_pdcch_dmrs_rx(ue, Ns, ue->nr_gold_pdcch[gNB_id][Ns][symbol], &pilot[0], 2000, (nb_rb_coreset + dmrs_ref));
 
   for (aarx=0; aarx<ue->frame_parms.nb_antennas_rx; aarx++) {
 
@@ -1606,7 +1612,7 @@ void NFAPI_NR_DMRS_TYPE2_average_prb(NR_DL_FRAME_PARMS *frame_parms,
 #endif
 }
 int nr_pdsch_channel_estimation(PHY_VARS_NR_UE *ue,
-                                UE_nr_rxtx_proc_t *proc,
+                                const UE_nr_rxtx_proc_t *proc,
                                 unsigned short p,
                                 unsigned char symbol,
                                 unsigned char nscid,
@@ -1648,7 +1654,15 @@ int nr_pdsch_channel_estimation(PHY_VARS_NR_UE *ue,
   }
 
   c16_t pilot[3280] __attribute__((aligned(16)));
-  nr_pdsch_dmrs_rx(ue, Ns, ue->nr_gold_pdsch[gNB_id][Ns][symbol][nscid], (int32_t *)pilot, 1000 + p, 0, nb_rb_pdsch + rb_offset, config_type);
+  // Note: pilot returned by the following function is already the complex conjugate of the transmitted DMRS
+  nr_pdsch_dmrs_rx(ue,
+                   Ns,
+                   ue->nr_gold_pdsch[gNB_id][Ns][symbol][nscid],
+                   (int32_t *)pilot,
+                   1000 + p,
+                   0,
+                   nb_rb_pdsch + rb_offset,
+                   config_type);
 
   uint8_t nushift = 0;
   if (config_type == NFAPI_NR_DMRS_TYPE1) {
@@ -1777,7 +1791,6 @@ void nr_pdsch_ptrs_processing(PHY_VARS_NR_UE *ue,
   uint16_t *ptrsSymbPos     = NULL;
   uint8_t  *ptrsSymbIdx     = NULL;
   uint8_t  *ptrsReOffset    = NULL;
-  uint8_t  *dmrsConfigType  = NULL;
   uint16_t *nb_rb           = NULL;
   int nscid = 0;
 
@@ -1789,7 +1802,6 @@ void nr_pdsch_ptrs_processing(PHY_VARS_NR_UE *ue,
     K_ptrs          = &dlsch[0].dlsch_config.PTRSFreqDensity;
     dmrsSymbPos     = &dlsch[0].dlsch_config.dlDmrsSymbPos;
     ptrsReOffset    = &dlsch[0].dlsch_config.PTRSReOffset;
-    dmrsConfigType  = &dlsch[0].dlsch_config.dmrsConfigType;
     nb_rb           = &dlsch[0].dlsch_config.number_rbs;
     ptrsSymbPos     = &dlsch[0].ptrs_symbols;
     ptrsSymbIdx     = &dlsch[0].ptrs_symbol_index;
@@ -1803,7 +1815,6 @@ void nr_pdsch_ptrs_processing(PHY_VARS_NR_UE *ue,
     K_ptrs          = &dlsch[1].dlsch_config.PTRSFreqDensity;
     dmrsSymbPos     = &dlsch[1].dlsch_config.dlDmrsSymbPos;
     ptrsReOffset    = &dlsch[1].dlsch_config.PTRSReOffset;
-    dmrsConfigType  = &dlsch[1].dlsch_config.dmrsConfigType;
     nb_rb           = &dlsch[1].dlsch_config.number_rbs;
     ptrsSymbPos     = &dlsch[1].ptrs_symbols;
     ptrsSymbIdx     = &dlsch[1].ptrs_symbol_index;
@@ -1844,7 +1855,9 @@ void nr_pdsch_ptrs_processing(PHY_VARS_NR_UE *ue,
         /*------------------------------------------------------------------------------------------------------- */
         /* 1) Estimate common phase error per PTRS symbol                                                                */
         /*------------------------------------------------------------------------------------------------------- */
-        nr_ptrs_cpe_estimation(*K_ptrs,*ptrsReOffset,*dmrsConfigType,*nb_rb,
+        nr_ptrs_cpe_estimation(*K_ptrs,
+                               *ptrsReOffset,
+                               *nb_rb,
                                rnti,
                                nr_slot_rx,
                                symbol,

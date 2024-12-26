@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS=-Wall -g -pthread -DT_TRACER -I.
+CFLAGS=-Wall -g -pthread -DT_TRACER -I. -I../incgen
 
 #CFLAGS += -O3 -ffast-math -fomit-frame-pointer
 
@@ -31,9 +31,8 @@ extract: extract.o database.o event.o utils.o configuration.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LIBS)
 
 textlog: utils.o textlog.o database.o event.o handler.o configuration.o \
-         event_selector.o view/view.a gui/gui.a logger/logger.a \
-         filter/filter.a
-	$(CC) $(CFLAGS) -o textlog $^ $(LIBS) $(XLIBS)
+         view/view.a logger/logger.a filter/filter.a
+	$(CC) $(CFLAGS) -o textlog $^ $(LIBS)
 
 enb: utils.o enb.o database.o event.o handler.o configuration.o \
          event_selector.o view/view.a gui/gui.a logger/logger.a \
@@ -66,9 +65,9 @@ gnb: utils.o gnb.o database.o event.o handler.o configuration.o \
          filter/filter.a
 	$(CC) $(CFLAGS) -o gnb $^ $(LIBS) $(XLIBS)
 
-multi.o: ../T_IDs.h
+multi.o: ../incgen/T_IDs.h
 
-../T_IDs.h:
+../incgen/T_IDs.h: ../T_messages.txt
 	cd .. && $(MAKE)
 
 .PHONY: all gui/gui.a view/view.a logger/logger.a filter/filter.a

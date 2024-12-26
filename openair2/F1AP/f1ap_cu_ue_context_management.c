@@ -41,32 +41,33 @@
 #include <openair3/ocp-gtpu/gtp_itf.h>
 #include "LAYER2/nr_pdcp/nr_pdcp_oai_api.h"
 
-static void setQos(F1AP_NonDynamic5QIDescriptor_t *toFill) {
-  asn1cCalloc(toFill, tmp);
+static void setQos(F1AP_NonDynamic5QIDescriptor_t **toFill)
+{
+  asn1cCalloc(*toFill, tmp);
   /* fiveQI */
   tmp->fiveQI = 1L;
 
   /* OPTIONAL */
   /* qoSPriorityLevel */
   if (0) {
-    asn1cCallocOne(toFill->qoSPriorityLevel, 1L);
+    asn1cCallocOne((*toFill)->qoSPriorityLevel, 1L);
   }
 
   /* OPTIONAL */
   /* averagingWindow */
   if (0) {
-    asn1cCallocOne(toFill->averagingWindow, 1L);
+    asn1cCallocOne((*toFill)->averagingWindow, 1L);
   }
 
   /* OPTIONAL */
   /* maxDataBurstVolume */
   if (0) {
-    asn1cCallocOne(toFill->maxDataBurstVolume, 1L);
+    asn1cCallocOne((*toFill)->maxDataBurstVolume, 1L);
   }
 }
 
-int CU_send_UE_CONTEXT_SETUP_REQUEST(instance_t instance,
-                                     f1ap_ue_context_setup_t *f1ap_ue_context_setup_req) {
+int CU_send_UE_CONTEXT_SETUP_REQUEST(sctp_assoc_t assoc_id, f1ap_ue_context_setup_t *f1ap_ue_context_setup_req)
+{
   F1AP_F1AP_PDU_t  pdu= {0};
   /* Create */
   /* 0. Message Type */
@@ -271,8 +272,7 @@ int CU_send_UE_CONTEXT_SETUP_REQUEST(instance_t instance,
     asn1cSequenceAdd(out->protocolIEs.list, F1AP_UEContextSetupRequestIEs_t, ie12);
     ie12->id                             = F1AP_ProtocolIE_ID_id_DRBs_ToBeSetup_List;
     ie12->criticality                    = F1AP_Criticality_reject;
-    ie12->value.present                  = F1AP_UEContextSetupRequestIEs__value_PR_DRBs_ToBeSetup_List;
-    LOG_I(F1AP, "Length of drbs_to_be_setup: %d \n", f1ap_ue_context_setup_req->drbs_to_be_setup_length);
+    ie12->value.present = F1AP_UEContextSetupRequestIEs__value_PR_DRBs_ToBeSetup_List;
 
     for (int i = 0; i < f1ap_ue_context_setup_req->drbs_to_be_setup_length; i++) {
       //
@@ -329,7 +329,7 @@ int CU_send_UE_CONTEXT_SETUP_REQUEST(instance_t instance,
 
             if (some_decide_qoS_characteristics) {
               DRB_Information->dRB_QoS.qoS_Characteristics.present = F1AP_QoS_Characteristics_PR_non_Dynamic_5QI;
-              setQos(DRB_Information->dRB_QoS.qoS_Characteristics.choice.non_Dynamic_5QI);
+              setQos(&DRB_Information->dRB_QoS.qoS_Characteristics.choice.non_Dynamic_5QI);
             } else {
               DRB_Information->dRB_QoS.qoS_Characteristics.present = F1AP_QoS_Characteristics_PR_dynamic_5QI;
               asn1cCalloc(DRB_Information->dRB_QoS.qoS_Characteristics.choice.dynamic_5QI, tmp);
@@ -398,15 +398,12 @@ int CU_send_UE_CONTEXT_SETUP_REQUEST(instance_t instance,
         /* 12.1.2.2 sNSSAI */
         {
           /* sST */
-          OCTET_STRING_fromBuf(&DRB_Information->sNSSAI.sST, "1", 1);
+          OCTET_STRING_fromBuf(&DRB_Information->sNSSAI.sST, (char *)&f1ap_ue_context_setup_req->drbs_to_be_setup[i].nssai.sst, 1);
 
           /* OPTIONAL */
-          /* sD */
-          if (0) {
-            asn1cCalloc(DRB_Information->sNSSAI.sD, tmp);
-            OCTET_STRING_fromBuf(tmp, "asdsa1d32sa1d31asd31as",
-                               strlen("asdsa1d32sa1d31asd31as"));
-          }
+          const uint32_t sd = (f1ap_ue_context_setup_req->drbs_to_be_setup[i].nssai.sd & 0xffffff);
+          if (sd != 0xffffff)
+            OCTET_STRING_fromBuf(DRB_Information->sNSSAI.sD, (char *)&sd, 3);
         }
 
         /* OPTIONAL */
@@ -432,7 +429,7 @@ int CU_send_UE_CONTEXT_SETUP_REQUEST(instance_t instance,
 
               if (some_decide_qoS_characteristics) {
                 QosParams->present = F1AP_QoS_Characteristics_PR_non_Dynamic_5QI;
-                setQos(QosParams->choice.non_Dynamic_5QI);
+                setQos(&QosParams->choice.non_Dynamic_5QI);
               } else {
                 QosParams->present = F1AP_QoS_Characteristics_PR_dynamic_5QI;
                 asn1cCalloc(QosParams->choice.dynamic_5QI, tmp);
@@ -509,7 +506,7 @@ int CU_send_UE_CONTEXT_SETUP_REQUEST(instance_t instance,
         /*Use a dummy teid for the outgoing GTP-U tunnel (DU) which will be updated once we get the UE context setup response from the DU*/
         /* Use a dummy address and teid for the outgoing GTP-U tunnel (DU) which will be updated once we get the UE context setup response from the DU */
         transport_layer_addr_t addr = { .length= 32, .buffer= { 0 } };
-        f1ap_ue_context_setup_req->drbs_to_be_setup[i].up_ul_tnl[j].teid = newGtpuCreateTunnel(getCxt(instance)->gtpInst,
+        f1ap_ue_context_setup_req->drbs_to_be_setup[i].up_ul_tnl[j].teid = newGtpuCreateTunnel(getCxt(0)->gtpInst,
                                                                                                f1ap_ue_context_setup_req->gNB_CU_ue_id,
                                                                                                f1ap_ue_context_setup_req->drbs_to_be_setup[i].drb_id,
                                                                                                f1ap_ue_context_setup_req->drbs_to_be_setup[i].drb_id,
@@ -628,7 +625,7 @@ int CU_send_UE_CONTEXT_SETUP_REQUEST(instance_t instance,
   //   return -1;
   // }
   LOG_D(F1AP,"F1AP UEContextSetupRequest Encoded %u bits\n", len);
-  f1ap_itti_send_sctp_data_req(instance, buffer, len);
+  f1ap_itti_send_sctp_data_req(assoc_id, buffer, len);
   return 0;
 }
 
@@ -639,6 +636,7 @@ int CU_handle_UE_CONTEXT_SETUP_RESPONSE(instance_t instance, sctp_assoc_t assoc_
   F1AP_UEContextSetupResponseIEs_t *ie;
   DevAssert(pdu);
   msg_p = itti_alloc_new_message(TASK_DU_F1, 0,  F1AP_UE_CONTEXT_SETUP_RESP);
+  msg_p->ittiMsgHeader.originInstance = assoc_id;
   f1ap_ue_context_setup_t *f1ap_ue_context_setup_resp = &F1AP_UE_CONTEXT_SETUP_RESP(msg_p);
   container = &pdu->choice.successfulOutcome->value.choice.UEContextSetupResponse;
   int i;
@@ -772,6 +770,7 @@ int CU_handle_UE_CONTEXT_SETUP_FAILURE(instance_t instance, sctp_assoc_t assoc_i
 int CU_handle_UE_CONTEXT_RELEASE_REQUEST(instance_t instance, sctp_assoc_t assoc_id, uint32_t stream, F1AP_F1AP_PDU_t *pdu)
 {
   MessageDef *msg = itti_alloc_new_message(TASK_CU_F1, 0,  F1AP_UE_CONTEXT_RELEASE_REQ);
+  msg->ittiMsgHeader.originInstance = assoc_id;
   f1ap_ue_context_release_req_t *req = &F1AP_UE_CONTEXT_RELEASE_REQ(msg);
   F1AP_UEContextReleaseRequest_t    *container;
   F1AP_UEContextReleaseRequestIEs_t *ie;
@@ -825,9 +824,8 @@ int CU_handle_UE_CONTEXT_RELEASE_REQUEST(instance_t instance, sctp_assoc_t assoc
   return 0;
 }
 
-
-int CU_send_UE_CONTEXT_RELEASE_COMMAND(instance_t instance,
-                                       f1ap_ue_context_release_cmd_t *cmd) {
+int CU_send_UE_CONTEXT_RELEASE_COMMAND(sctp_assoc_t assoc_id, f1ap_ue_context_release_cmd_t *cmd)
+{
   F1AP_F1AP_PDU_t                   pdu= {0};
   F1AP_UEContextReleaseCommand_t    *out;
   uint8_t  *buffer=NULL;
@@ -912,7 +910,7 @@ int CU_send_UE_CONTEXT_RELEASE_COMMAND(instance_t instance,
     return -1;
   }
 
-  f1ap_itti_send_sctp_data_req(instance, buffer, len);
+  f1ap_itti_send_sctp_data_req(assoc_id, buffer, len);
   return 0;
 }
 
@@ -922,6 +920,7 @@ int CU_handle_UE_CONTEXT_RELEASE_COMPLETE(instance_t instance, sctp_assoc_t asso
   F1AP_UEContextReleaseCompleteIEs_t *ie;
   DevAssert(pdu);
   MessageDef *msg_p = itti_alloc_new_message(TASK_DU_F1, 0,  F1AP_UE_CONTEXT_RELEASE_COMPLETE);
+  msg_p->ittiMsgHeader.originInstance = assoc_id;
   f1ap_ue_context_release_complete_t *complete = &F1AP_UE_CONTEXT_RELEASE_COMPLETE(msg_p);
   container = &pdu->choice.successfulOutcome->value.choice.UEContextReleaseComplete;
   /* GNB_CU_UE_F1AP_ID */
@@ -951,7 +950,7 @@ int CU_handle_UE_CONTEXT_RELEASE_COMPLETE(instance_t instance, sctp_assoc_t asso
   return 0;
 }
 
-int CU_send_UE_CONTEXT_MODIFICATION_REQUEST(instance_t instance, f1ap_ue_context_modif_req_t *f1ap_ue_context_modification_req)
+int CU_send_UE_CONTEXT_MODIFICATION_REQUEST(sctp_assoc_t assoc_id, f1ap_ue_context_modif_req_t *f1ap_ue_context_modification_req)
 {
   F1AP_F1AP_PDU_t                        pdu= {0};
   F1AP_UEContextModificationRequest_t    *out;
@@ -1228,6 +1227,7 @@ int CU_send_UE_CONTEXT_MODIFICATION_REQUEST(instance_t instance, f1ap_ue_context
 
       else{
         /* 12.1.2 DRB_Information */
+        f1ap_drb_information_t *drb_info_in = &f1ap_ue_context_modification_req->drbs_to_be_setup[i].drb_info;
         drbs_toBeSetupMod_item->qoSInformation.present = F1AP_QoSInformation_PR_choice_extension;
         F1AP_QoSInformation_ExtIEs_t *ie = (F1AP_QoSInformation_ExtIEs_t *)calloc(1, sizeof(*ie));
         ie->id                             = F1AP_ProtocolIE_ID_id_DRB_Information;
@@ -1238,48 +1238,56 @@ int CU_send_UE_CONTEXT_MODIFICATION_REQUEST(instance_t instance, f1ap_ue_context
         /* 12.1.2.1 dRB_QoS */
         {
           /* qoS_Characteristics */
+          f1ap_qos_flow_level_qos_parameters_t *drb_qos_in = &drb_info_in->drb_qos;
           {
-            int some_decide_qoS_characteristics = 0; // BK: Need Check
+            int some_decide_qoS_characteristics = drb_qos_in->qos_characteristics.qos_type;
 
-            if (some_decide_qoS_characteristics) {
+            f1ap_qos_characteristics_t *drb_qos_char_in = &drb_qos_in->qos_characteristics;
+            if (some_decide_qoS_characteristics == non_dynamic) {
               DRB_Information->dRB_QoS.qoS_Characteristics.present = F1AP_QoS_Characteristics_PR_non_Dynamic_5QI;
-              setQos(DRB_Information->dRB_QoS.qoS_Characteristics.choice.non_Dynamic_5QI);
+              asn1cCalloc(DRB_Information->dRB_QoS.qoS_Characteristics.choice.non_Dynamic_5QI, tmp);
+
+              /* 5QI */
+              tmp->fiveQI = drb_qos_char_in->non_dynamic.fiveqi;
             } else {
-                DRB_Information->dRB_QoS.qoS_Characteristics.present = F1AP_QoS_Characteristics_PR_dynamic_5QI;
-                asn1cCalloc(DRB_Information->dRB_QoS.qoS_Characteristics.choice.dynamic_5QI, tmp);
-                /* qoSPriorityLevel */
-                tmp->qoSPriorityLevel = 1L;
-                /* packetDelayBudget */
-                tmp->packetDelayBudget = 1L;
-                /* packetErrorRate */
-                tmp->packetErrorRate.pER_Scalar = 1L;
-                tmp->packetErrorRate.pER_Exponent = 6L;
+              DRB_Information->dRB_QoS.qoS_Characteristics.present = F1AP_QoS_Characteristics_PR_dynamic_5QI;
+              asn1cCalloc(DRB_Information->dRB_QoS.qoS_Characteristics.choice.dynamic_5QI, tmp);
+              /* qoSPriorityLevel */
+              tmp->qoSPriorityLevel = drb_qos_char_in->dynamic.qos_priority_level;
+              /* packetDelayBudget */
+              tmp->packetDelayBudget = drb_qos_char_in->dynamic.packet_delay_budget;
+              /* packetErrorRate */
+              tmp->packetErrorRate.pER_Scalar = drb_qos_char_in->dynamic.packet_error_rate.per_scalar;
+              tmp->packetErrorRate.pER_Exponent = drb_qos_char_in->dynamic.packet_error_rate.per_scalar;
 
-                /* OPTIONAL */
-                /* delayCritical */
-                if (0) {
-                  asn1cCallocOne(DRB_Information->dRB_QoS.qoS_Characteristics.choice.dynamic_5QI->delayCritical, 1L);
-                }
+              /* OPTIONAL */
+              /* delayCritical */
+              if (0) {
+                asn1cCallocOne(DRB_Information->dRB_QoS.qoS_Characteristics.choice.dynamic_5QI->delayCritical, 1L);
+              }
 
-                /* OPTIONAL */
-                /* averagingWindow */
-                if (0) {
-                  asn1cCallocOne(DRB_Information->dRB_QoS.qoS_Characteristics.choice.dynamic_5QI->averagingWindow, 1L);
-                }
+              /* OPTIONAL */
+              /* averagingWindow */
+              if (0) {
+                asn1cCallocOne(DRB_Information->dRB_QoS.qoS_Characteristics.choice.dynamic_5QI->averagingWindow, 1L);
+              }
 
-                /* OPTIONAL */
-                /* maxDataBurstVolume */
-                if (0) {
-                  asn1cCallocOne(DRB_Information->dRB_QoS.qoS_Characteristics.choice.dynamic_5QI->maxDataBurstVolume, 1L);
-                }
-              } // if some_decide_qoS_characteristics
+              /* OPTIONAL */
+              /* maxDataBurstVolume */
+              if (0) {
+                asn1cCallocOne(DRB_Information->dRB_QoS.qoS_Characteristics.choice.dynamic_5QI->maxDataBurstVolume, 1L);
+              }
+            } // if some_decide_qoS_characteristics
 
             } // qoS_Characteristics
             /* nGRANallocationRetentionPriority */
             {
-              DRB_Information->dRB_QoS.nGRANallocationRetentionPriority.priorityLevel = F1AP_PriorityLevel_highest; // enum
-              DRB_Information->dRB_QoS.nGRANallocationRetentionPriority.pre_emptionCapability = F1AP_Pre_emptionCapability_shall_not_trigger_pre_emption; // enum
-              DRB_Information->dRB_QoS.nGRANallocationRetentionPriority.pre_emptionVulnerability = F1AP_Pre_emptionVulnerability_not_pre_emptable; // enum
+              DRB_Information->dRB_QoS.nGRANallocationRetentionPriority.priorityLevel =
+                  drb_qos_in->alloc_reten_priority.priority_level;
+              DRB_Information->dRB_QoS.nGRANallocationRetentionPriority.pre_emptionCapability =
+                  drb_qos_in->alloc_reten_priority.preemption_capability;
+              DRB_Information->dRB_QoS.nGRANallocationRetentionPriority.pre_emptionVulnerability =
+                  drb_qos_in->alloc_reten_priority.preemption_vulnerability;
             } // nGRANallocationRetentionPriority
 
           /* OPTIONAL */
@@ -1313,16 +1321,12 @@ int CU_send_UE_CONTEXT_MODIFICATION_REQUEST(instance_t instance, f1ap_ue_context
         /* 12.1.2.2 sNSSAI */
         {
           /* sST */
-
-          OCTET_STRING_fromBuf(&DRB_Information->sNSSAI.sST, "1", 1);
+          OCTET_STRING_fromBuf(&DRB_Information->sNSSAI.sST, (char *)&f1ap_ue_context_modification_req->drbs_to_be_setup[i].nssai.sst, 1);
 
           /* OPTIONAL */
-          /* sD */
-          if (0) {
-            asn1cCalloc(DRB_Information->sNSSAI.sD, tmp);
-            OCTET_STRING_fromBuf(tmp, "asdsa1d32sa1d31asd31as",
-            strlen("asdsa1d32sa1d31asd31as"));
-          }
+          const uint32_t sd = (f1ap_ue_context_modification_req->drbs_to_be_setup[i].nssai.sd & 0xffffff);
+          if (sd != 0xffffff)
+            OCTET_STRING_fromBuf(DRB_Information->sNSSAI.sD, (char *)&sd, 3);
         }
 
         /* OPTIONAL */
@@ -1332,33 +1336,40 @@ int CU_send_UE_CONTEXT_MODIFICATION_REQUEST(instance_t instance, f1ap_ue_context
               F1AP_NotificationControl_active); // enum
         }
 
-        /* 12.1.2.4 flows_Mapped_To_DRB_List */  // BK: need verifiy
-
-        for (int k = 0; k < 1; k ++) {
+        /* 12.1.2.4 flows_Mapped_To_DRB_List */
+        for (int k = 0; k < drb_info_in->flows_to_be_setup_length; k++) {
           asn1cSequenceAdd(DRB_Information->flows_Mapped_To_DRB_List.list,
                          F1AP_Flows_Mapped_To_DRB_Item_t, flows_mapped_to_drb_item);
+
+          f1ap_flows_mapped_to_drb_t *qos_flow_in = drb_info_in->flows_mapped_to_drb + k;
+
           /* qoSFlowIndicator */
-          flows_mapped_to_drb_item->qoSFlowIdentifier = 1L;
+          flows_mapped_to_drb_item->qoSFlowIdentifier = qos_flow_in->qfi;
           /* qoSFlowLevelQoSParameters */
           {
+            f1ap_qos_flow_level_qos_parameters_t *flow_qos_params_in = &qos_flow_in->qos_params;
             /* qoS_Characteristics */
             {
-              int some_decide_qoS_characteristics = 0; // BK: Need Check
-              F1AP_QoS_Characteristics_t *QosParams=&flows_mapped_to_drb_item->qoSFlowLevelQoSParameters.qoS_Characteristics;
+              int some_decide_qoS_characteristics = flow_qos_params_in->qos_characteristics.qos_type;
+              F1AP_QoS_Characteristics_t *QosParams = &flows_mapped_to_drb_item->qoSFlowLevelQoSParameters.qoS_Characteristics;
+              f1ap_qos_characteristics_t *flow_qos_char_in = &flow_qos_params_in->qos_characteristics;
 
-              if (some_decide_qoS_characteristics) {
+              if (some_decide_qoS_characteristics == non_dynamic) {
                 QosParams->present = F1AP_QoS_Characteristics_PR_non_Dynamic_5QI;
-                setQos(QosParams->choice.non_Dynamic_5QI);
+                asn1cCalloc(QosParams->choice.non_Dynamic_5QI, tmp);
+
+                /* 5QI */
+                tmp->fiveQI = flow_qos_char_in->non_dynamic.fiveqi;
               } else {
                 QosParams->present = F1AP_QoS_Characteristics_PR_dynamic_5QI;
                 asn1cCalloc(QosParams->choice.dynamic_5QI, tmp);
                 /* qoSPriorityLevel */
-                tmp->qoSPriorityLevel = 1L;
+                tmp->qoSPriorityLevel = flow_qos_char_in->dynamic.qos_priority_level;
                 /* packetDelayBudget */
-                tmp->packetDelayBudget = 1L;
+                tmp->packetDelayBudget = flow_qos_char_in->dynamic.packet_delay_budget;
                 /* packetErrorRate */
-                tmp->packetErrorRate.pER_Scalar = 1L;
-                tmp->packetErrorRate.pER_Exponent = 6L;
+                tmp->packetErrorRate.pER_Scalar = flow_qos_char_in->dynamic.packet_error_rate.per_scalar;
+                tmp->packetErrorRate.pER_Exponent = flow_qos_char_in->dynamic.packet_error_rate.per_exponent;
 
                 /* OPTIONAL */
                 /* delayCritical */
@@ -1385,9 +1396,12 @@ int CU_send_UE_CONTEXT_MODIFICATION_REQUEST(instance_t instance, f1ap_ue_context
             } // qoS_Characteristics
             /* nGRANallocationRetentionPriority */
             {
-              flows_mapped_to_drb_item->qoSFlowLevelQoSParameters.nGRANallocationRetentionPriority.priorityLevel = F1AP_PriorityLevel_highest; // enum
-              flows_mapped_to_drb_item->qoSFlowLevelQoSParameters.nGRANallocationRetentionPriority.pre_emptionCapability = F1AP_Pre_emptionCapability_shall_not_trigger_pre_emption; // enum
-              flows_mapped_to_drb_item->qoSFlowLevelQoSParameters.nGRANallocationRetentionPriority.pre_emptionVulnerability = F1AP_Pre_emptionVulnerability_not_pre_emptable; // enum
+              flows_mapped_to_drb_item->qoSFlowLevelQoSParameters.nGRANallocationRetentionPriority.priorityLevel =
+                  flow_qos_params_in->alloc_reten_priority.priority_level;
+              flows_mapped_to_drb_item->qoSFlowLevelQoSParameters.nGRANallocationRetentionPriority.pre_emptionCapability =
+                  flow_qos_params_in->alloc_reten_priority.preemption_capability;
+              flows_mapped_to_drb_item->qoSFlowLevelQoSParameters.nGRANallocationRetentionPriority.pre_emptionVulnerability =
+                  flow_qos_params_in->alloc_reten_priority.preemption_vulnerability;
             } // nGRANallocationRetentionPriority
 
             /* OPTIONAL */
@@ -1555,7 +1569,7 @@ int CU_send_UE_CONTEXT_MODIFICATION_REQUEST(instance_t instance, f1ap_ue_context
           &drbs_toBeReleased_item_ies->value.choice.DRBs_ToBeReleased_Item;
       /* dRBID */
       drbs_toBeReleased_item->dRBID = f1ap_ue_context_modification_req->drbs_to_be_released[i].rb_id;
-      newGtpuDeleteOneTunnel(getCxt(instance)->gtpInst,
+      newGtpuDeleteOneTunnel(getCxt(0)->gtpInst,
                              f1ap_ue_context_modification_req->gNB_CU_ue_id,
                              f1ap_ue_context_modification_req->drbs_to_be_released[i].rb_id);
     }
@@ -1566,7 +1580,7 @@ int CU_send_UE_CONTEXT_MODIFICATION_REQUEST(instance_t instance, f1ap_ue_context
     LOG_E(F1AP, "Failed to encode F1 UE CONTEXT_MODIFICATION REQUEST\n");
     return -1;
   }
-  f1ap_itti_send_sctp_data_req(instance, buffer, len);
+  f1ap_itti_send_sctp_data_req(assoc_id, buffer, len);
   return 0;
 }
 
@@ -1577,6 +1591,7 @@ int CU_handle_UE_CONTEXT_MODIFICATION_RESPONSE(instance_t instance, sctp_assoc_t
   F1AP_UEContextModificationResponseIEs_t *ie;
   DevAssert(pdu);
   msg_p = itti_alloc_new_message(TASK_DU_F1, 0,  F1AP_UE_CONTEXT_MODIFICATION_RESP);
+  msg_p->ittiMsgHeader.originInstance = assoc_id;
   f1ap_ue_context_modif_resp_t *f1ap_ue_context_modification_resp = &F1AP_UE_CONTEXT_MODIFICATION_RESP(msg_p);
   container = &pdu->choice.successfulOutcome->value.choice.UEContextModificationResponse;
   int i;
@@ -1705,6 +1720,7 @@ int CU_handle_UE_CONTEXT_MODIFICATION_REQUIRED(instance_t instance, sctp_assoc_t
   DevAssert(pdu != NULL);
 
   MessageDef *msg_p = itti_alloc_new_message(TASK_DU_F1, 0, F1AP_UE_CONTEXT_MODIFICATION_REQUIRED);
+  msg_p->ittiMsgHeader.originInstance = assoc_id;
   f1ap_ue_context_modif_required_t *required = &F1AP_UE_CONTEXT_MODIFICATION_REQUIRED(msg_p);
 
   F1AP_UEContextModificationRequired_t *container = &pdu->choice.initiatingMessage->value.choice.UEContextModificationRequired;
@@ -1833,7 +1849,7 @@ int CU_handle_UE_CONTEXT_MODIFICATION_REQUIRED(instance_t instance, sctp_assoc_t
   return 0;
 }
 
-int CU_send_UE_CONTEXT_MODIFICATION_CONFIRM(instance_t instance, f1ap_ue_context_modif_confirm_t *confirm)
+int CU_send_UE_CONTEXT_MODIFICATION_CONFIRM(sctp_assoc_t assoc_id, f1ap_ue_context_modif_confirm_t *confirm)
 {
   F1AP_F1AP_PDU_t pdu = {0};
   pdu.present = F1AP_F1AP_PDU_PR_successfulOutcome;
@@ -1891,11 +1907,11 @@ int CU_send_UE_CONTEXT_MODIFICATION_CONFIRM(instance_t instance, f1ap_ue_context
     LOG_E(F1AP, "Failed to encode F1 UE Context Modification Confirm\n");
     return -1;
   }
-  f1ap_itti_send_sctp_data_req(instance, buffer, len);
+  f1ap_itti_send_sctp_data_req(assoc_id, buffer, len);
   return 0;
 }
 
-int CU_send_UE_CONTEXT_MODIFICATION_REFUSE(instance_t instance, f1ap_ue_context_modif_refuse_t *refuse)
+int CU_send_UE_CONTEXT_MODIFICATION_REFUSE(sctp_assoc_t assoc_id, f1ap_ue_context_modif_refuse_t *refuse)
 {
   F1AP_F1AP_PDU_t pdu = {0};
   pdu.present = F1AP_F1AP_PDU_PR_unsuccessfulOutcome;
@@ -1958,6 +1974,6 @@ int CU_send_UE_CONTEXT_MODIFICATION_REFUSE(instance_t instance, f1ap_ue_context_
     LOG_E(F1AP, "Failed to encode F1 UE Context Modification Refuse\n");
     return -1;
   }
-  f1ap_itti_send_sctp_data_req(instance, buffer, len);
+  f1ap_itti_send_sctp_data_req(assoc_id, buffer, len);
   return 0;
 }

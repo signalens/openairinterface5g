@@ -87,6 +87,8 @@ typedef struct {
   uint8_t *f;
   /// LDPC lifting size
   uint32_t Z;
+  /// REs unavailable for DLSCH (overlapping with PTRS, CSIRS etc.)
+  uint32_t unav_res;
 } NR_DL_gNB_HARQ_t;
 
 typedef struct {
@@ -140,10 +142,6 @@ typedef struct {
 typedef struct {
   /// Pointers to variables related to DLSCH harq process
   NR_DL_gNB_HARQ_t harq_process;
-  /// TX buffers for UE-spec transmission (antenna layers 1,...,4 after to precoding)
-  int32_t **txdataF;
-  /// Modulated symbols buffer
-  int32_t **mod_symbs;
   /// beamforming weights for UE-spec transmission (antenna ports 5 or 7..14), for each codeword, maximum 4 layers?
   int32_t ***ue_spec_bf_weights;
   /// Active flag for baseband transmitter processing
@@ -262,6 +260,7 @@ typedef struct {
 typedef struct {
   uint32_t frame;
   uint32_t slot;
+  uint32_t unav_res;
   /// Pointers to 16 HARQ processes for the ULSCH
   NR_UL_gNB_HARQ_t *harq_process;
   /// HARQ process mask, indicates which processes are currently active
@@ -535,7 +534,10 @@ typedef struct {
 #define MAX_NUM_NR_RX_PRACH_PREAMBLES 4
 #define MAX_UL_PDUS_PER_SLOT 8
 #define MAX_NUM_NR_SRS_PDUS 8
-#define MAX_NUM_NR_UCI_PDUS 8
+// the current RRC resource allocation is that each UE gets its
+// "own" PUCCH resource (for F0) in a dedicated PRB in each slot
+// therefore, we can have up to "number of UE" UCI PDUs
+#define MAX_NUM_NR_UCI_PDUS MAX_MOBILES_PER_GNB
 
 /// Top-level PHY Data Structure for gNB
 typedef struct PHY_VARS_gNB_s {
@@ -560,7 +562,6 @@ typedef struct PHY_VARS_gNB_s {
   PHY_MEASUREMENTS_gNB measurements;
   NR_IF_Module_t       *if_inst;
   NR_UL_IND_t          UL_INFO;
-  pthread_mutex_t      UL_INFO_mutex;
 
   /// NFAPI RX ULSCH information
   nfapi_nr_rx_data_pdu_t  rx_pdu_list[MAX_UL_PDUS_PER_SLOT];
@@ -602,6 +603,10 @@ typedef struct PHY_VARS_gNB_s {
 
   // reference amplitude for TX
   int16_t TX_AMP;
+
+  // flag to activate 3GPP phase symbolwise rotation
+  bool phase_comp;
+
   // PUCCH0 Look-up table for cyclic-shifts
   NR_gNB_PUCCH0_LUT_t pucch0_lut;
 
@@ -616,13 +621,6 @@ typedef struct PHY_VARS_gNB_s {
 
   /// PDSCH DMRS sequence
   uint32_t ****nr_gold_pdsch_dmrs;
-
-  /// PDSCH codebook I precoding LUTs
-  /// first dimension: Rank number [0,...,noOfLayers-1[
-  /// second dimension: PMI [0,...,CodeSize-1[
-  /// third dimension: [i_rows*noOfLayers+j_col], i_rows=0,...pdsch_AntennaPorts-1 and j_col=0,...,noOfLayers-1
-  int32_t ***nr_mimo_precoding_matrix;
-  int pmiq_size[NR_MAX_NB_LAYERS];
 
   /// PUSCH DMRS
   uint32_t ****nr_gold_pusch_dmrs;
@@ -640,8 +638,6 @@ typedef struct PHY_VARS_gNB_s {
   uint32_t ofdm_offset_divisor;
 
   int ldpc_offload_flag;
-
-  int reorder_thread_disable;
 
   int max_ldpc_iterations;
   /// indicate the channel estimation technique in time domain
@@ -695,8 +691,8 @@ typedef struct PHY_VARS_gNB_s {
   time_stats_t rx_pusch_init_stats;
   time_stats_t rx_pusch_symbol_processing_stats;
   time_stats_t ul_indication_stats;
+  time_stats_t slot_indication_stats;
   time_stats_t schedule_response_stats;
-  time_stats_t ulsch_decoding_stats;
   time_stats_t ulsch_ldpc_decoding_stats;
   time_stats_t ulsch_deinterleaving_stats;
   time_stats_t ulsch_channel_estimation_stats;
@@ -720,6 +716,7 @@ typedef struct PHY_VARS_gNB_s {
   notifiedFIFO_t L1_tx_free;
   notifiedFIFO_t L1_tx_filled;
   notifiedFIFO_t L1_tx_out;
+  notifiedFIFO_t L1_rx_out;
   notifiedFIFO_t resp_RU_tx;
   tpool_t threadPool;
   int nbSymb;
@@ -797,9 +794,7 @@ union ldpcReqUnion {
 
 typedef struct processingData_L1 {
   int frame_rx;
-  int frame_tx;
   int slot_rx;
-  int slot_tx;
   openair0_timestamp timestamp_tx;
   PHY_VARS_gNB *gNB;
 } processingData_L1_t;
@@ -813,6 +808,8 @@ typedef enum {
 typedef struct processingData_L1tx {
   int frame;
   int slot;
+  int frame_rx;
+  int slot_rx;
   openair0_timestamp timestamp_tx;
   PHY_VARS_gNB *gNB;
   nfapi_nr_dl_tti_pdcch_pdu pdcch_pdu[NFAPI_NR_MAX_NB_CORESETS];
@@ -827,4 +824,9 @@ typedef struct processingData_L1tx {
   int sched_response_id;
 } processingData_L1tx_t;
 
+typedef struct processingData_L1rx {
+  int frame_rx;
+  int slot_rx;
+  PHY_VARS_gNB *gNB;
+} processingData_L1rx_t;
 #endif

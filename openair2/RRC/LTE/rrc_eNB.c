@@ -55,7 +55,7 @@
 #include "LTE_HandoverCommand.h"
 #include "rlc.h"
 #include "rrc_eNB_UE_context.h"
-#include "platform_types.h"
+#include "common/platform_types.h"
 #include "LTE_SL-CommConfig-r12.h"
 #include "LTE_PeriodicBSR-Timer-r12.h"
 #include "LTE_RetxBSR-Timer-r12.h"
@@ -212,7 +212,7 @@ init_SI(
         LOG_I(RRC, PROTOCOL_RRC_CTXT_FMT" SIB1-MBMS Subcarrier Spacing MBMS: %s\n",
               PROTOCOL_RRC_CTXT_ARGS(ctxt_pP),
               (*RC.rrc[ctxt_pP->module_id]->carrier[CC_id].sib1_MBMS->systemInformationBlockType13_r14->mbsfn_AreaInfoList_r9.list.array[i]->ext1->subcarrierSpacingMBMS_r14 ==
-               LTE_MBSFN_AreaInfo_r9__ext1__subcarrierSpacingMBMS_r14_khz_1dot25 ? "khz_1dot25": "khz_7dot5"));
+               LTE_MBSFN_AreaInfo_r9__ext1__subcarrierSpacingMBMS_r14_kHz1dot25 ? "khz_1dot25": "khz_7dot5"));
       }
     }
 
@@ -3244,8 +3244,8 @@ void rrc_eNB_generate_defaultRRCConnectionReconfiguration(const protocol_ctxt_t 
 
 //-----------------------------------------------------------------------------
 /**
- * @fn    :encode_CG_ConfigInfo
- * @param   :enc_buf to store the encoded bits
+ * @fn    encode_CG_ConfigInfo
+ * @param   :buffer to store the encoded bits
  * @param   :ue_context_pP ue context used to fill CG-ConfigInfo
  * @param   :enc_size to store thre size of encoded size
  *      this api is to fill and encode CG-ConfigInfo
