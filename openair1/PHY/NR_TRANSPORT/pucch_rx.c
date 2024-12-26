@@ -75,12 +75,8 @@ void nr_fill_pucch(PHY_VARS_gNB *gNB,
       pucch->beam_nb = 0;
       if (gNB->common_vars.beam_id) {
         int fapi_beam_idx = pucch_pdu->beamforming.prgs_list[0].dig_bf_interface_list[0].beam_idx;
-        pucch->beam_nb = beam_index_allocation(fapi_beam_idx,
-                                               &gNB->common_vars,
-                                               slot,
-                                               NR_NUMBER_OF_SYMBOLS_PER_SLOT,
-                                               pucch_pdu->start_symbol_index,
-                                               pucch_pdu->nr_of_symbols);
+        int bitmap = SL_to_bitmap(pucch_pdu->start_symbol_index, pucch_pdu->nr_of_symbols);
+        pucch->beam_nb = beam_index_allocation(fapi_beam_idx, &gNB->common_vars, slot, NR_NUMBER_OF_SYMBOLS_PER_SLOT, bitmap);
       }
       memcpy((void *)&pucch->pucch_pdu, (void *)pucch_pdu, sizeof(nfapi_nr_pucch_pdu_t));
       LOG_D(PHY,
@@ -902,8 +898,8 @@ static simde__m256i pucch2_11bit[2048 * 2];
 static simde__m256i *pucch2_lut[9] =
     {pucch2_3bit, pucch2_4bit, pucch2_5bit, pucch2_6bit, pucch2_7bit, pucch2_8bit, pucch2_9bit, pucch2_10bit, pucch2_11bit};
 
-simde__m64 pucch2_polar_4bit[16];
-simde__m128i pucch2_polar_llr_num_lut[256],pucch2_polar_llr_den_lut[256];
+static simde__m64 pucch2_polar_4bit[16];
+static simde__m128i pucch2_polar_llr_num_lut[256], pucch2_polar_llr_den_lut[256];
 
 void init_pucch2_luts() {
 

@@ -28,30 +28,49 @@
  * \email: raymond.knopp@eurecom.fr
  */
 
+#include <assert.h>
+#include <assertions.h>
+#include <openair2/RRC/NR/nr_rrc_proto.h>
+#include <openair2/RRC/NR/rrc_gNB_UE_context.h>
+#include <openair3/ocp-gtpu/gtp_itf.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include "MESSAGES/asn1_msg.h"
+#include "OCTET_STRING.h"
+#include "PHY/defs_common.h"
+#include "RRC/NR/nr_rrc_config.h"
+#include "T.h"
+#include "asn_codecs.h"
+#include "asn_internal.h"
+#include "assertions.h"
+#include "common/ngran_types.h"
+#include "common/ran_context.h"
+#include "common/utils/T/T.h"
+#include "constr_TYPE.h"
+#include "executables/nr-softmodem.h"
+#include "executables/softmodem-common.h"
+#include "gtpv1_u_messages_types.h"
+#include "intertask_interface.h"
+#include "ngap_messages_types.h"
+#include "nr_pdcp/nr_pdcp_entity.h"
+#include "nr_pdcp/nr_pdcp_oai_api.h"
 #include "nr_rrc_defs.h"
-#include "NR_RRCReconfiguration.h"
-#include "NR_UE-NR-Capability.h"
-//#include "NR_UE-CapabilityRAT-ContainerList.h"
-#include "LTE_UE-CapabilityRAT-ContainerList.h"
-#include "NR_CellGroupConfig.h"
-#include "NR_CG-Config.h"
-//#include "NR_SRB-ToAddModList.h"
-#include "uper_encoder.h"
-#include "uper_decoder.h"
+#include "openair2/F1AP/f1ap_ids.h"
 #include "openair2/LAYER2/NR_MAC_gNB/mac_proto.h"
 #include "openair2/LAYER2/nr_rlc/nr_rlc_oai_api.h"
 #include "openair2/RRC/NR/rrc_gNB_GTPV1U.h"
-#include "openair2/F1AP/f1ap_ids.h"
-#include "executables/softmodem-common.h"
-#include "executables/nr-softmodem.h"
-#include <openair2/RRC/NR/rrc_gNB_UE_context.h>
-#include <openair3/ocp-gtpu/gtp_itf.h>
-#include "openair3/SECU/secu_defs.h"
 #include "openair3/SECU/key_nas_deriver.h"
-
-#include <openair2/RRC/NR/nr_rrc_proto.h>
-#include "nr_pdcp/nr_pdcp_oai_api.h"
-#include "MESSAGES/asn1_msg.h"
+#include "rlc.h"
+#include "s1ap_messages_types.h"
+#include "tree.h"
+#include "uper_decoder.h"
+#include "uper_encoder.h"
+#include "x2ap_messages_types.h"
+#include "xer_decoder.h"
+#include "xer_encoder.h"
 
 void rrc_parse_ue_capabilities(gNB_RRC_INST *rrc, NR_UE_CapabilityRAT_ContainerList_t *UE_CapabilityRAT_ContainerList, x2ap_ENDC_sgnb_addition_req_t *m, NR_CG_ConfigInfo_IEs_t *cg_config_info)
 {
@@ -116,7 +135,7 @@ RB_PROTOTYPE(rrc_nr_ue_tree_s, rrc_gNB_ue_context_s, entries,
 
 void rrc_add_nsa_user(gNB_RRC_INST *rrc, rrc_gNB_ue_context_t *ue_context_p, x2ap_ENDC_sgnb_addition_req_t *m)
 {
-  AssertFatal(!get_softmodem_params()->sa, "%s() cannot be called in SA mode, it is intrinsically for NSA\n", __func__);
+  AssertFatal(!IS_SA_MODE(get_softmodem_params()), "%s() cannot be called in SA mode, it is intrinsically for NSA\n", __func__);
   // generate nr-Config-r15 containers for LTE RRC : inside message for X2 EN-DC (CG-Config Message from 38.331)
   const nr_mac_config_t *configuration = &RC.nrmac[0]->radio_config;
   MessageDef *msg;
@@ -153,7 +172,7 @@ void rrc_add_nsa_user(gNB_RRC_INST *rrc, rrc_gNB_ue_context_t *ue_context_p, x2a
   }
 
   // NR RRCReconfiguration
-  if (get_softmodem_params()->phy_test == 1 || get_softmodem_params()->do_ra == 1 || get_softmodem_params()->sa == 1){
+  if (get_softmodem_params()->phy_test == 1 || get_softmodem_params()->do_ra == 1) {
     UE->rb_config = get_default_rbconfig(10 /* EPS bearer ID */, 1 /* drb ID */, NR_CipheringAlgorithm_nea0, NR_SecurityConfig__keyToUse_master);
   } else {
     /* TODO: handle more than one bearer */
@@ -391,12 +410,12 @@ void rrc_remove_nsa_user(gNB_RRC_INST *rrc, int rnti) {
   rrc_gNB_ue_context_t *ue_context;
   int                  e_rab;
 
-  LOG_D(RRC, "calling rrc_remove_nsa_user rnti %d\n", rnti);
+  LOG_D(RRC, "calling rrc_remove_nsa_user rnti %x\n", rnti);
   PROTOCOL_CTXT_SET_BY_MODULE_ID(&ctxt, rrc->module_id, GNB_FLAG_YES, rnti, 0, 0, rrc->module_id);
 
   ue_context = rrc_gNB_get_ue_context_by_rnti_any_du(rrc, rnti);
   if (ue_context == NULL) {
-    LOG_W(RRC, "rrc_remove_nsa_user: rnti %d not found\n", rnti);
+    LOG_W(RRC, "rrc_remove_nsa_user: rnti %x not found\n", rnti);
     return;
   }
 
@@ -411,7 +430,7 @@ void rrc_remove_nsa_user(gNB_RRC_INST *rrc, int rnti) {
   gtpv1u_enb_delete_tunnel_req_t tmp={0};
   tmp.rnti=rnti;
   tmp.from_gnb=1;
-  LOG_D(RRC, "ue_context->ue_context.nb_of_e_rabs %d will be deleted for rnti %d\n", ue_context->ue_context.nb_of_e_rabs, rnti);
+  LOG_D(RRC, "ue_context->ue_context.nb_of_e_rabs %d will be deleted for rnti %x\n", ue_context->ue_context.nb_of_e_rabs, rnti);
   for (e_rab = 0; e_rab < ue_context->ue_context.nb_of_e_rabs; e_rab++) {
     tmp.eps_bearer_id[tmp.num_erab++]= ue_context->ue_context.nsa_gtp_ebi[e_rab];
     // erase data

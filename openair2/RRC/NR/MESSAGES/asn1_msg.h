@@ -31,17 +31,30 @@
 #ifndef __RRC_NR_MESSAGES_ASN1_MSG__H__
 #define __RRC_NR_MESSAGES_ASN1_MSG__H__
 
+#include <common/utils/assertions.h>
+#include <stdint.h>
 #include <stdio.h>
-#include <sys/types.h>
-#include <stdlib.h> /* for atoi(3) */
-#include <unistd.h> /* for getopt(3) */
-#include <string.h> /* for strerror(3) */
-#include <sysexits.h> /* for EX_* exit codes */
-#include <errno.h>  /* for errno */
-
-#include <asn_application.h>
-
-#include "RRC/NR/nr_rrc_config.h"
+#include "NR_ARFCN-ValueNR.h"
+#include "NR_CellGroupConfig.h"
+#include "NR_CipheringAlgorithm.h"
+#include "NR_DRB-ToAddModList.h"
+#include "NR_DRB-ToReleaseList.h"
+#include "NR_IntegrityProtAlgorithm.h"
+#include "NR_LogicalChannelConfig.h"
+#include "NR_MeasConfig.h"
+#include "NR_MeasTiming.h"
+#include "NR_RLC-BearerConfig.h"
+#include "NR_RLC-Config.h"
+#include "NR_RRC-TransactionIdentifier.h"
+#include "NR_RadioBearerConfig.h"
+#include "NR_ReestablishmentCause.h"
+#include "NR_SRB-ToAddModList.h"
+#include "NR_SecurityConfig.h"
+#include "RRC/NR/nr_rrc_defs.h"
+#include "ds/seq_arr.h"
+#include "rrc_messages_types.h"
+struct NR_RRCReconfiguration_v1530_IEs__dedicatedNAS_MessageList;
+struct asn_TYPE_descriptor_s;
 
 /*
  * The variant of the above function which dumps the BASIC-XER (XER_F_BASIC)

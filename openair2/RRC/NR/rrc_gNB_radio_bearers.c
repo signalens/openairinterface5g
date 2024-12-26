@@ -20,8 +20,17 @@
  */
 
 #include "rrc_gNB_radio_bearers.h"
+#include <stddef.h>
+#include "E1AP_RLC-Mode.h"
+#include "PHY/defs_common.h"
+#include "RRC/NR/nr_rrc_defs.h"
+#include "T.h"
+#include "asn_internal.h"
+#include "assertions.h"
+#include "common/platform_constants.h"
+#include "common/utils/T/T.h"
+#include "ngap_messages_types.h"
 #include "oai_asn1.h"
-#include "openair2/E1AP/e1ap.h"
 
 rrc_pdu_session_param_t *find_pduSession(gNB_RRC_UE_t *ue, int id, bool create)
 {

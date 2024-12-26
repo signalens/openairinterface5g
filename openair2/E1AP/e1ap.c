@@ -33,6 +33,7 @@
 #include "e1ap_default_values.h"
 #include "gtp_itf.h"
 #include "openair2/LAYER2/nr_pdcp/cucp_cuup_handler.h"
+#include "lib/e1ap_bearer_context_management.h"
 
 #define E1AP_NUM_MSG_HANDLERS 14
 typedef int (*e1ap_message_processing_t)(sctp_assoc_t assoc_id, e1ap_upcp_inst_t *inst, const E1AP_E1AP_PDU_t *message_p);
@@ -572,296 +573,17 @@ int e1ap_handle_RELEASE_ACKNOWLEDGE(instance_t instance, sctp_assoc_t assoc_id, 
   return -1;
 }
 
-/*
-  BEARER CONTEXT SETUP REQUEST
-*/
-
-static int fill_BEARER_CONTEXT_SETUP_REQUEST(e1ap_bearer_setup_req_t *const bearerCxt, E1AP_E1AP_PDU_t *pdu)
-{
-  pdu->present = E1AP_E1AP_PDU_PR_initiatingMessage;
-  asn1cCalloc(pdu->choice.initiatingMessage, msg);
-  msg->procedureCode = E1AP_ProcedureCode_id_bearerContextSetup;
-  msg->criticality   = E1AP_Criticality_reject;
-  msg->value.present = E1AP_InitiatingMessage__value_PR_BearerContextSetupRequest;
-  E1AP_BearerContextSetupRequest_t *out = &pdu->choice.initiatingMessage->value.choice.BearerContextSetupRequest;
-  /* mandatory */
-  /* c1. gNB-CU-UP UE E1AP ID */
-  asn1cSequenceAdd(out->protocolIEs.list, E1AP_BearerContextSetupRequestIEs_t, ieC1);
-  ieC1->id                         = E1AP_ProtocolIE_ID_id_gNB_CU_CP_UE_E1AP_ID;
-  ieC1->criticality                = E1AP_Criticality_reject;
-  ieC1->value.present              = E1AP_BearerContextSetupRequestIEs__value_PR_GNB_CU_CP_UE_E1AP_ID;
-  ieC1->value.choice.GNB_CU_CP_UE_E1AP_ID = bearerCxt->gNB_cu_cp_ue_id;
-  /* mandatory */
-  /* c2. Security Information */
-  asn1cSequenceAdd(out->protocolIEs.list, E1AP_BearerContextSetupRequestIEs_t, ieC2);
-  ieC2->id                         = E1AP_ProtocolIE_ID_id_SecurityInformation;
-  ieC2->criticality                = E1AP_Criticality_reject;
-  ieC2->value.present              = E1AP_BearerContextSetupRequestIEs__value_PR_SecurityInformation;
-  ieC2->value.choice.SecurityInformation.securityAlgorithm.cipheringAlgorithm = bearerCxt->cipheringAlgorithm;
-  OCTET_STRING_fromBuf(&ieC2->value.choice.SecurityInformation.uPSecuritykey.encryptionKey,
-                       bearerCxt->encryptionKey, 16);
-
-  asn1cCallocOne(ieC2->value.choice.SecurityInformation.securityAlgorithm.integrityProtectionAlgorithm, bearerCxt->integrityProtectionAlgorithm);
-  asn1cCalloc(ieC2->value.choice.SecurityInformation.uPSecuritykey.integrityProtectionKey, protKey);
-  OCTET_STRING_fromBuf(protKey, bearerCxt->integrityProtectionKey, 16);
-  /* mandatory */
-  /* c3. UE DL Aggregate Maximum Bit Rate */
-  asn1cSequenceAdd(out->protocolIEs.list, E1AP_BearerContextSetupRequestIEs_t, ieC3);
-  ieC3->id                         = E1AP_ProtocolIE_ID_id_UEDLAggregateMaximumBitRate;
-  ieC3->criticality                = E1AP_Criticality_reject;
-  ieC3->value.present              = E1AP_BearerContextSetupRequestIEs__value_PR_BitRate;
-  asn_long2INTEGER(&ieC3->value.choice.BitRate, bearerCxt->ueDlAggMaxBitRate);
-  /* mandatory */
-  /* c4. Serving PLMN */
-  asn1cSequenceAdd(out->protocolIEs.list, E1AP_BearerContextSetupRequestIEs_t, ieC4);
-  ieC4->id                         = E1AP_ProtocolIE_ID_id_Serving_PLMN;
-  ieC4->criticality                = E1AP_Criticality_ignore;
-  ieC4->value.present              = E1AP_BearerContextSetupRequestIEs__value_PR_PLMN_Identity;
-  PLMN_ID_t *servingPLMN = &bearerCxt->servingPLMNid;
-  MCC_MNC_TO_PLMNID(servingPLMN->mcc, servingPLMN->mnc, servingPLMN->mnc_digit_length, &ieC4->value.choice.PLMN_Identity);
-  /* mandatory */
-  /* Activity Notification Level */
-  asn1cSequenceAdd(out->protocolIEs.list, E1AP_BearerContextSetupRequestIEs_t, ieC5);
-  ieC5->id                         = E1AP_ProtocolIE_ID_id_ActivityNotificationLevel;
-  ieC5->criticality                = E1AP_Criticality_reject;
-  ieC5->value.present              = E1AP_BearerContextSetupRequestIEs__value_PR_ActivityNotificationLevel;
-  ieC5->value.choice.ActivityNotificationLevel = E1AP_ActivityNotificationLevel_pdu_session;// TODO: Remove hard coding
-  /* mandatory */
-  /*  */
-  asn1cSequenceAdd(out->protocolIEs.list, E1AP_BearerContextSetupRequestIEs_t, ieC6);
-  ieC6->id            = E1AP_ProtocolIE_ID_id_System_BearerContextSetupRequest;
-  ieC6->criticality   = E1AP_Criticality_reject;
-  ieC6->value.present = E1AP_BearerContextSetupRequestIEs__value_PR_System_BearerContextSetupRequest;
-  ieC6->value.choice.System_BearerContextSetupRequest.present = E1AP_System_BearerContextSetupRequest_PR_nG_RAN_BearerContextSetupRequest;
-  E1AP_ProtocolIE_Container_4932P19_t *msgNGRAN_list = calloc(1, sizeof(E1AP_ProtocolIE_Container_4932P19_t));
-  ieC6->value.choice.System_BearerContextSetupRequest.choice.nG_RAN_BearerContextSetupRequest = (struct E1AP_ProtocolIE_Container *) msgNGRAN_list;
-  asn1cSequenceAdd(msgNGRAN_list->list, E1AP_NG_RAN_BearerContextSetupRequest_t, msgNGRAN);
-  msgNGRAN->id = E1AP_ProtocolIE_ID_id_PDU_Session_Resource_To_Setup_List;
-  msgNGRAN->criticality = E1AP_Criticality_reject;
-  msgNGRAN->value.present = E1AP_NG_RAN_BearerContextSetupRequest__value_PR_PDU_Session_Resource_To_Setup_List;
-  E1AP_PDU_Session_Resource_To_Setup_List_t *pdu2Setup = &msgNGRAN->value.choice.PDU_Session_Resource_To_Setup_List;
-  for (pdu_session_to_setup_t *i = bearerCxt->pduSession; i < bearerCxt->pduSession + bearerCxt->numPDUSessions; i++) {
-    asn1cSequenceAdd(pdu2Setup->list, E1AP_PDU_Session_Resource_To_Setup_Item_t, ieC6_1);
-    ieC6_1->pDU_Session_ID = i->sessionId;
-    ieC6_1->pDU_Session_Type = i->sessionType;
-
-    INT8_TO_OCTET_STRING(i->nssai.sst, &ieC6_1->sNSSAI.sST);
-    if (i->nssai.sd != 0xffffff) {
-      ieC6_1->sNSSAI.sD = malloc(sizeof(*ieC6_1->sNSSAI.sD));
-      AssertFatal(ieC6_1->sNSSAI.sD != NULL, "out of memory\n");
-      INT24_TO_OCTET_STRING(i->nssai.sd, ieC6_1->sNSSAI.sD);
-    }
-
-    ieC6_1->securityIndication.integrityProtectionIndication = i->integrityProtectionIndication;
-    ieC6_1->securityIndication.confidentialityProtectionIndication = i->confidentialityProtectionIndication;
-
-    ieC6_1->nG_UL_UP_TNL_Information.present = E1AP_UP_TNL_Information_PR_gTPTunnel;
-    asn1cCalloc(ieC6_1->nG_UL_UP_TNL_Information.choice.gTPTunnel, gTPTunnel);
-    TRANSPORT_LAYER_ADDRESS_IPv4_TO_BIT_STRING(i->tlAddress, &gTPTunnel->transportLayerAddress);
-    INT32_TO_OCTET_STRING(i->teId, &gTPTunnel->gTP_TEID);
-
-    for (DRB_nGRAN_to_setup_t *j = i->DRBnGRanList; j < i->DRBnGRanList + i->numDRB2Setup; j++) {
-      asn1cSequenceAdd(ieC6_1->dRB_To_Setup_List_NG_RAN.list, E1AP_DRB_To_Setup_Item_NG_RAN_t, ieC6_1_1);
-      ieC6_1_1->dRB_ID = j->id;
-      /* SDAP config */
-      ieC6_1_1->sDAP_Configuration.defaultDRB = j->sdap_config.defaultDRB ? E1AP_DefaultDRB_true : E1AP_DefaultDRB_false;
-      ieC6_1_1->sDAP_Configuration.sDAP_Header_UL = j->sdap_config.sDAP_Header_UL;
-      ieC6_1_1->sDAP_Configuration.sDAP_Header_DL = j->sdap_config.sDAP_Header_DL;
-      /* PDCP Config */
-      ieC6_1_1->pDCP_Configuration.pDCP_SN_Size_UL = j->pdcp_config.pDCP_SN_Size_UL;
-      ieC6_1_1->pDCP_Configuration.pDCP_SN_Size_DL = j->pdcp_config.pDCP_SN_Size_DL;
-      asn1cCallocOne(ieC6_1_1->pDCP_Configuration.discardTimer, j->pdcp_config.discardTimer);
-      E1AP_T_ReorderingTimer_t *roTimer = calloc(1, sizeof(E1AP_T_ReorderingTimer_t));
-      ieC6_1_1->pDCP_Configuration.t_ReorderingTimer = roTimer;
-      roTimer->t_Reordering = j->pdcp_config.reorderingTimer;
-      ieC6_1_1->pDCP_Configuration.rLC_Mode = j->pdcp_config.rLC_Mode;
-      /* Cell Group config */
-      for (cell_group_t *k = j->cellGroupList; k < j->cellGroupList + j->numCellGroups; k++) {
-        asn1cSequenceAdd(ieC6_1_1->cell_Group_Information.list, E1AP_Cell_Group_Information_Item_t, ieC6_1_1_1);
-        ieC6_1_1_1->cell_Group_ID = k->id;
-      }
-      /* QoS Flows */
-      for (qos_flow_to_setup_t *k = j->qosFlows; k < j->qosFlows + j->numQosFlow2Setup; k++) {
-        asn1cSequenceAdd(ieC6_1_1->qos_flow_Information_To_Be_Setup, E1AP_QoS_Flow_QoS_Parameter_Item_t, ieC6_1_1_1);
-        ieC6_1_1_1->qoS_Flow_Identifier = k->qfi;
-        /* QoS Characteristics */
-        qos_characteristics_t *qos_char_in = &k->qos_params.qos_characteristics;
-        if (qos_char_in->qos_type == NON_DYNAMIC) { // non Dynamic 5QI
-          ieC6_1_1_1->qoSFlowLevelQoSParameters.qoS_Characteristics.present = E1AP_QoS_Characteristics_PR_non_Dynamic_5QI;
-          asn1cCalloc(ieC6_1_1_1->qoSFlowLevelQoSParameters.qoS_Characteristics.choice.non_Dynamic_5QI, non_Dynamic_5QI);
-          non_Dynamic_5QI->fiveQI = qos_char_in->non_dynamic.fiveqi;
-        } else { // dynamic 5QI
-          ieC6_1_1_1->qoSFlowLevelQoSParameters.qoS_Characteristics.present = E1AP_QoS_Characteristics_PR_dynamic_5QI;
-          asn1cCalloc(ieC6_1_1_1->qoSFlowLevelQoSParameters.qoS_Characteristics.choice.dynamic_5QI, dynamic_5QI);
-          dynamic_5QI->qoSPriorityLevel = qos_char_in->dynamic.qos_priority_level;
-          dynamic_5QI->packetDelayBudget = qos_char_in->dynamic.packet_delay_budget;
-          dynamic_5QI->packetErrorRate.pER_Scalar = qos_char_in->dynamic.packet_error_rate.per_scalar;
-          dynamic_5QI->packetErrorRate.pER_Exponent = qos_char_in->dynamic.packet_error_rate.per_exponent;
-        }
-        /* QoS Retention Priority */
-        ngran_allocation_retention_priority_t *rent_priority_in = &k->qos_params.alloc_reten_priority;
-        ieC6_1_1_1->qoSFlowLevelQoSParameters.nGRANallocationRetentionPriority.priorityLevel = rent_priority_in->priority_level;
-        ieC6_1_1_1->qoSFlowLevelQoSParameters.nGRANallocationRetentionPriority.pre_emptionCapability =
-            rent_priority_in->preemption_capability;
-        ieC6_1_1_1->qoSFlowLevelQoSParameters.nGRANallocationRetentionPriority.pre_emptionVulnerability =
-            rent_priority_in->preemption_vulnerability;
-      }
-    }
-  }
-  return 0;
-}
-
 void e1apCUCP_send_BEARER_CONTEXT_SETUP_REQUEST(sctp_assoc_t assoc_id, e1ap_bearer_setup_req_t *const bearerCxt)
 {
-  E1AP_E1AP_PDU_t pdu = {0};
-  fill_BEARER_CONTEXT_SETUP_REQUEST(bearerCxt, &pdu);
-  e1ap_encode_send(CPtype, assoc_id, &pdu, 0, __func__);
-}
-
-static void fill_BEARER_CONTEXT_SETUP_RESPONSE(const e1ap_bearer_setup_resp_t *resp, E1AP_E1AP_PDU_t *pdu)
-{
-  /* Create */
-  /* 0. pdu Type */
-  pdu->present = E1AP_E1AP_PDU_PR_successfulOutcome;
-  asn1cCalloc(pdu->choice.successfulOutcome, msg);
-  msg->procedureCode = E1AP_ProcedureCode_id_bearerContextSetup;
-  msg->criticality = E1AP_Criticality_reject;
-  msg->value.present = E1AP_SuccessfulOutcome__value_PR_BearerContextSetupResponse;
-  E1AP_BearerContextSetupResponse_t *out = &pdu->choice.successfulOutcome->value.choice.BearerContextSetupResponse;
-  /* mandatory */
-  /* c1. gNB-CU-CP UE E1AP ID */
-  asn1cSequenceAdd(out->protocolIEs.list, E1AP_BearerContextSetupResponseIEs_t, ieC1);
-  ieC1->id = E1AP_ProtocolIE_ID_id_gNB_CU_CP_UE_E1AP_ID;
-  ieC1->criticality = E1AP_Criticality_reject;
-  ieC1->value.present = E1AP_BearerContextSetupResponseIEs__value_PR_GNB_CU_CP_UE_E1AP_ID;
-  ieC1->value.choice.GNB_CU_CP_UE_E1AP_ID = resp->gNB_cu_cp_ue_id;
-  /* mandatory */
-  /* c2. gNB-CU-UP UE E1AP ID */
-  asn1cSequenceAdd(out->protocolIEs.list, E1AP_BearerContextSetupResponseIEs_t, ieC2);
-  ieC2->id = E1AP_ProtocolIE_ID_id_gNB_CU_UP_UE_E1AP_ID;
-  ieC2->criticality = E1AP_Criticality_reject;
-  ieC2->value.present = E1AP_BearerContextSetupResponseIEs__value_PR_GNB_CU_UP_UE_E1AP_ID;
-  ieC2->value.choice.GNB_CU_CP_UE_E1AP_ID = resp->gNB_cu_up_ue_id;
-
-  asn1cSequenceAdd(out->protocolIEs.list, E1AP_BearerContextSetupResponseIEs_t, ieC3);
-  ieC3->id = E1AP_ProtocolIE_ID_id_System_BearerContextSetupResponse;
-  ieC3->criticality = E1AP_Criticality_reject;
-  ieC3->value.present = E1AP_BearerContextSetupResponseIEs__value_PR_System_BearerContextSetupResponse;
-  /*if (0) { // EUTRAN
-    ieC3->value.choice.System_BearerContextSetupResponse.present =
-  E1AP_System_BearerContextSetupResponse_PR_e_UTRAN_BearerContextSetupResponse;
-  E1AP_ProtocolIE_Container_4932P21_t *msgEUTRAN_list = calloc(1,
-  sizeof(E1AP_ProtocolIE_Container_4932P21_t));
-    ieC3->value.choice.System_BearerContextSetupResponse.choice.e_UTRAN_BearerContextSetupResponse
-  = (struct E1AP_ProtocolIE_Container *) msgEUTRAN_list;
-  asn1cSequenceAdd(msgEUTRAN_list->list,
-  E1AP_EUTRAN_BearerContextSetupResponse_t, msgEUTRAN); msgEUTRAN->id =
-  E1AP_ProtocolIE_ID_id_DRB_Setup_List_EUTRAN; msgEUTRAN->criticality =
-  E1AP_Criticality_reject; msgEUTRAN->value.present =
-  E1AP_EUTRAN_BearerContextSetupResponse__value_PR_DRB_Setup_List_EUTRAN;
-    E1AP_DRB_Setup_List_EUTRAN_t *drbSetup =
-  &msgEUTRAN->value.choice.DRB_Setup_List_EUTRAN;
-
-    for (drb_setup_t *i=resp->DRBList; i < resp->DRBList+resp->numDRBs; i++) {
-      asn1cSequenceAdd(drbSetup->list, E1AP_DRB_Setup_Item_EUTRAN_t, ieC3_1);
-      ieC3_1->dRB_ID = i->drbId;
-
-      ieC3_1->s1_DL_UP_TNL_Information.present =
-  E1AP_UP_TNL_Information_PR_gTPTunnel;
-      asn1cCalloc(ieC3_1->s1_DL_UP_TNL_Information.choice.gTPTunnel, gTPTunnel);
-      TRANSPORT_LAYER_ADDRESS_IPv4_TO_BIT_STRING(i->tlAddress,
-  &gTPTunnel->transportLayerAddress); INT32_TO_OCTET_STRING(i->teId,
-  &gTPTunnel->gTP_TEID);
-
-      for (up_params_t *j=i->UpParamList; j < i->UpParamList+i->numUpParam; j++)
-  { asn1cSequenceAdd(ieC3_1->uL_UP_Transport_Parameters.list,
-  E1AP_UP_Parameters_Item_t, ieC3_1_1); ieC3_1_1->uP_TNL_Information.present =
-  E1AP_UP_TNL_Information_PR_gTPTunnel;
-        asn1cCalloc(ieC3_1_1->uP_TNL_Information.choice.gTPTunnel, gTPTunnel);
-        TRANSPORT_LAYER_ADDRESS_IPv4_TO_BIT_STRING(j->tlAddress,
-  &gTPTunnel->transportLayerAddress); INT32_TO_OCTET_STRING(j->teId,
-  &gTPTunnel->gTP_TEID);
-      }
-    }
-  } else */
-  {
-    ieC3->value.choice.System_BearerContextSetupResponse.present =
-        E1AP_System_BearerContextSetupResponse_PR_nG_RAN_BearerContextSetupResponse;
-    E1AP_ProtocolIE_Container_4932P22_t *msgNGRAN_list = calloc(1, sizeof(E1AP_ProtocolIE_Container_4932P22_t));
-    ieC3->value.choice.System_BearerContextSetupResponse.choice.nG_RAN_BearerContextSetupResponse =
-        (struct E1AP_ProtocolIE_Container *)msgNGRAN_list;
-    asn1cSequenceAdd(msgNGRAN_list->list, E1AP_NG_RAN_BearerContextSetupResponse_t, msgNGRAN);
-    msgNGRAN->id = E1AP_ProtocolIE_ID_id_PDU_Session_Resource_Setup_List;
-    msgNGRAN->criticality = E1AP_Criticality_reject;
-    msgNGRAN->value.present = E1AP_NG_RAN_BearerContextSetupResponse__value_PR_PDU_Session_Resource_Setup_List;
-    E1AP_PDU_Session_Resource_Setup_List_t *pduSetup = &msgNGRAN->value.choice.PDU_Session_Resource_Setup_List;
-
-    for (const pdu_session_setup_t *i = resp->pduSession; i < resp->pduSession + resp->numPDUSessions; i++) {
-      asn1cSequenceAdd(pduSetup->list, E1AP_PDU_Session_Resource_Setup_Item_t, ieC3_1);
-      ieC3_1->pDU_Session_ID = i->id;
-
-      ieC3_1->nG_DL_UP_TNL_Information.present = E1AP_UP_TNL_Information_PR_gTPTunnel;
-      asn1cCalloc(ieC3_1->nG_DL_UP_TNL_Information.choice.gTPTunnel, gTPTunnel);
-      TRANSPORT_LAYER_ADDRESS_IPv4_TO_BIT_STRING(i->tlAddress, &gTPTunnel->transportLayerAddress);
-      INT32_TO_OCTET_STRING(i->teId, &gTPTunnel->gTP_TEID);
-
-      for (const DRB_nGRAN_setup_t *j = i->DRBnGRanList; j < i->DRBnGRanList + i->numDRBSetup; j++) {
-        asn1cSequenceAdd(ieC3_1->dRB_Setup_List_NG_RAN.list, E1AP_DRB_Setup_Item_NG_RAN_t, ieC3_1_1);
-        ieC3_1_1->dRB_ID = j->id;
-
-        for (const up_params_t *k = j->UpParamList; k < j->UpParamList + j->numUpParam; k++) {
-          asn1cSequenceAdd(ieC3_1_1->uL_UP_Transport_Parameters.list, E1AP_UP_Parameters_Item_t, ieC3_1_1_1);
-          ieC3_1_1_1->uP_TNL_Information.present = E1AP_UP_TNL_Information_PR_gTPTunnel;
-          asn1cCalloc(ieC3_1_1_1->uP_TNL_Information.choice.gTPTunnel, gTPTunnel);
-          TRANSPORT_LAYER_ADDRESS_IPv4_TO_BIT_STRING(k->tlAddress, &gTPTunnel->transportLayerAddress);
-          INT32_TO_OCTET_STRING(k->teId, &gTPTunnel->gTP_TEID);
-        }
-
-        for (const qos_flow_setup_t *k = j->qosFlows; k < j->qosFlows + j->numQosFlowSetup; k++) {
-          asn1cSequenceAdd(ieC3_1_1->flow_Setup_List.list, E1AP_QoS_Flow_Item_t, ieC3_1_1_1);
-          ieC3_1_1_1->qoS_Flow_Identifier = k->qfi;
-        }
-      }
-
-      if (i->numDRBFailed > 0)
-        ieC3_1->dRB_Failed_List_NG_RAN = calloc(1, sizeof(E1AP_DRB_Failed_List_NG_RAN_t));
-
-      for (const DRB_nGRAN_failed_t *j = i->DRBnGRanFailedList; j < i->DRBnGRanFailedList + i->numDRBFailed; j++) {
-        asn1cSequenceAdd(ieC3_1->dRB_Failed_List_NG_RAN->list, E1AP_DRB_Failed_Item_NG_RAN_t, ieC3_1_1);
-        ieC3_1_1->dRB_ID = j->id;
-
-        ieC3_1_1->cause.present = j->cause_type;
-        switch (ieC3_1_1->cause.present) {
-          case E1AP_Cause_PR_radioNetwork:
-            ieC3_1_1->cause.choice.radioNetwork = j->cause;
-            break;
-
-          case E1AP_Cause_PR_transport:
-            ieC3_1_1->cause.choice.transport = j->cause;
-            break;
-
-          case E1AP_Cause_PR_protocol:
-            ieC3_1_1->cause.choice.protocol = j->cause;
-            break;
-
-          case E1AP_Cause_PR_misc:
-            ieC3_1_1->cause.choice.misc = j->cause;
-            break;
-
-          default:
-            LOG_E(E1AP, "DRB setup failure cause out of expected range\n");
-            break;
-        }
-      }
-    }
-  }
+  E1AP_E1AP_PDU_t *pdu = encode_E1_bearer_context_setup_request(bearerCxt);
+  e1ap_encode_send(CPtype, assoc_id, pdu, 0, __func__);
 }
 
 void e1apCUUP_send_BEARER_CONTEXT_SETUP_RESPONSE(sctp_assoc_t assoc_id, const e1ap_bearer_setup_resp_t *resp)
 {
-  E1AP_E1AP_PDU_t pdu = {0};
-  fill_BEARER_CONTEXT_SETUP_RESPONSE(resp, &pdu);
-  e1ap_encode_send(UPtype, assoc_id, &pdu, 0, __func__);
+  // Encode
+  E1AP_E1AP_PDU_t *pdu = encode_E1_bearer_context_setup_response(resp);
+  e1ap_encode_send(UPtype, assoc_id, pdu, 0, __func__);
 }
 
 int e1apCUUP_send_BEARER_CONTEXT_SETUP_FAILURE(instance_t instance)
@@ -870,287 +592,27 @@ int e1apCUUP_send_BEARER_CONTEXT_SETUP_FAILURE(instance_t instance)
   return -1;
 }
 
-static void extract_BEARER_CONTEXT_SETUP_REQUEST(const E1AP_E1AP_PDU_t *pdu, e1ap_bearer_setup_req_t *bearerCxt)
-{
-  const E1AP_BearerContextSetupRequest_t *in = &pdu->choice.initiatingMessage->value.choice.BearerContextSetupRequest;
-  E1AP_BearerContextSetupRequestIEs_t *ie;
-
-  LOG_D(E1AP, "Bearer context setup number of IEs %d\n", in->protocolIEs.list.count);
-
-  for (int i = 0; i < in->protocolIEs.list.count; i++) {
-    ie = in->protocolIEs.list.array[i];
-
-    switch(ie->id) {
-      case E1AP_ProtocolIE_ID_id_gNB_CU_CP_UE_E1AP_ID:
-        DevAssert(ie->criticality == E1AP_Criticality_reject);
-        DevAssert(ie->value.present == E1AP_BearerContextSetupRequestIEs__value_PR_GNB_CU_CP_UE_E1AP_ID);
-        bearerCxt->gNB_cu_cp_ue_id = ie->value.choice.GNB_CU_CP_UE_E1AP_ID;
-        break;
-
-      case E1AP_ProtocolIE_ID_id_SecurityInformation:
-        DevAssert(ie->criticality == E1AP_Criticality_reject);
-        DevAssert(ie->value.present == E1AP_BearerContextSetupRequestIEs__value_PR_SecurityInformation);
-        bearerCxt->cipheringAlgorithm = ie->value.choice.SecurityInformation.securityAlgorithm.cipheringAlgorithm;
-        memcpy(bearerCxt->encryptionKey,
-               ie->value.choice.SecurityInformation.uPSecuritykey.encryptionKey.buf,
-               ie->value.choice.SecurityInformation.uPSecuritykey.encryptionKey.size);
-        if (ie->value.choice.SecurityInformation.securityAlgorithm.integrityProtectionAlgorithm) {
-          bearerCxt->integrityProtectionAlgorithm = *ie->value.choice.SecurityInformation.securityAlgorithm.integrityProtectionAlgorithm;
-        }
-        if (ie->value.choice.SecurityInformation.uPSecuritykey.integrityProtectionKey) {
-          memcpy(bearerCxt->integrityProtectionKey,
-                 ie->value.choice.SecurityInformation.uPSecuritykey.integrityProtectionKey->buf,
-                 ie->value.choice.SecurityInformation.uPSecuritykey.integrityProtectionKey->size);
-        }
-        break;
-
-      case E1AP_ProtocolIE_ID_id_UEDLAggregateMaximumBitRate:
-        DevAssert(ie->criticality == E1AP_Criticality_reject);
-        DevAssert(ie->value.present == E1AP_BearerContextSetupRequestIEs__value_PR_BitRate);
-        asn_INTEGER2long(&ie->value.choice.BitRate, &bearerCxt->ueDlAggMaxBitRate);
-        break;
-
-      case E1AP_ProtocolIE_ID_id_Serving_PLMN:
-        DevAssert(ie->criticality == E1AP_Criticality_ignore);
-        DevAssert(ie->value.present == E1AP_BearerContextSetupRequestIEs__value_PR_PLMN_Identity);
-        PLMNID_TO_MCC_MNC(&ie->value.choice.PLMN_Identity,
-                          bearerCxt->servingPLMNid.mcc,
-                          bearerCxt->servingPLMNid.mnc,
-                          bearerCxt->servingPLMNid.mnc_digit_length);
-        break;
-
-      case E1AP_ProtocolIE_ID_id_ActivityNotificationLevel:
-        DevAssert(ie->criticality == E1AP_Criticality_reject);
-        DevAssert(ie->value.present == E1AP_BearerContextSetupRequestIEs__value_PR_ActivityNotificationLevel);
-        bearerCxt->activityNotificationLevel = ie->value.choice.ActivityNotificationLevel;
-        break;
-
-      case E1AP_ProtocolIE_ID_id_System_BearerContextSetupRequest:
-        DevAssert(ie->criticality == E1AP_Criticality_reject);
-        DevAssert(ie->value.present == E1AP_BearerContextSetupRequestIEs__value_PR_System_BearerContextSetupRequest);
-        DevAssert(ie->value.choice.System_BearerContextSetupRequest.present ==
-                    E1AP_System_BearerContextSetupRequest_PR_nG_RAN_BearerContextSetupRequest);
-        DevAssert(ie->value.choice.System_BearerContextSetupRequest.choice.nG_RAN_BearerContextSetupRequest);
-        E1AP_ProtocolIE_Container_4932P19_t *msgNGRAN_list = (E1AP_ProtocolIE_Container_4932P19_t *) ie->value.choice.System_BearerContextSetupRequest.choice.nG_RAN_BearerContextSetupRequest;
-        E1AP_NG_RAN_BearerContextSetupRequest_t *msgNGRAN = msgNGRAN_list->list.array[0];
-        DevAssert(msgNGRAN_list->list.count == 1);
-        DevAssert(msgNGRAN->id == E1AP_ProtocolIE_ID_id_PDU_Session_Resource_To_Setup_List);
-        DevAssert(msgNGRAN->value.present == E1AP_NG_RAN_BearerContextSetupRequest__value_PR_PDU_Session_Resource_To_Setup_List);
-
-        E1AP_PDU_Session_Resource_To_Setup_List_t *pdu2SetupList = &msgNGRAN->value.choice.PDU_Session_Resource_To_Setup_List;
-        bearerCxt->numPDUSessions = pdu2SetupList->list.count;
-        for (int i = 0; i < pdu2SetupList->list.count; i++) {
-          pdu_session_to_setup_t *pdu_session = bearerCxt->pduSession + i;
-          E1AP_PDU_Session_Resource_To_Setup_Item_t *pdu2Setup = pdu2SetupList->list.array[i];
-
-          pdu_session->sessionId = pdu2Setup->pDU_Session_ID;
-          pdu_session->sessionType = pdu2Setup->pDU_Session_Type;
-
-          OCTET_STRING_TO_INT8(&pdu2Setup->sNSSAI.sST, pdu_session->nssai.sst);
-          pdu_session->nssai.sd = 0xffffff;
-          if (pdu2Setup->sNSSAI.sD != NULL)
-            OCTET_STRING_TO_INT24(pdu2Setup->sNSSAI.sD, pdu_session->nssai.sd);
-
-          pdu_session->integrityProtectionIndication = pdu2Setup->securityIndication.integrityProtectionIndication;
-          pdu_session->confidentialityProtectionIndication = pdu2Setup->securityIndication.confidentialityProtectionIndication;
-
-          if (pdu2Setup->nG_UL_UP_TNL_Information.choice.gTPTunnel) { // Optional IE
-            DevAssert(pdu2Setup->nG_UL_UP_TNL_Information.present ==
-                      E1AP_UP_TNL_Information_PR_gTPTunnel);
-            BIT_STRING_TO_TRANSPORT_LAYER_ADDRESS_IPv4(&pdu2Setup->nG_UL_UP_TNL_Information.choice.gTPTunnel->transportLayerAddress,
-                                                       pdu_session->tlAddress);
-            OCTET_STRING_TO_INT32(&pdu2Setup->nG_UL_UP_TNL_Information.choice.gTPTunnel->gTP_TEID, pdu_session->teId);
-          }
-
-          E1AP_DRB_To_Setup_List_NG_RAN_t *drb2SetupList = &pdu2Setup->dRB_To_Setup_List_NG_RAN;
-          pdu_session->numDRB2Setup = drb2SetupList->list.count;
-          for (int j = 0; j < drb2SetupList->list.count; j++) {
-            DRB_nGRAN_to_setup_t *drb = pdu_session->DRBnGRanList + j;
-            E1AP_DRB_To_Setup_Item_NG_RAN_t *drb2Setup = drb2SetupList->list.array[j];
-
-            drb->id = drb2Setup->dRB_ID;
-            /* SDAP */
-            drb->sdap_config.defaultDRB = drb2Setup->sDAP_Configuration.defaultDRB == E1AP_DefaultDRB_true;
-            drb->sdap_config.sDAP_Header_UL = drb2Setup->sDAP_Configuration.sDAP_Header_UL;
-            drb->sdap_config.sDAP_Header_DL = drb2Setup->sDAP_Configuration.sDAP_Header_DL;
-            /* PDCP */
-            drb->pdcp_config.pDCP_SN_Size_UL = drb2Setup->pDCP_Configuration.pDCP_SN_Size_UL;
-            drb->pdcp_config.pDCP_SN_Size_DL = drb2Setup->pDCP_Configuration.pDCP_SN_Size_DL;
-            if (drb2Setup->pDCP_Configuration.discardTimer) {
-              drb->pdcp_config.discardTimer = *drb2Setup->pDCP_Configuration.discardTimer;
-            }
-            if (drb2Setup->pDCP_Configuration.t_ReorderingTimer) {
-              drb->pdcp_config.reorderingTimer = drb2Setup->pDCP_Configuration.t_ReorderingTimer->t_Reordering;
-            }
-            drb->pdcp_config.rLC_Mode = drb2Setup->pDCP_Configuration.rLC_Mode;
-
-            E1AP_Cell_Group_Information_t *cellGroupList = &drb2Setup->cell_Group_Information;
-            drb->numCellGroups = cellGroupList->list.count;
-            for (int k = 0; k < cellGroupList->list.count; k++) {
-              E1AP_Cell_Group_Information_Item_t *cg2Setup = cellGroupList->list.array[k];
-
-              drb->cellGroupList[k].id = cg2Setup->cell_Group_ID;
-            }
-
-            E1AP_QoS_Flow_QoS_Parameter_List_t *qos2SetupList = &drb2Setup->qos_flow_Information_To_Be_Setup;
-            drb->numQosFlow2Setup = qos2SetupList->list.count;
-            for (int k = 0; k < qos2SetupList->list.count; k++) {
-              qos_flow_to_setup_t *qos_flow = drb->qosFlows + k;
-              E1AP_QoS_Flow_QoS_Parameter_Item_t *qos2Setup = qos2SetupList->list.array[k];
-
-              qos_flow->qfi = qos2Setup->qoS_Flow_Identifier;
-
-              qos_characteristics_t *qos_char = &qos_flow->qos_params.qos_characteristics;
-              if (qos2Setup->qoSFlowLevelQoSParameters.qoS_Characteristics.present == E1AP_QoS_Characteristics_PR_non_Dynamic_5QI) {
-                qos_char->qos_type = NON_DYNAMIC;
-                qos_char->non_dynamic.fiveqi =
-                    qos2Setup->qoSFlowLevelQoSParameters.qoS_Characteristics.choice.non_Dynamic_5QI->fiveQI;
-              } else {
-                E1AP_Dynamic5QIDescriptor_t *dynamic5QI = qos2Setup->qoSFlowLevelQoSParameters.qoS_Characteristics.choice.dynamic_5QI;
-                qos_char->qos_type = DYNAMIC;
-                qos_char->dynamic.qos_priority_level = dynamic5QI->qoSPriorityLevel;
-                qos_char->dynamic.packet_delay_budget = dynamic5QI->packetDelayBudget;
-                qos_char->dynamic.packet_error_rate.per_scalar = dynamic5QI->packetErrorRate.pER_Scalar;
-                qos_char->dynamic.packet_error_rate.per_exponent = dynamic5QI->packetErrorRate.pER_Exponent;
-              }
-
-              ngran_allocation_retention_priority_t *rent_priority = &qos_flow->qos_params.alloc_reten_priority;
-              rent_priority->priority_level = qos2Setup->qoSFlowLevelQoSParameters.nGRANallocationRetentionPriority.priorityLevel;
-              rent_priority->preemption_capability =
-                  qos2Setup->qoSFlowLevelQoSParameters.nGRANallocationRetentionPriority.pre_emptionCapability;
-              rent_priority->preemption_vulnerability =
-                  qos2Setup->qoSFlowLevelQoSParameters.nGRANallocationRetentionPriority.pre_emptionVulnerability;
-            }
-          }
-        }
-        break;
-
-      default:
-        LOG_E(E1AP, "Handle for this IE is not implemented (or) invalid IE detected\n");
-        break;
-    }
-  }
-}
-
 int e1apCUUP_handle_BEARER_CONTEXT_SETUP_REQUEST(sctp_assoc_t assoc_id, e1ap_upcp_inst_t *e1_inst, const E1AP_E1AP_PDU_t *pdu)
 {
-  DevAssert(pdu != NULL);
-  DevAssert(pdu->present == E1AP_E1AP_PDU_PR_initiatingMessage);
-  DevAssert(pdu->choice.initiatingMessage->procedureCode == E1AP_ProcedureCode_id_bearerContextSetup);
-  DevAssert(pdu->choice.initiatingMessage->criticality == E1AP_Criticality_reject);
-  DevAssert(pdu->choice.initiatingMessage->value.present == E1AP_InitiatingMessage__value_PR_BearerContextSetupRequest);
-
+  // Decode E1AP message
   e1ap_bearer_setup_req_t bearerCxt = {0};
-  extract_BEARER_CONTEXT_SETUP_REQUEST(pdu, &bearerCxt);
-
+  if (!decode_E1_bearer_context_setup_request(pdu, &bearerCxt)) {
+    LOG_E(E1AP, "Failed to decode E1 Bearer Context Setup Request\n");
+    return -1;
+  }
   e1_bearer_context_setup(&bearerCxt);
   return 0;
 }
 
-void extract_BEARER_CONTEXT_SETUP_RESPONSE(const E1AP_E1AP_PDU_t *pdu, e1ap_bearer_setup_resp_t *bearerCxt)
-{
-  const E1AP_BearerContextSetupResponse_t *in = &pdu->choice.successfulOutcome->value.choice.BearerContextSetupResponse;
-  E1AP_BearerContextSetupResponseIEs_t *ie;
-
-  LOG_D(E1AP, "Bearer context setup response number of IEs %d\n", in->protocolIEs.list.count);
-
-  for (int i = 0; i < in->protocolIEs.list.count; i++) {
-    ie = in->protocolIEs.list.array[i];
-
-    switch(ie->id) {
-      case E1AP_ProtocolIE_ID_id_gNB_CU_CP_UE_E1AP_ID:
-        DevAssert(ie->criticality == E1AP_Criticality_reject);
-        DevAssert(ie->value.present == E1AP_BearerContextSetupResponseIEs__value_PR_GNB_CU_CP_UE_E1AP_ID);
-        bearerCxt->gNB_cu_cp_ue_id = ie->value.choice.GNB_CU_CP_UE_E1AP_ID;
-        break;
-
-      case E1AP_ProtocolIE_ID_id_gNB_CU_UP_UE_E1AP_ID:
-        DevAssert(ie->criticality == E1AP_Criticality_reject);
-        DevAssert(ie->value.present == E1AP_BearerContextSetupResponseIEs__value_PR_GNB_CU_UP_UE_E1AP_ID);
-        bearerCxt->gNB_cu_up_ue_id = ie->value.choice.GNB_CU_UP_UE_E1AP_ID;
-        break;
-
-      case E1AP_ProtocolIE_ID_id_System_BearerContextSetupResponse:
-        DevAssert(ie->criticality == E1AP_Criticality_reject);
-        DevAssert(ie->value.present == E1AP_BearerContextSetupResponseIEs__value_PR_System_BearerContextSetupResponse);
-        DevAssert(ie->value.choice.System_BearerContextSetupResponse.present
-                  == E1AP_System_BearerContextSetupResponse_PR_nG_RAN_BearerContextSetupResponse);
-        E1AP_ProtocolIE_Container_4932P22_t *msgNGRAN_list =
-            (E1AP_ProtocolIE_Container_4932P22_t *)
-                ie->value.choice.System_BearerContextSetupResponse.choice.nG_RAN_BearerContextSetupResponse;
-        DevAssert(msgNGRAN_list->list.count == 1);
-        E1AP_NG_RAN_BearerContextSetupResponse_t *msgNGRAN = msgNGRAN_list->list.array[0];
-        DevAssert(msgNGRAN->id == E1AP_ProtocolIE_ID_id_PDU_Session_Resource_Setup_List);
-        DevAssert(msgNGRAN->criticality == E1AP_Criticality_reject);
-        DevAssert(msgNGRAN->value.present == E1AP_NG_RAN_BearerContextSetupResponse__value_PR_PDU_Session_Resource_Setup_List);
-        E1AP_PDU_Session_Resource_Setup_List_t *pduSetupList = &msgNGRAN->value.choice.PDU_Session_Resource_Setup_List;
-        bearerCxt->numPDUSessions = pduSetupList->list.count;
-
-        for (int i = 0; i < pduSetupList->list.count; i++) {
-          pdu_session_setup_t *pduSetup = bearerCxt->pduSession + i;
-          E1AP_PDU_Session_Resource_Setup_Item_t *pdu_session = pduSetupList->list.array[i];
-          pduSetup->id = pdu_session->pDU_Session_ID;
-
-          if (pdu_session->nG_DL_UP_TNL_Information.choice.gTPTunnel) {
-            DevAssert(pdu_session->nG_DL_UP_TNL_Information.present == E1AP_UP_TNL_Information_PR_gTPTunnel);
-            BIT_STRING_TO_TRANSPORT_LAYER_ADDRESS_IPv4(
-                &pdu_session->nG_DL_UP_TNL_Information.choice.gTPTunnel->transportLayerAddress,
-                pduSetup->tlAddress);
-            OCTET_STRING_TO_INT32(&pdu_session->nG_DL_UP_TNL_Information.choice.gTPTunnel->gTP_TEID, pduSetup->teId);
-          }
-
-          pduSetup->numDRBSetup = pdu_session->dRB_Setup_List_NG_RAN.list.count;
-          for (int j = 0; j < pdu_session->dRB_Setup_List_NG_RAN.list.count; j++) {
-            DRB_nGRAN_setup_t *drbSetup = pduSetup->DRBnGRanList + j;
-            E1AP_DRB_Setup_Item_NG_RAN_t *drb = pdu_session->dRB_Setup_List_NG_RAN.list.array[j];
-
-            drbSetup->id = drb->dRB_ID;
-
-            drbSetup->numUpParam = drb->uL_UP_Transport_Parameters.list.count;
-            for (int k = 0; k < drb->uL_UP_Transport_Parameters.list.count; k++) {
-              up_params_t *UL_UP_param = drbSetup->UpParamList + k;
-              E1AP_UP_Parameters_Item_t *in_UL_UP_param = drb->uL_UP_Transport_Parameters.list.array[k];
-
-              DevAssert(in_UL_UP_param->uP_TNL_Information.present == E1AP_UP_TNL_Information_PR_gTPTunnel);
-              E1AP_GTPTunnel_t *gTPTunnel = in_UL_UP_param->uP_TNL_Information.choice.gTPTunnel;
-              if (gTPTunnel) {
-                BIT_STRING_TO_TRANSPORT_LAYER_ADDRESS_IPv4(&gTPTunnel->transportLayerAddress, UL_UP_param->tlAddress);
-                OCTET_STRING_TO_INT32(&gTPTunnel->gTP_TEID, UL_UP_param->teId);
-              } else {
-                AssertFatal(false, "gTPTunnel information in required\n");
-              }
-            }
-
-            // Qos Flow Information
-            drbSetup->numQosFlowSetup = drb->flow_Setup_List.list.count;
-            for (int q = 0; q < drb->flow_Setup_List.list.count; q++) {
-              qos_flow_setup_t *qosflowSetup = &drbSetup->qosFlows[q];
-              E1AP_QoS_Flow_Item_t *in_qosflowSetup = drb->flow_Setup_List.list.array[q];
-              qosflowSetup->qfi = in_qosflowSetup->qoS_Flow_Identifier;
-            }
-          }
-        }
-        break;
-
-      // TODO: remaining IE handlers
-
-      default:
-        LOG_E(E1AP, "Handle for this IE is not implemented (or) invalid IE detected\n");
-        break;
-    }
-  }
-}
-
 int e1apCUCP_handle_BEARER_CONTEXT_SETUP_RESPONSE(sctp_assoc_t assoc_id, e1ap_upcp_inst_t *inst, const E1AP_E1AP_PDU_t *pdu)
 {
-  DevAssert(pdu->present == E1AP_E1AP_PDU_PR_successfulOutcome);
-  DevAssert(pdu->choice.successfulOutcome->procedureCode == E1AP_ProcedureCode_id_bearerContextSetup);
-  DevAssert(pdu->choice.successfulOutcome->criticality == E1AP_Criticality_reject);
-  DevAssert(pdu->choice.successfulOutcome->value.present == E1AP_SuccessfulOutcome__value_PR_BearerContextSetupResponse);
-
   MessageDef *msg = itti_alloc_new_message(TASK_CUCP_E1, 0, E1AP_BEARER_CONTEXT_SETUP_RESP);
+  // Decode
   e1ap_bearer_setup_resp_t *bearerCxt = &E1AP_BEARER_CONTEXT_SETUP_RESP(msg);
-  extract_BEARER_CONTEXT_SETUP_RESPONSE(pdu, bearerCxt);
+  if (!decode_E1_bearer_context_setup_response(pdu, bearerCxt)) {
+    LOG_E(E1AP, "Failed to decode Bearer Context Setup Response\n");
+    return -1;
+  }
   msg->ittiMsgHeader.originInstance = assoc_id;
   // Fixme: instance is the NGAP instance, no good way to set it here
   instance_t instance = 0;
@@ -1976,6 +1438,7 @@ void *E1AP_CUCP_task(void *arg)
 
       case E1AP_BEARER_CONTEXT_SETUP_REQ:
         e1apCUCP_send_BEARER_CONTEXT_SETUP_REQUEST(assoc_id, &E1AP_BEARER_CONTEXT_SETUP_REQ(msg));
+        free_e1ap_context_setup_request(&E1AP_BEARER_CONTEXT_SETUP_REQ(msg));
         break;
 
       case E1AP_BEARER_CONTEXT_MODIFICATION_REQ:
@@ -2042,6 +1505,7 @@ void *E1AP_CUUP_task(void *arg)
         const e1ap_upcp_inst_t *inst = getCxtE1(myInstance);
         AssertFatal(inst, "no E1 instance found for instance %ld\n", myInstance);
         e1apCUUP_send_BEARER_CONTEXT_SETUP_RESPONSE(inst->cuup.assoc_id, resp);
+        free_e1ap_context_setup_response(resp);
       } break;
 
       case E1AP_BEARER_CONTEXT_MODIFICATION_RESP: {

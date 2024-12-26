@@ -44,8 +44,8 @@ Replaces xml_files/enb_usrp210_band7_test_10mhz_tm1.xml
     <testCase id="111110">
         <class>Pull_Local_Registry</class>
         <desc>Pull Images from Local Registry</desc>
-        <test_svr_id>0</test_svr_id>
-        <images_to_pull>oai-enb</images_to_pull>
+        <svr_id>0</svr_id>
+        <images>oai-enb</images>
     </testCase>
     <testCase id="100000">
         <class>Custom_Command</class>
@@ -206,7 +206,8 @@ Replaces xml_files/enb_usrp210_band7_test_10mhz_tm1.xml
         <class>Clean_Test_Server_Images</class>
         <always_exec>true</always_exec>
         <desc>Clean Test Images on Test Server</desc>
-        <test_svr_id>0</test_svr_id>
+        <svr_id>0</svr_id>
+        <images>oai-enb</images>
     </testCase>
 
 </testCaseList>

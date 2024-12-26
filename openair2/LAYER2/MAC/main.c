@@ -41,6 +41,7 @@
 #include "common/ran_context.h"
 #include "intertask_interface.h"
 #include <pthread.h>
+#include "common/utils/system.h"
 
 extern RAN_CONTEXT_t RC;
 extern int oai_exit;

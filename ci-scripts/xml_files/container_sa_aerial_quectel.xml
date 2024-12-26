@@ -25,6 +25,7 @@
         <htmlTabName>AERIAL 100 MHz TDD SA</htmlTabName>
         <htmlTabIcon>tasks</htmlTabIcon>
         <TestCaseRequestedList>
+                555000
                 111111
                 000222
                 800813
@@ -37,14 +38,20 @@
                 000222
                 222222
                 333333
+                000555
         </TestCaseRequestedList>
         <TestCaseExclusionList></TestCaseExclusionList>
+        <testCase id="555000">
+                <class>Initialize_5GCN</class>
+                <desc>Initialize 5G Core</desc>
+                <cn_id>oc-cn5g-20897-aerial2</cn_id>
+        </testCase>
 
         <testCase id="111111">
                 <class>Pull_Local_Registry</class>
                 <desc>Pull Images from Local Registry</desc>
-                <test_svr_id>0</test_svr_id>
-                <images_to_pull>oai-gnb-aerial</images_to_pull>
+                <svr_id>0</svr_id>
+                <images>oai-gnb-aerial</images>
         </testCase>
 
         <testCase id="800813">
@@ -82,15 +89,15 @@
                 <class>Ping</class>
                 <desc>Ping: 100pings in 20sec</desc>
                 <id>up2-aerial</id>
-                <ping_args>-c 100 -i 0.2 %cn_ip%</ping_args>
+                <ping_args>-c 100 -i 0.2 172.21.6.104</ping_args>
                 <ping_packetloss_threshold>5</ping_packetloss_threshold>
         </testCase>
 
         <testCase id="000022">
                 <class>Iperf</class>
-                <desc>iperf (DL/UDP/700M)(30 sec)(single-ue profile)</desc>
+                <desc>iperf (DL/UDP/600M)(30 sec)(single-ue profile)</desc>
                 <iperf_args>-u -b 600M -t 30 -R</iperf_args>
-                <svr_id>porcepix-cn5g</svr_id>
+                <svr_id>oc-cn5g-20897-aerial2</svr_id>
                 <id>up2-aerial</id>
                 <iperf_packetloss_threshold>25</iperf_packetloss_threshold>
                 <iperf_bitrate_threshold>80</iperf_bitrate_threshold>
@@ -100,7 +107,7 @@
                 <class>Iperf</class>
                 <desc>iperf (UL/UDP/50M)(30 sec)(single-ue profile)</desc>
                 <iperf_args>-u -b 50M -t 30</iperf_args>
-                <svr_id>porcepix-cn5g</svr_id>
+                <svr_id>oc-cn5g-20897-aerial2</svr_id>
                 <id>up2-aerial</id>
                 <iperf_packetloss_threshold>25</iperf_packetloss_threshold>
                 <iperf_bitrate_threshold>80</iperf_bitrate_threshold>
@@ -128,8 +135,15 @@
                 <class>Clean_Test_Server_Images</class>
                 <always_exec>true</always_exec>
                 <desc>Clean Test Images on Test Server</desc>
-                <test_svr_id>0</test_svr_id>
+                <svr_id>0</svr_id>
+                <images>oai-gnb-aerial</images>
         </testCase>
 
+        <testCase id="000555">
+                <class>Terminate_5GCN</class>
+                <always_exec>true</always_exec>
+                <desc>Terminate 5G Core</desc>
+                <cn_id>oc-cn5g-20897-aerial2</cn_id>
+        </testCase>
 </testCaseList>
 

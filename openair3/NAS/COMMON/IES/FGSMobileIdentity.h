@@ -37,6 +37,8 @@
 #ifndef FGS_MOBILE_IDENTITY_H_
 #define FGS_MOBILE_IDENTITY_H_
 
+// 4x 1bit according to 9.11.3.4 5GS mobile identity (type 5G-S-TMSI)
+#define DIGIT1 0xF
 
 typedef struct {
   uint8_t  spare:5;
@@ -150,6 +152,9 @@ typedef union FGSMobileIdentity_tag {
 int encode_5gs_mobile_identity(FGSMobileIdentity *fgsmobileidentity, uint8_t iei, uint8_t *buffer, uint32_t len);
 
 int decode_5gs_mobile_identity(FGSMobileIdentity *fgsmobileidentity, uint8_t iei, const uint8_t *buffer, uint32_t len);
+
+int encode_stmsi_5gs_mobile_identity(uint8_t *buffer, Stmsi5GSMobileIdentity_t *stmsi, uint32_t len);
+int decode_stmsi_5gs_mobile_identity(Stmsi5GSMobileIdentity_t *stmsi, const uint8_t *buffer, uint32_t len);
 
 #endif /* FGS MOBILE IDENTITY_H_ */
 

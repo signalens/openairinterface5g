@@ -123,6 +123,8 @@ void read_mac_setup_sm(void* data)
 sm_ag_if_ans_t write_ctrl_mac_sm(void const* data)
 {
   assert(data != NULL);
-  assert(0 !=0 && "Not supported");
+  printf("write_ctrl callback for MAC SM: operation not supported\n");
+  sm_ag_if_ans_t ans = {0};
+  return ans;
 }
 

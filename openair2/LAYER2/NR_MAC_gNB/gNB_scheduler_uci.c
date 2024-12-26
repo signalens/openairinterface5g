@@ -102,8 +102,8 @@ static void nr_fill_nfapi_pucch(gNB_MAC_INST *nrmac,
 #define L1_RSRP_HYSTERIS 10 //considering 10 dBm as hysterisis for avoiding frequent SSB Beam Switching. !Fixme provide exact value if any
 //#define L1_DIFF_RSRP_STEP_SIZE 2
 
-int ssb_index_sorted[MAX_NUM_SSB] = {0};
-int ssb_rsrp_sorted[MAX_NUM_SSB] = {0};
+static int ssb_index_sorted[MAX_NUM_SSB] = {0};
+static int ssb_rsrp_sorted[MAX_NUM_SSB] = {0};
 
 //Measured RSRP Values Table 10.1.16.1-1 from 36.133
 //Stored all the upper limits[Max RSRP Value of corresponding index]

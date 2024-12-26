@@ -141,14 +141,13 @@ void nr_64qam_llr(int32_t *rxdataF_comp, int32_t *ch_mag, int32_t *ch_mag2, int1
   int32_t *llr_32 = (int32_t *)llr;
 
 #ifndef USE_128BIT
-  simde__m256i xmm0, xmm1, xmm2;
   for (int i = 0; i < (nb_re >> 3); i++) {
-    xmm0 = *rxF;
+    simde__m256i xmm0 = simde_mm256_loadu_si256(rxF);
     // registers of even index in xmm0-> |y_R|, registers of odd index in xmm0-> |y_I|
-    xmm1 = simde_mm256_abs_epi16(xmm0);
+    simde__m256i xmm1 = simde_mm256_abs_epi16(xmm0);
     // registers of even index in xmm0-> |y_R|-|h|^2, registers of odd index in xmm0-> |y_I|-|h|^2
     xmm1 = simde_mm256_subs_epi16(*ch_maga, xmm1);
-    xmm2 = simde_mm256_abs_epi16(xmm1);
+    simde__m256i xmm2 = simde_mm256_abs_epi16(xmm1);
     xmm2 = simde_mm256_subs_epi16(*ch_magb, xmm2);
     // xmm0 |1st 4th 7th 10th 13th 16th 19th 22ed|
     // xmm1 |2ed 5th 8th 11th 14th 17th 20th 23rd|

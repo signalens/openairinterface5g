@@ -27,19 +27,19 @@
 #include <netinet/in.h>
 #include <netinet/sctp.h>
 #include "common/ngran_types.h"
-#include "f1ap_messages_types.h"
-#include "ngap_messages_types.h"
+#include "common/platform_types.h"
+#include "common/5g_platform_types.h"
 
+/* Definitions according to 3GPP TS 38.463 */
 #define E1AP_MAX_NUM_TRANSAC_IDS 4
 #define E1AP_MAX_NUM_PLMNS 4
 #define E1AP_MAX_NUM_SLICES 1024
 #define E1AP_MAX_NUM_CELL_GROUPS 4
-#define E1AP_MAX_NUM_QOS_FLOWS 4
-#define E1AP_MAX_NUM_NGRAN_DRB 4
+#define E1AP_MAX_NUM_QOS_FLOWS 64
 #define E1AP_MAX_NUM_PDU_SESSIONS 4
-#define E1AP_MAX_NUM_DRBS 4
-#define E1AP_MAX_NUM_DRBS 4
+#define E1AP_MAX_NUM_DRBS 32
 #define E1AP_MAX_NUM_UP_PARAM 4
+#define E1AP_SECURITY_KEY_SIZE 16 // keys have 128 bits length
 
 #define E1AP_REGISTER_REQ(mSGpTR)                         (mSGpTR)->ittiMsg.e1ap_register_req
 #define E1AP_SETUP_REQ(mSGpTR)                            (mSGpTR)->ittiMsg.e1ap_setup_req
@@ -60,6 +60,17 @@ typedef enum BEARER_CONTEXT_STATUS_e {
   BEARER_SUSPEND,
   BEARER_RESUME,
 } BEARER_CONTEXT_STATUS_t;
+
+typedef enum activity_notification_level_e {
+  ANL_DRB = 0,
+  ANL_PDU_SESSION,
+  ANL_UE,
+} activity_notification_level_t;
+
+typedef enum cell_group_id_e {
+  MCG = 0,
+  SCG,
+} cell_group_id_t;
 
 typedef struct PLMN_ID_s {
   int mcc;
@@ -107,10 +118,6 @@ typedef struct e1ap_setup_fail_s {
   long transac_id;
 } e1ap_setup_fail_t;
 
-typedef struct cell_group_s {
-  long id;
-} cell_group_t;
-
 typedef struct up_params_s {
   in_addr_t tlAddress;
   long teId;
@@ -144,22 +151,27 @@ typedef struct drb_to_setup_s {
   in_addr_t tlAddress;
   long teId;
   int numCellGroups;
-  cell_group_t cellGroupList[E1AP_MAX_NUM_CELL_GROUPS];
+  cell_group_id_t cellGroupList[E1AP_MAX_NUM_CELL_GROUPS];
 } drb_to_setup_t;
 
 typedef struct qos_characteristics_s {
   union {
     struct {
-      long fiveqi;
-      long qos_priority_level;
+      uint16_t fiveqi;
+      uint8_t qos_priority_level;
     } non_dynamic;
     struct {
-      long fiveqi; // -1 -> optional
-      long qos_priority_level;
-      long packet_delay_budget;
+      // Range 5QI [0 - 255]
+      uint16_t fiveqi;
+      /* Range [0 - 15]
+       15 = "no priority," 1-14 = decreasing priority (1 highest), 0 = logical error if received */
+      uint8_t qos_priority_level;
+      // Range [0, 1023]: Upper bound for packet delay in 0.5ms units
+      uint16_t packet_delay_budget;
       struct {
-        long per_scalar;
-        long per_exponent;
+        // PER = Scalar x 10^-k (k: 0-9)
+        uint8_t per_scalar;
+        uint8_t per_exponent;
       } packet_error_rate;
     } dynamic;
   };
@@ -168,8 +180,10 @@ typedef struct qos_characteristics_s {
 
 typedef struct ngran_allocation_retention_priority_s {
   uint16_t priority_level;
-  long preemption_capability;
-  long preemption_vulnerability;
+  // Pre-emption capability on other QoS flows
+  uint8_t preemption_capability;
+  // Vulnerability of the QoS flow to pre-emption of other QoS flows
+  uint8_t preemption_vulnerability;
 } ngran_allocation_retention_priority_t;
 
 typedef struct qos_flow_level_qos_parameters_s {
@@ -203,12 +217,30 @@ typedef struct DRB_nGRAN_to_setup_s {
 
   /* Cell Group Information (clause 9.3.1.11) */
   int numCellGroups;
-  cell_group_t cellGroupList[E1AP_MAX_NUM_CELL_GROUPS];
+  cell_group_id_t cellGroupList[E1AP_MAX_NUM_CELL_GROUPS];
 
   /* DRB QoS Flows Parameters (clause 9.3.1.26) */
   int numQosFlow2Setup;
   qos_flow_to_setup_t qosFlows[E1AP_MAX_NUM_QOS_FLOWS];
 } DRB_nGRAN_to_setup_t, DRB_nGRAN_to_mod_t;
+
+typedef enum e1ap_indication_e {
+  SECURITY_REQUIRED = 0,
+  SECURITY_PREFERRED,
+  SECURITY_NOT_NEEDED
+} e1ap_indication_t;
+
+typedef struct security_indication_s {
+  e1ap_indication_t integrityProtectionIndication;
+  e1ap_indication_t confidentialityProtectionIndication;
+  // Maximum Integrity Protected Data Rate
+  long maxIPrate;
+} security_indication_t;
+
+typedef struct UP_TL_information_s {
+  in_addr_t tlAddress;
+  int32_t teId;
+} UP_TL_information_t;
 
 /**
  * PDU Session Resource To Setup List (clause 9.3.3.10)
@@ -218,18 +250,12 @@ typedef struct pdu_session_to_setup_s {
   long sessionId;
   long sessionType;
   e1ap_nssai_t nssai;
-  long integrityProtectionIndication;
-  long confidentialityProtectionIndication;
-  in_addr_t tlAddress;
-  in_addr_t tlAddress_dl;
-  int32_t teId;
-  int32_t teId_dl;
-  int tl_port;
-  int tl_port_dl;
+  security_indication_t securityIndication;
+  UP_TL_information_t UP_TL_information;
   long numDRB2Setup;
-  DRB_nGRAN_to_setup_t DRBnGRanList[E1AP_MAX_NUM_NGRAN_DRB];
+  DRB_nGRAN_to_setup_t DRBnGRanList[E1AP_MAX_NUM_DRBS];
   long numDRB2Modify;
-  DRB_nGRAN_to_mod_t DRBnGRanModList[E1AP_MAX_NUM_NGRAN_DRB];
+  DRB_nGRAN_to_mod_t DRBnGRanModList[E1AP_MAX_NUM_DRBS];
 } pdu_session_to_setup_t, pdu_session_to_mod_t;
 
 /**
@@ -239,15 +265,15 @@ typedef struct pdu_session_to_setup_s {
  */
 typedef struct e1ap_bearer_setup_req_s {
   uint32_t gNB_cu_cp_ue_id;
-  uint32_t gNB_cu_up_ue_id;
+  uint32_t gNB_cu_up_ue_id; // Bearer Context Modification Request only
   uint64_t cipheringAlgorithm;
   uint64_t integrityProtectionAlgorithm;
-  char     encryptionKey[128];
-  char     integrityProtectionKey[128];
+  char encryptionKey[E1AP_SECURITY_KEY_SIZE];
+  char integrityProtectionKey[E1AP_SECURITY_KEY_SIZE];
   long     ueDlAggMaxBitRate;
   PLMN_ID_t servingPLMNid;
   BEARER_CONTEXT_STATUS_t bearerContextStatus;
-  long activityNotificationLevel;
+  activity_notification_level_t activityNotificationLevel;
   int numPDUSessions;
   pdu_session_to_setup_t pduSession[E1AP_MAX_NUM_PDU_SESSIONS];
   int numPDUSessionsMod;
@@ -293,16 +319,16 @@ typedef struct pdu_session_setup_s {
   in_addr_t tlAddress;
   long teId;
   int numDRBSetup;
-  DRB_nGRAN_setup_t DRBnGRanList[E1AP_MAX_NUM_NGRAN_DRB];
+  DRB_nGRAN_setup_t DRBnGRanList[E1AP_MAX_NUM_DRBS];
   int numDRBFailed;
-  DRB_nGRAN_failed_t DRBnGRanFailedList[E1AP_MAX_NUM_NGRAN_DRB];
+  DRB_nGRAN_failed_t DRBnGRanFailedList[E1AP_MAX_NUM_DRBS];
 } pdu_session_setup_t;
 
 typedef struct pdu_session_modif_s {
   long id;
   // setup as part of PDU session modification not supported yet
   int numDRBModified;
-  DRB_nGRAN_modified_t DRBnGRanModList[E1AP_MAX_NUM_NGRAN_DRB];
+  DRB_nGRAN_modified_t DRBnGRanModList[E1AP_MAX_NUM_DRBS];
 } pdu_session_modif_t;
 
 typedef struct e1ap_bearer_setup_resp_s {

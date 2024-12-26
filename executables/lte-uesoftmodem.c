@@ -114,11 +114,9 @@ FILE *input_fd=NULL;
 int otg_enabled=0;
 
 #if MAX_NUM_CCs == 1
-rx_gain_t                rx_gain_mode[MAX_NUM_CCs][4] = {{max_gain,max_gain,max_gain,max_gain}};
 double tx_gain[MAX_NUM_CCs][4] = {{20,0,0,0}};
 double rx_gain[MAX_NUM_CCs][4] = {{130,0,0,0}};
 #else
-rx_gain_t                rx_gain_mode[MAX_NUM_CCs][4] = {{max_gain,max_gain,max_gain,max_gain},{max_gain,max_gain,max_gain,max_gain}};
 double tx_gain[MAX_NUM_CCs][4] = {{20,0,0,0},{20,0,0,0}};
 double rx_gain[MAX_NUM_CCs][4] = {{130,0,0,0},{20,0,0,0}};
 #endif
@@ -543,7 +541,6 @@ int main( int argc, char **argv ) {
   }
   printf("sf_ahead = %d\n", sf_ahead);
 
-  EPC_MODE_ENABLED = !IS_SOFTMODEM_NOS1;
   printf("Running with %d UE instances\n",NB_UE_INST);
 
 #if T_TRACER

@@ -12,6 +12,15 @@
   </tr>
 </table>
 
+This is the general overview page of the OpenAirInterface documentation.  
+This page groups links to general information, tutorials, design documents, radio integration, and special-purpose libraries.
+
+**IMPORTANT NOTE:**  
+Before reading this documentation, we strongly advise you to keep your own repository rebased on `develop`
+or at least to checkout the documentation on the version of the repository you are using.  
+Then the documentation will better reflect the features available in your repository so that you may avoid some errors.  
+Beware if you previously pulled the `develop` branch that your repository may be now behind `develop`.
+
 [[_TOC_]]
 
 # General
@@ -34,6 +43,7 @@ There is some general information in the [OpenAirInterface Gitlab Wiki](https://
   * [OAI 5GC](./NR_SA_Tutorial_OAI_CN5G.md)
   * [OAI gNB with COTS UE](./NR_SA_Tutorial_COTS_UE.md)
   * [OAI NR-UE](./NR_SA_Tutorial_OAI_nrUE.md)
+  * [Multiple OAI NR-UE with RFsimulator](./NR_SA_Tutorial_OAI_multi_UE.md)
 - [RUNMODEM.md](./RUNMODEM.md): Generic information on how to
   * Run simulators
   * Run with hardware
@@ -53,7 +63,9 @@ There is some general information in the [OpenAirInterface Gitlab Wiki](https://
 - [How to run with E2 agent](../openair2/E2AP/README.md)
 - [How to run the physical simulators](./physical-simulators.md)
 - [How to setup OAI with Nvidia Aerial and Foxconn](./Aerial_FAPI_Split_Tutorial.md)
+- [How to setup OAI with AMD T2 Telco card](./LDPC_T2_OFFLOAD_SETUP.md)
 - [How to do a handover](./handover-tutorial.md)
+- [How to setup gNB frequency](./gNB_frequency_setup.md)
 
 Legacy unmaintained files:
 - [`L2NFAPI_NOS1.md`](./L2NFAPI_NOS1.md), [`L2NFAPI_S1.md`](./L2NFAPI_S1.md):
@@ -71,6 +83,7 @@ Legacy unmaintained files:
 - [Flow graph of the L1 in gNB](SW-archi-graph.md)
 - [L1 threads in NR-UE](./nr-ue-design.md)
 - [Information on gNB MAC](./MAC/mac-usage.md)
+- [Information on gNB RRC](./RRC/rrc-usage.md)
 
 Legacy unmaintained files:
 - [`5Gnas.md`](./5Gnas.md)
@@ -80,7 +93,6 @@ Legacy unmaintained files:
 - [How to build images](../docker/README.md)
 - [How to run 5G with the RFsimulator from images](../ci-scripts/yaml_files/5g_rfsimulator/README.md)
 - [How to run 4G with the RFsimulator from images](../ci-scripts/yaml_files/4g_rfsimulator_fdd_05MHz/README.md)
-- [How to run 5G with the L2simulator from images](../ci-scripts/yaml_files/5g_l2sim_tdd/README.md)
 - [How to run physical simulators in OpenShift](../openshift/README.md)
 
 # Libraries

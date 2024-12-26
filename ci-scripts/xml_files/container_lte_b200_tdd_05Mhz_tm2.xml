@@ -41,8 +41,8 @@ Replaces xml_files/enb_usrp210_band40_test_05mhz_tm2.xml
     <testCase id="111110">
         <class>Pull_Local_Registry</class>
         <desc>Pull Images from Local Registry</desc>
-        <test_svr_id>0</test_svr_id>
-        <images_to_pull>oai-enb</images_to_pull>
+        <svr_id>0</svr_id>
+        <images>oai-enb</images>
     </testCase>
     <testCase id="100000">
             <class>Custom_Command</class>

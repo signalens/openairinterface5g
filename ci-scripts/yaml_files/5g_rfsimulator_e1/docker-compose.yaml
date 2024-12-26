@@ -70,7 +70,7 @@ services:
         cap_drop:
             - ALL
         environment:
-            USE_ADDITIONAL_OPTIONS: --sa --log_config.global_log_options level,nocolor,time
+            USE_ADDITIONAL_OPTIONS: --log_config.global_log_options level,nocolor,time
                                     --gNBs.[0].E1_INTERFACE.[0].ipv4_cucp 192.168.77.2
                                     --gNBs.[0].local_s_address 192.168.72.2
             ASAN_OPTIONS: detect_leaks=0
@@ -97,7 +97,7 @@ services:
         cap_drop:
             - ALL
         environment:
-            USE_ADDITIONAL_OPTIONS: --sa --log_config.global_log_options level,nocolor,time
+            USE_ADDITIONAL_OPTIONS: --log_config.global_log_options level,nocolor,time
                                     --gNBs.[0].E1_INTERFACE.[0].ipv4_cucp 192.168.77.2
                                     --gNBs.[0].E1_INTERFACE.[0].ipv4_cuup 192.168.77.3
                                     --gNBs.[0].local_s_address 192.168.73.2
@@ -126,7 +126,7 @@ services:
         cap_drop:
             - ALL
         environment:
-            USE_ADDITIONAL_OPTIONS: --sa --log_config.global_log_options level,nocolor,time
+            USE_ADDITIONAL_OPTIONS: --log_config.global_log_options level,nocolor,time
                                     --gNBs.[0].gNB_CU_UP_ID 0xe01
                                     --gNBs.[0].E1_INTERFACE.[0].ipv4_cucp 192.168.77.2
                                     --gNBs.[0].E1_INTERFACE.[0].ipv4_cuup 192.168.77.4
@@ -158,7 +158,7 @@ services:
         cap_drop:
             - ALL
         environment:
-            USE_ADDITIONAL_OPTIONS: --sa --log_config.global_log_options level,nocolor,time
+            USE_ADDITIONAL_OPTIONS: --log_config.global_log_options level,nocolor,time
                                     --gNBs.[0].gNB_CU_UP_ID 0xe02
                                     --gNBs.[0].E1_INTERFACE.[0].ipv4_cucp 192.168.77.2
                                     --gNBs.[0].E1_INTERFACE.[0].ipv4_cuup 192.168.77.5
@@ -190,7 +190,7 @@ services:
         cap_drop:
             - ALL
         environment:
-            USE_ADDITIONAL_OPTIONS: --sa --rfsim --log_config.global_log_options level,nocolor,time
+            USE_ADDITIONAL_OPTIONS: --rfsim --log_config.global_log_options level,nocolor,time
                                     --MACRLCs.[0].local_n_address 192.168.72.3
                                     --MACRLCs.[0].remote_n_address oai-cucp
                                     --MACRLCs.[0].local_n_address_f1u 192.168.73.3
@@ -219,7 +219,7 @@ services:
         cap_drop:
             - ALL
         environment:
-            USE_ADDITIONAL_OPTIONS: --sa --rfsim --log_config.global_log_options level,nocolor,time
+            USE_ADDITIONAL_OPTIONS: --rfsim --log_config.global_log_options level,nocolor,time
                                     --gNBs.[0].gNB_DU_ID 0xe01
                                     --gNBs.[0].nr_cellid 87654321
                                     --gNBs.[0].servingCellConfigCommon.[0].physCellId 1
@@ -251,7 +251,7 @@ services:
         cap_drop:
             - ALL
         environment:
-            USE_ADDITIONAL_OPTIONS: --sa --rfsim --log_config.global_log_options level,nocolor,time
+            USE_ADDITIONAL_OPTIONS: --rfsim --log_config.global_log_options level,nocolor,time
                                     --gNBs.[0].gNB_DU_ID 0xe02
                                     --gNBs.[0].nr_cellid 11111111
                                     --gNBs.[0].servingCellConfigCommon.[0].physCellId 2
@@ -286,7 +286,7 @@ services:
             - NET_ADMIN  # for interface bringup
             - NET_RAW    # for ping
         environment:
-            USE_ADDITIONAL_OPTIONS: --sa --rfsim --log_config.global_log_options level,nocolor,time
+            USE_ADDITIONAL_OPTIONS: --rfsim --log_config.global_log_options level,nocolor,time
                                     -r 106 --numerology 1 -C 3619200000
                                     --uicc0.imsi 208990100001100
                                     --rfsimulator.serveraddr oai-du
@@ -314,7 +314,7 @@ services:
             - NET_ADMIN  # for interface bringup
             - NET_RAW    # for ping
         environment:
-            USE_ADDITIONAL_OPTIONS: --sa --rfsim --log_config.global_log_options level,nocolor,time
+            USE_ADDITIONAL_OPTIONS: --rfsim --log_config.global_log_options level,nocolor,time
                                     -r 106 --numerology 1 -C 3619200000
                                     --uicc0.imsi 208990100001101 --uicc0.nssai_sst 2
                                     --rfsimulator.serveraddr 192.168.78.3
@@ -342,7 +342,7 @@ services:
             - NET_ADMIN  # for interface bringup
             - NET_RAW    # for ping
         environment:
-            USE_ADDITIONAL_OPTIONS: --sa --rfsim --log_config.global_log_options level,nocolor,time
+            USE_ADDITIONAL_OPTIONS: --rfsim --log_config.global_log_options level,nocolor,time
                                     -r 106 --numerology 1 -C 3619200000
                                     --uicc0.imsi 208990100001102 --uicc0.nssai_sst 3
                                     --rfsimulator.serveraddr 192.168.78.4

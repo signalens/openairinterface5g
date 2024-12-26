@@ -29,6 +29,7 @@
 #include "rrc_gNB_du.h"
 #include "rrc_gNB_radio_bearers.h"
 #include "rrc_gNB_UE_context.h"
+#include "openair2/LAYER2/NR_MAC_COMMON/nr_mac.h"
 #include "openair2/F1AP/f1ap_ids.h"
 #include "MESSAGES/asn1_msg.h"
 #include "nr_pdcp/nr_pdcp_oai_api.h"
@@ -286,7 +287,7 @@ static void nr_rrc_f1_ho_complete(gNB_RRC_INST *rrc, gNB_RRC_UE_t *UE)
       .gNB_DU_ue_id = source_ctx->du_ue_id,
       .cause = F1AP_CAUSE_RADIO_NETWORK, // better
       .cause_value = 5, // 5 = F1AP_CauseRadioNetwork_interaction_with_other_procedure
-      .srb_id = DCCH,
+      .srb_id = DL_SCH_LCID_DCCH,
   };
   rrc->mac_rrc.ue_context_release_command(source_ctx->du->assoc_id, &cmd);
   LOG_I(NR_RRC, "UE %d Handover: trigger release on DU assoc_id %d\n", UE->rrc_ue_id, source_ctx->du->assoc_id);
@@ -302,7 +303,7 @@ static void nr_rrc_cancel_f1_ho(gNB_RRC_INST *rrc, gNB_RRC_UE_t *UE)
       .gNB_DU_ue_id = target_ctx->du_ue_id,
       .cause = F1AP_CAUSE_RADIO_NETWORK, // better
       .cause_value = 5, // 5 = F1AP_CauseRadioNetwork_interaction_with_other_procedure
-      .srb_id = DCCH,
+      .srb_id = DL_SCH_LCID_DCCH,
   };
   rrc->mac_rrc.ue_context_release_command(target_ctx->du->assoc_id, &cmd);
 }

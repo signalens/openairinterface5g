@@ -32,233 +32,21 @@ void nr_idft(int32_t *z, uint32_t Msc_PUSCH)
     for (i = 0, ip = 0; i < Msc_PUSCH; i++, ip+=4)
       ((uint32_t*)idft_in0)[ip+0] = z[i];
   }
-
+  dft_size_idx_t dftsize = get_dft(Msc_PUSCH);
   switch (Msc_PUSCH) {
     case 12:
-      dft(DFT_12,(int16_t *)idft_in0, (int16_t *)idft_out0,0);
+      dft(dftsize, (int16_t *)idft_in0, (int16_t *)idft_out0, 0);
 
       norm128 = simde_mm_set1_epi16(9459);
 
       for (i = 0; i < 12; i++) {
-        ((simde__m128i*)idft_out0)[i] = simde_mm_slli_epi16(simde_mm_mulhi_epi16(((simde__m128i*)idft_out0)[i], norm128), 1);
+        ((simde__m128i *)idft_out0)[i] = simde_mm_slli_epi16(simde_mm_mulhi_epi16(((simde__m128i *)idft_out0)[i], norm128), 1);
       }
 
       break;
-
-    case 24:
-      dft(DFT_24,idft_in0, idft_out0, 1);
-      break;
-
-    case 36:
-      dft(DFT_36,idft_in0, idft_out0, 1);
-      break;
-
-    case 48:
-      dft(DFT_48,idft_in0, idft_out0, 1);
-      break;
-
-    case 60:
-      dft(DFT_60,idft_in0, idft_out0, 1);
-      break;
-
-    case 72:
-      dft(DFT_72,idft_in0, idft_out0, 1);
-      break;
-
-    case 96:
-      dft(DFT_96,idft_in0, idft_out0, 1);
-      break;
-
-    case 108:
-      dft(DFT_108,idft_in0, idft_out0, 1);
-      break;
-
-    case 120:
-      dft(DFT_120,idft_in0, idft_out0, 1);
-      break;
-
-    case 144:
-      dft(DFT_144,idft_in0, idft_out0, 1);
-      break;
-
-    case 180:
-      dft(DFT_180,idft_in0, idft_out0, 1);
-      break;
-
-    case 192:
-      dft(DFT_192,idft_in0, idft_out0, 1);
-      break;
-
-    case 216:
-      dft(DFT_216,idft_in0, idft_out0, 1);
-      break;
-
-    case 240:
-      dft(DFT_240,idft_in0, idft_out0, 1);
-      break;
-
-    case 288:
-      dft(DFT_288,idft_in0, idft_out0, 1);
-      break;
-
-    case 300:
-      dft(DFT_300,idft_in0, idft_out0, 1);
-      break;
-
-    case 324:
-      dft(DFT_324,(int16_t*)idft_in0, (int16_t*)idft_out0, 1);
-      break;
-
-    case 360:
-      dft(DFT_360,(int16_t*)idft_in0, (int16_t*)idft_out0, 1);
-      break;
-
-    case 384:
-      dft(DFT_384,(int16_t*)idft_in0, (int16_t*)idft_out0, 1);
-      break;
-
-    case 432:
-      dft(DFT_432,(int16_t*)idft_in0, (int16_t*)idft_out0, 1);
-      break;
-
-    case 480:
-      dft(DFT_480,(int16_t*)idft_in0, (int16_t*)idft_out0, 1);
-      break;
-
-    case 540:
-      dft(DFT_540,(int16_t*)idft_in0, (int16_t*)idft_out0, 1);
-      break;
-
-    case 576:
-      dft(DFT_576,(int16_t*)idft_in0, (int16_t*)idft_out0, 1);
-      break;
-
-    case 600:
-      dft(DFT_600,(int16_t*)idft_in0, (int16_t*)idft_out0, 1);
-      break;
-
-    case 648:
-      dft(DFT_648,(int16_t*)idft_in0, (int16_t*)idft_out0, 1);
-      break;
-
-    case 720:
-      dft(DFT_720,(int16_t*)idft_in0, (int16_t*)idft_out0, 1);
-      break;
-
-    case 768:
-      dft(DFT_768,(int16_t*)idft_in0, (int16_t*)idft_out0, 1);
-      break;
-
-    case 864:
-      dft(DFT_864,(int16_t*)idft_in0, (int16_t*)idft_out0, 1);
-      break;
-
-    case 900:
-      dft(DFT_900,(int16_t*)idft_in0, (int16_t*)idft_out0, 1);
-      break;
-
-    case 960:
-      dft(DFT_960,(int16_t*)idft_in0, (int16_t*)idft_out0, 1);
-      break;
-
-    case 972:
-      dft(DFT_972,(int16_t*)idft_in0, (int16_t*)idft_out0, 1);
-      break;
-
-    case 1080:
-      dft(DFT_1080,(int16_t*)idft_in0, (int16_t*)idft_out0, 1);
-      break;
-
-    case 1152:
-      dft(DFT_1152,(int16_t*)idft_in0, (int16_t*)idft_out0, 1);
-      break;
-
-    case 1200:
-      dft(DFT_1200,idft_in0, idft_out0, 1);
-      break;
-
-    case 1296:
-      dft(DFT_1296,(int16_t*)idft_in0, (int16_t*)idft_out0, 1);
-      break;
-
-    case 1440:
-      dft(DFT_1440,(int16_t*)idft_in0, (int16_t*)idft_out0, 1);
-      break;
-
-    case 1500:
-      dft(DFT_1500,(int16_t*)idft_in0, (int16_t*)idft_out0, 1);
-      break;
-
-    case 1536:
-      //dft(DFT_1536,(int16_t*)idft_in0, (int16_t*)idft_out0, 1);
-      idft(IDFT_1536,(int16_t*)z, (int16_t*)z, 1);
-      break;
-
-    case 1620:
-      dft(DFT_1620,(int16_t*)idft_in0, (int16_t*)idft_out0, 1);
-      break;
-
-    case 1728:
-      dft(DFT_1728,(int16_t*)idft_in0, (int16_t*)idft_out0, 1);
-      break;
-
-    case 1800:
-      dft(DFT_1800,(int16_t*)idft_in0, (int16_t*)idft_out0, 1);
-      break;
-
-    case 1920:
-      dft(DFT_1920,(int16_t*)idft_in0, (int16_t*)idft_out0, 1);
-      break;
-
-    case 1944:
-      dft(DFT_1944,(int16_t*)idft_in0, (int16_t*)idft_out0, 1);
-      break;
-
-    case 2160:
-      dft(DFT_2160,(int16_t*)idft_in0, (int16_t*)idft_out0, 1);
-      break;
-
-    case 2304:
-      dft(DFT_2304,(int16_t*)idft_in0, (int16_t*)idft_out0, 1);
-      break;
-
-    case 2400:
-      dft(DFT_2400,(int16_t*)idft_in0, (int16_t*)idft_out0, 1);
-      break;
-
-    case 2592:
-      dft(DFT_2592,(int16_t*)idft_in0, (int16_t*)idft_out0, 1);
-      break;
-
-    case 2700:
-      dft(DFT_2700,(int16_t*)idft_in0, (int16_t*)idft_out0, 1);
-      break;
-
-    case 2880:
-      dft(DFT_2880,(int16_t*)idft_in0, (int16_t*)idft_out0, 1);
-      break;
-
-    case 2916:
-      dft(DFT_2916,(int16_t*)idft_in0, (int16_t*)idft_out0, 1);
-      break;
-
-    case 3000:
-      dft(DFT_3000,(int16_t*)idft_in0, (int16_t*)idft_out0, 1);
-      break;
-
-    case 3072:
-      //dft(DFT_3072,(int16_t*)idft_in0, (int16_t*)idft_out0, 1);
-      idft(IDFT_3072,(int16_t*)z, (int16_t*)z, 1);
-      break;
-
-    case 3240:
-      dft(DFT_3240,(int16_t*)idft_in0, (int16_t*)idft_out0, 1);
-      break;
-
     default:
-      // should not be reached
-      LOG_E( PHY, "Unsupported Msc_PUSCH value of %"PRIu16"\n", Msc_PUSCH );
-      return;
+      dft(dftsize, idft_in0, idft_out0, 1);
+      break;
   }
 
   if ((Msc_PUSCH % 1536) > 0) {
@@ -270,10 +58,6 @@ void nr_idft(int32_t *z, uint32_t Msc_PUSCH)
       ((simde__m128i*)z)[i] = simde_mm_sign_epi16(((simde__m128i*)z)[i], *(simde__m128i*)&conjugate2[0]);
     }
   }
-
-  simde_mm_empty();
-  simde_m_empty();
-
 }
 
 static void nr_ulsch_extract_rbs(c16_t* const rxdataF,
@@ -425,25 +209,17 @@ static void nr_ulsch_channel_level(int size_est,
                                    uint32_t len,
                                    uint8_t nrOfLayers)
 {
-  simde__m128i *ul_ch128, avg128U;
-
   int16_t x = factor2(len);
   int16_t y = (len)>>x;
 
   for (int aatx = 0; aatx < nrOfLayers; aatx++) {
     for (int aarx = 0; aarx < frame_parms->nb_antennas_rx; aarx++) {
-      //clear average level
-      avg128U = simde_mm_setzero_si128();
 
-      ul_ch128 = (simde__m128i *)&ul_ch_estimates_ext[aatx * frame_parms->nb_antennas_rx + aarx][symbol * len];
+      simde__m128i *ul_ch128 = (simde__m128i *)&ul_ch_estimates_ext[aatx * frame_parms->nb_antennas_rx + aarx][symbol * len];
 
-      for (int i = 0; i < len >> 2; i++) {
-        avg128U = simde_mm_add_epi32(avg128U, simde_mm_srai_epi32(simde_mm_madd_epi16(ul_ch128[i], ul_ch128[i]), x));
-      }
-
-      int32_t *avg32i = (int32_t *)&avg128U;
-      int64_t avg64 = (int64_t)avg32i[0] + avg32i[1] + avg32i[2] + avg32i[3];
-      avg[aatx * frame_parms->nb_antennas_rx + aarx] = avg64 / y;
+      //compute average level
+      avg[aatx * frame_parms->nb_antennas_rx + aarx] = simde_mm_average(ul_ch128, len, x, y);
+      //LOG_D(PHY, "Channel level: %d\n", avg[aatx * frame_parms->nb_antennas_rx + aarx]);
     }
   }
 
@@ -567,7 +343,7 @@ static void nr_ulsch_det_HhH (int32_t *after_mf_00,//a
                               int32_t *after_mf_01,//b
                               int32_t *after_mf_10,//c
                               int32_t *after_mf_11,//d
-                              int32_t *det_fin,//1/ad-bc
+                              uint32_t *det_fin,//1/ad-bc
                               unsigned short nb_rb,
                               unsigned char symbol,
                               int32_t shift)
@@ -709,11 +485,12 @@ static simde__m128i nr_ulsch_comp_muli_sum(simde__m128i input_x,
   //print_ints("rx_re:",(int32_t*)&xy_re_128[0]);
   //print_ints("rx_Img:",(int32_t*)&xy_im_128[0]);
   //divide by matrix det and convert back to Q15 before packing
-  int sum_det =0;
-  for (int k=0; k<4;k++) {
-    sum_det += ((((int *)&det)[k])>>2);
-    //printf("det_%d = %d log2 =%d \n",k,(((int *)&det[0])[k]),log2_approx(((int *)&det[0])[k]));
-    }
+  uint64_t sum_det = 0;
+  for (int k = 0; k < 4; k++) {
+    sum_det += (((uint32_t *)&det)[k]);
+  }
+  // Add bias to reduce rounding error
+  sum_det = (sum_det + 2) >> 2;
 
   int b = log2_approx(sum_det) - 8;
   if (b > 0) {
@@ -896,7 +673,7 @@ static uint8_t nr_ulsch_mmse_2layers(NR_DL_FRAME_PARMS *frame_parms,
   int32_t af_mf_01[12*nb_rb] __attribute__((aligned(32)));
   int32_t af_mf_10[12*nb_rb] __attribute__((aligned(32)));
   int32_t af_mf_11[12*nb_rb] __attribute__((aligned(32)));
-  int32_t determ_fin[12*nb_rb] __attribute__((aligned(32)));
+  uint32_t determ_fin[12*nb_rb] __attribute__((aligned(32)));
 
   switch (n_rx) {
     case 2://
@@ -1161,12 +938,12 @@ static uint8_t nr_ulsch_mmse_2layers(NR_DL_FRAME_PARMS *frame_parms,
 
     // Magnitude computation
     if (mod_order > 2) {
-
-      int sum_det = 0;
+      uint64_t sum_det = 0;
       for (int k = 0; k < 4; k++) {
-        AssertFatal(((int *)&determ_fin_128[0])[k] > 0 ,"Right shifting negative values is UB" );
-        sum_det += ((((uint32_t *)&determ_fin_128[0])[k]) >> 2);
+        sum_det += (((uint32_t *)&determ_fin_128[0])[k]);
       }
+      // Add bias to reduce rounding error
+      sum_det = (sum_det + 2) >> 2;
 
       int b = log2_approx(sum_det) - 8;
       if (b > 0) {
@@ -1395,6 +1172,7 @@ typedef struct puschSymbolProc_s {
   int16_t *scramblingSequence;
   uint32_t nvar;
   int beam_nb;
+  task_ans_t *ans;
 } puschSymbolProc_t;
 
 static void nr_pusch_symbol_processing(void *arg)
@@ -1443,6 +1221,9 @@ static void nr_pusch_symbol_processing(void *arg)
     for (int i = 0; i < end; i++)
       llr16[i] = llr_ptr[i] * s[i];
   }
+
+  // Task running in // completed
+  completed_task_ans(rdata->ans);
 }
 
 static uint32_t average_u32(const uint32_t *x, uint16_t size)
@@ -1699,21 +1480,27 @@ int nr_rx_pusch_tp(PHY_VARS_gNB *gNB,
 
   start_meas(&gNB->rx_pusch_symbol_processing_stats);
   int numSymbols = gNB->num_pusch_symbols_per_thread;
-
   int total_res = 0;
+  int const loop_iter = rel15_ul->nr_of_symbols / numSymbols;
+  puschSymbolProc_t arr[loop_iter];
+  task_ans_t arr_ans[loop_iter];
+
+  memset(arr_ans, 0, loop_iter * sizeof(task_ans_t));
+  int sz_arr = 0;
   for(uint8_t symbol = rel15_ul->start_symbol_index; symbol < end_symbol; symbol += numSymbols) {
+    int res_per_task = 0;
     for (int s = 0; s < numSymbols; s++) { 
       pusch_vars->ul_valid_re_per_slot[symbol+s] = get_nb_re_pusch(frame_parms,rel15_ul,symbol+s);
       pusch_vars->llr_offset[symbol+s] = ((symbol+s) == rel15_ul->start_symbol_index) ? 
                                          0 : 
                                          pusch_vars->llr_offset[symbol+s-1] + pusch_vars->ul_valid_re_per_slot[symbol+s-1] * rel15_ul->qam_mod_order;
-      total_res+=pusch_vars->ul_valid_re_per_slot[symbol+s];
+      res_per_task += pusch_vars->ul_valid_re_per_slot[symbol + s];
     }
-    if (total_res > 0) {
-      union puschSymbolReqUnion id = {.s={ulsch_id,frame,slot,0}};
-      id.p=1+symbol;
-      notifiedFIFO_elt_t *req = newNotifiedFIFO_elt(sizeof(puschSymbolProc_t), id.p, &gNB->respPuschSymb, &nr_pusch_symbol_processing); // create a job for Tpool
-      puschSymbolProc_t *rdata = (puschSymbolProc_t*)NotifiedFifoData(req); // data for the job
+    total_res += res_per_task;
+    if (res_per_task > 0) {
+      puschSymbolProc_t *rdata = &arr[sz_arr];
+      rdata->ans = &arr_ans[sz_arr];
+      ++sz_arr;
 
       rdata->gNB = gNB;
       rdata->frame_parms = frame_parms;
@@ -1731,7 +1518,8 @@ int nr_rx_pusch_tp(PHY_VARS_gNB *gNB,
       if (rel15_ul->pdu_bit_map & PUSCH_PDU_BITMAP_PUSCH_PTRS) {
         nr_pusch_symbol_processing(rdata);
       } else {
-        pushTpool(&gNB->threadPool, req);
+        task_t t = {.func = &nr_pusch_symbol_processing, .args = rdata};
+        pushTpool(&gNB->threadPool, t);
         nbSymb++;
       }
 
@@ -1739,12 +1527,9 @@ int nr_rx_pusch_tp(PHY_VARS_gNB *gNB,
     }
   } // symbol loop
 
-  while (nbSymb) {
-    notifiedFIFO_elt_t *req = pullTpool(&gNB->respPuschSymb, &gNB->threadPool);
-    nbSymb--;
-    delNotifiedFIFO_elt(req);
+  if (nbSymb > 0) {
+    join_task_ans(arr_ans, sz_arr);
   }
-
   stop_meas(&gNB->rx_pusch_symbol_processing_stats);
 
   // Copy the data to the scope. This cannot be performed in one call to gNBscopeCopy because the data is not contiguous in the

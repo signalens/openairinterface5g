@@ -43,7 +43,7 @@ include("cmake_targets/CPM.cmake")
 option(CCACHE_ACTIVE "CCache" ON)
 find_program(CCACHE_FOUND ccache)
 if(CCACHE_FOUND AND CCACHE_ACTIVE)
-  if(${CMAKE_VERSION} VERSION_LESS "3.4.0") 
+  if(${CMAKE_VERSION} VERSION_LESS "3.4.0")
     set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE "${CCACHE_PROGRAM}")
     message(STATUS "Found ccache in ${CCACHE_FOUND}. Using ccache. CMake < 3.4")
   else()
@@ -107,13 +107,13 @@ add_list_string_option(CMAKE_BUILD_TYPE "RelWithDebInfo" "Choose the type of bui
 
 # in case /proc/cpuinfo exists we want to inspect available Intrinsics
 # -so not to go always through SIMDE emulation
-# -so to avoid AVX512 instructions generation by gcc   
+# -so to avoid AVX512 instructions generation by gcc
 if(EXISTS "/proc/cpuinfo" AND NOT CROSS_COMPILE)
   file(STRINGS "/proc/cpuinfo" CPUFLAGS REGEX flags LIMIT_COUNT 1)
 else()
   message(WARNING "did not find /proc/cpuinfo -- not setting any x86-specific compilation variables")
 endif()
- 
+
 eval_boolean(AUTODETECT_AVX512 DEFINED CPUFLAGS AND CPUFLAGS MATCHES "avx512")
 add_boolean_option(AVX512 ${AUTODETECT_AVX512} "Whether AVX512 intrinsics is available on the host processor" ON)
 
@@ -177,9 +177,9 @@ if(CMAKE_C_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang
 endif()
 
 set(CMAKE_C_FLAGS
-  "${CMAKE_C_FLAGS} ${C_FLAGS_PROCESSOR} ${commonOpts} -std=gnu11 -funroll-loops")
+  "${C_FLAGS_PROCESSOR} ${commonOpts} -std=gnu11 -funroll-loops ${CMAKE_C_FLAGS}")
 set(CMAKE_CXX_FLAGS
-  "${CMAKE_CXX_FLAGS} ${C_FLAGS_PROCESSOR}  ${commonOpts} -std=c++11")
+  "${C_FLAGS_PROCESSOR}  ${commonOpts} -std=c++11 ${CMAKE_CXX_FLAGS}")
 
 
 add_boolean_option(SANITIZE_ADDRESS False "enable the address sanitizer (ASan)" ON)
@@ -272,6 +272,11 @@ add_boolean_option(ENABLE_LTTNG        False "Activate the LTTNG tracer, a debug
 add_boolean_option(UE_AUTOTEST_TRACE   False "Activate UE autotest specific logs" ON)
 add_boolean_option(UE_DEBUG_TRACE      False "Activate UE debug trace" ON)
 add_boolean_option(UE_TIMING_TRACE     False "Activate UE timing trace" ON)
+
+add_boolean_option(TRACY_ENABLE OFF "Enable tracy instrumentation" ON)
+if (TRACY_ENABLE)
+  CPMAddPackage("gh:wolfpld/tracy#v0.11.1")
+endif()
 
 set (OCP_ITTI ${OPENAIR_DIR}/common/utils/ocp_itti)
 add_library(ITTI ${OCP_ITTI}/intertask_interface.cpp)
@@ -482,26 +487,6 @@ target_link_libraries(params_libconfig PRIVATE config_internals ${libconfig_LIBR
 add_library(shlib_loader OBJECT common/utils/load_module_shlib.c)
 target_link_libraries(shlib_loader PRIVATE CONFIG_LIB)
 
-##########################################################
-
-# LDPC offload library - AMD T2 Accelerator Card
-##########################################################
-
-add_boolean_option(ENABLE_LDPC_T2 OFF "Build support for LDPC Offload to T2 library" OFF)
-if (ENABLE_LDPC_T2)
-  pkg_check_modules(LIBDPDK_T2 REQUIRED libdpdk=20.11.9)
-  find_library(PMD_T2 NAMES rte_baseband_accl_ldpc HINTS ${LIBDPDK_T2_LIBRARY_DIRS})
-  if (NOT PMD_T2)
-    message(FATAL_ERROR "could not find poll-mode driver for AccelerComm T2 LDPC Offload (rte_baseband_accl_ldpc.so)")
-  endif()
-  message(STATUS "T2 build: use ${PMD_T2}")
-  add_library(ldpc_t2 MODULE ${OPENAIR1_DIR}/PHY/CODING/nrLDPC_decoder/nrLDPC_decoder_offload.c)
-  set_target_properties(ldpc_t2 PROPERTIES COMPILE_FLAGS "-DALLOW_EXPERIMENTAL_API")
-  target_link_libraries(ldpc_t2 ${LIBDPDK_T2_LDFLAGS} ${PMD_T2})
-endif()
-
-##########################################################
-
 include_directories ("${OPENAIR_DIR}/radio/COMMON")
 
 ##############################################################
@@ -638,7 +623,8 @@ if (cap_FOUND)
   target_link_libraries(UTIL PRIVATE cap)
   target_compile_definitions(UTIL PRIVATE HAVE_LIB_CAP)
 endif()
-target_link_libraries(UTIL PUBLIC ${T_LIB} pthread LOG thread-pool utils)
+target_link_libraries(UTIL PUBLIC ${T_LIB} pthread LOG thread-pool utils barrier actor)
+target_link_libraries(UTIL PUBLIC instrumentation)
 
 set(SECURITY_SRC
   ${OPENAIR3_DIR}/SECU/secu_defs.c
@@ -679,7 +665,7 @@ set(SCHED_NR_SRC
   ${OPENAIR1_DIR}/SCHED_NR/phy_frame_config_nr.c
 )
 add_library(SCHED_NR_LIB ${SCHED_NR_SRC})
-target_link_libraries(SCHED_NR_LIB PRIVATE asn1_nr_rrc_hdrs)
+target_link_libraries(SCHED_NR_LIB PRIVATE asn1_nr_rrc_hdrs UTIL)
 
 set(SCHED_SRC_RU
   ${OPENAIR1_DIR}/SCHED/ru_procedures.c
@@ -697,7 +683,7 @@ set(SCHED_SRC_UE
   ${OPENAIR1_DIR}/SCHED_UE/srs_pc.c
 )
 add_library(SCHED_UE_LIB ${SCHED_SRC_UE})
-target_link_libraries(SCHED_UE_LIB PRIVATE asn1_lte_rrc_hdrs asn1_nr_rrc_hdrs)
+target_link_libraries(SCHED_UE_LIB PRIVATE asn1_lte_rrc_hdrs asn1_nr_rrc_hdrs UTIL)
 
 set(SCHED_SRC_NR_UE
   ${OPENAIR1_DIR}/SCHED_NR_UE/phy_procedures_nr_ue.c
@@ -708,7 +694,7 @@ set(SCHED_SRC_NR_UE
   ${OPENAIR1_DIR}/SCHED_NR_UE/pucch_uci_ue_nr.c
 )
 add_library(SCHED_NR_UE_LIB ${SCHED_SRC_NR_UE})
-target_link_libraries(SCHED_NR_UE_LIB PRIVATE asn1_lte_rrc_hdrs asn1_nr_rrc_hdrs)
+target_link_libraries(SCHED_NR_UE_LIB PRIVATE asn1_lte_rrc_hdrs asn1_nr_rrc_hdrs UTIL)
 
 # nFAPI
 #################################
@@ -719,7 +705,7 @@ set(NFAPI_SRC
 )
 add_library(NFAPI_LIB ${NFAPI_SRC})
 target_link_libraries(NFAPI_LIB PUBLIC nfapi_common)
-target_link_libraries(NFAPI_LIB PUBLIC nr_fapi_p5)
+target_link_libraries(NFAPI_LIB PUBLIC nr_fapi_p5 nr_fapi_p7)
 
 include_directories(${NFAPI_DIR}/nfapi/public_inc)
 include_directories(${NFAPI_DIR}/nfapi/inc)
@@ -744,7 +730,7 @@ set(NFAPI_VNF_SRC
 )
 add_library(NFAPI_VNF_LIB ${NFAPI_VNF_SRC})
 target_link_libraries(NFAPI_VNF_LIB PRIVATE asn1_lte_rrc_hdrs asn1_nr_rrc_hdrs)
-target_link_libraries(NFAPI_VNF_LIB PRIVATE nr_fapi_p5)
+target_link_libraries(NFAPI_VNF_LIB PRIVATE nr_fapi_p5 nr_fapi_p7)
 if(OAI_AERIAL)
   target_compile_definitions(NFAPI_VNF_LIB PRIVATE ENABLE_AERIAL)
 endif()
@@ -760,21 +746,14 @@ set(NFAPI_USER_SRC
   ${NFAPI_USER_DIR}/gnb_ind_vars.c
 )
 add_library(NFAPI_USER_LIB ${NFAPI_USER_SRC})
-target_link_libraries(NFAPI_USER_LIB PRIVATE asn1_lte_rrc_hdrs asn1_nr_rrc_hdrs)
+target_link_libraries(NFAPI_USER_LIB PRIVATE asn1_lte_rrc_hdrs asn1_nr_rrc_hdrs UTIL)
+target_link_libraries(NFAPI_USER_LIB PRIVATE nr_fapi_p7)
 include_directories(${NFAPI_USER_DIR})
 
 # Layer 1
 #############################
-set(PHY_TURBOSRC
-  ${OPENAIR1_DIR}/PHY/CODING/3gpplte_sse.c
-  ${OPENAIR1_DIR}/PHY/CODING/3gpplte.c
-  ${OPENAIR1_DIR}/PHY/CODING/3gpplte_turbo_decoder_sse_8bit.c
-  ${OPENAIR1_DIR}/PHY/CODING/3gpplte_turbo_decoder_sse_16bit.c
-  ${OPENAIR1_DIR}/PHY/CODING/3gpplte_turbo_decoder_avx2_16bit.c
-  ${OPENAIR1_DIR}/PHY/CODING/3gpplte_turbo_decoder.c
-)
 set(PHY_POLARSRC
-  ${OPENAIR1_DIR}/PHY/CODING/nr_polar_init.c
+  ${OPENAIR1_DIR}/PHY/CODING/nrPolar_tools/nr_polar_init.c
   ${OPENAIR1_DIR}/PHY/CODING/nrPolar_tools/nr_bitwise_operations.c
   ${OPENAIR1_DIR}/PHY/CODING/nrPolar_tools/nr_crc_byte.c
   ${OPENAIR1_DIR}/PHY/CODING/nrPolar_tools/nr_polar_decoder.c
@@ -795,75 +774,15 @@ set(PHY_TURBOIF
   ${OPENAIR1_DIR}/PHY/CODING/coding_load.c
 )
 
-set(PHY_LDPC_ORIG_SRC
-  ${OPENAIR1_DIR}/PHY/CODING/nrLDPC_decoder/nrLDPC_decoder.c
-  ${OPENAIR1_DIR}/PHY/CODING/nrLDPC_encoder/ldpc_encoder.c
-)
-add_library(ldpc_orig MODULE ${PHY_LDPC_ORIG_SRC} )
-target_link_libraries(ldpc_orig PRIVATE ldpc_gen_HEADERS)
-
-set(PHY_LDPC_OPTIM_SRC
-  ${OPENAIR1_DIR}/PHY/CODING/nrLDPC_decoder/nrLDPC_decoder.c
-  ${OPENAIR1_DIR}/PHY/CODING/nrLDPC_encoder/ldpc_encoder_optim.c
-  )
-add_library(ldpc_optim MODULE ${PHY_LDPC_OPTIM_SRC} )
-target_link_libraries(ldpc_optim PRIVATE ldpc_gen_HEADERS)
-
-set(PHY_LDPC_OPTIM8SEG_SRC
-  ${OPENAIR1_DIR}/PHY/CODING/nrLDPC_decoder/nrLDPC_decoder.c
-  ${OPENAIR1_DIR}/PHY/CODING/nrLDPC_encoder/ldpc_encoder_optim8seg.c
-)
-add_library(ldpc_optim8seg MODULE ${PHY_LDPC_OPTIM8SEG_SRC} )
-target_link_libraries(ldpc_optim8seg PRIVATE ldpc_gen_HEADERS)
-
-set(PHY_LDPC_OPTIM8SEGMULTI_SRC
-  ${OPENAIR1_DIR}/PHY/CODING/nrLDPC_decoder/nrLDPC_decoder.c
-  ${OPENAIR1_DIR}/PHY/CODING/nrLDPC_encoder/ldpc_encoder_optim8segmulti.c
-  )
-add_library(ldpc MODULE ${PHY_LDPC_OPTIM8SEGMULTI_SRC} )
-target_link_libraries(ldpc PRIVATE ldpc_gen_HEADERS)
-
-set(PHY_LDPC_CUDA_SRC
-  ${OPENAIR1_DIR}/PHY/CODING/nrLDPC_decoder_LYC/nrLDPC_decoder_LYC.cu
-  ${OPENAIR1_DIR}/PHY/CODING/nrLDPC_encoder/ldpc_encoder_optim8segmulti.c
-)
-
-set(PHY_LDPC_CL_SRC
-  ${OPENAIR1_DIR}/PHY/CODING/nrLDPC_decoder/nrLDPC_decoder_CL.c
-  ${OPENAIR1_DIR}/PHY/CODING/nrLDPC_encoder/ldpc_encoder_optim8segmulti.c
-)
-add_custom_target( nrLDPC_decoder_kernels_CL
-                   COMMAND gcc ${OPENAIR1_DIR}/PHY/CODING/nrLDPC_decoder/nrLDPC_decoder_CL.c -dD -DNRLDPC_KERNEL_SOURCE -E -o ${CMAKE_CURRENT_BINARY_DIR}/nrLDPC_decoder_kernels_CL.clc
-                   SOURCES ${OPENAIR1_DIR}/PHY/CODING/nrLDPC_decoder/nrLDPC_decoder_CL.c
-)
-add_library(ldpc_cl MODULE ${PHY_LDPC_CL_SRC} )
-target_link_libraries(ldpc_cl OpenCL)
-add_dependencies(ldpc_cl nrLDPC_decoder_kernels_CL)
-
 set(PHY_NR_CODINGIF
   ${OPENAIR1_DIR}/PHY/CODING/nrLDPC_load.c
 )
 
-##############################################
-# Base CUDA setting
-##############################################
-
-add_boolean_option(ENABLE_LDPC_CUDA OFF "Build support for CUDA" OFF)
-if (ENABLE_LDPC_CUDA)
-  find_package(CUDA REQUIRED)
-  SET(CUDA_NVCC_FLAG "${CUDA_NVCC_FLAGS};-arch=sm_60;")
-  SET(CUDA_VERBOSE_BUILD ON)
-  cuda_add_library(ldpc_cuda MODULE ${PHY_LDPC_CUDA_SRC})
-  set_target_properties(ldpc_cuda PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
-  if (NOT CUDA_FOUND)
-    message(FATAL_ERROR "no CUDA found")
-  endif()
-endif()
-
-add_library(coding MODULE ${PHY_TURBOSRC} )
+set(PHY_NRLDPC_CODINGIF
+  ${OPENAIR1_DIR}/PHY/CODING/nrLDPC_coding/nrLDPC_coding_interface_load.c
+)
 
 add_library(dfts MODULE ${OPENAIR1_DIR}/PHY/TOOLS/oai_dfts.c ${OPENAIR1_DIR}/PHY/TOOLS/oai_dfts_neon.c)
-
 
 set(PHY_SRC_COMMON
   ${OPENAIR1_DIR}/PHY/LTE_TRANSPORT/dci_tools_common.c
@@ -1052,7 +971,7 @@ set(PHY_SRC_UE
   ${OPENAIR1_DIR}/PHY/TOOLS/simde_operations.c
   ${PHY_POLARSRC}
   ${PHY_SMALLBLOCKSRC}
-  ${PHY_NR_CODINGIF}
+  ${PHY_NRLDPC_CODINGIF}
   ${OPENAIR1_DIR}/PHY/NR_TRANSPORT/pucch_rx.c
   ${OPENAIR1_DIR}/PHY/NR_TRANSPORT/srs_rx.c
   ${OPENAIR1_DIR}/PHY/NR_TRANSPORT/nr_uci_tools_common.c
@@ -1107,7 +1026,7 @@ set(PHY_SRC_UE
   ${OPENAIR1_DIR}/PHY/INIT/nr_init_ue.c
   ${PHY_POLARSRC}
   ${PHY_SMALLBLOCKSRC}
-  ${PHY_NR_CODINGIF}
+  ${PHY_NRLDPC_CODINGIF}
   )
 
 
@@ -1120,7 +1039,7 @@ set(PHY_SRC_UE ${PHY_SRC_UE} ${OPENAIR1_DIR}/PHY/LTE_UE_TRANSPORT/dlsch_llr_comp
 add_library(PHY_COMMON ${PHY_SRC_COMMON})
 target_link_libraries(PHY_COMMON PRIVATE shlib_loader)
 add_dependencies(PHY_COMMON dfts)
-target_link_libraries(PHY_COMMON PRIVATE asn1_lte_rrc_hdrs)
+target_link_libraries(PHY_COMMON PRIVATE asn1_lte_rrc_hdrs PUBLIC UTIL)
 
 add_library(PHY ${PHY_SRC})
 target_link_libraries(PHY PRIVATE asn1_lte_rrc_hdrs asn1_nr_rrc_hdrs)
@@ -1129,7 +1048,7 @@ pkg_check_modules(blas REQUIRED blas)
 pkg_check_modules(lapacke REQUIRED lapacke)
 
 add_library(PHY_UE ${PHY_SRC_UE})
-target_link_libraries(PHY_UE PRIVATE asn1_lte_rrc_hdrs asn1_nr_rrc_hdrs)
+target_link_libraries(PHY_UE PRIVATE asn1_lte_rrc_hdrs asn1_nr_rrc_hdrs UTIL)
 # RHEL needs also cblas, but Ubuntu does not have it. So `cblas_LIBRARIES` will
 # be empty for Ubuntu, a no-op
 pkg_check_modules(cblas cblas)
@@ -1137,6 +1056,7 @@ target_link_libraries(PHY_UE PRIVATE ${blas_LIBRARIES} ${cblas_LIBRARIES} ${lapa
 target_include_directories(PHY_UE PRIVATE ${blas_INCLUDE_DIRS} ${lapacke_INCLUDE_DIRS})
 
 add_library(PHY_NR_COMMON ${PHY_NR_SRC_COMMON})
+target_link_libraries(PHY_NR_COMMON PUBLIC UTIL)
 
 add_library(PHY_NR ${PHY_NR_SRC})
 target_link_libraries(PHY_NR nr_phy_common nr_common)
@@ -1146,10 +1066,10 @@ target_link_libraries(PHY_NR_NO_AVX_256 nr_phy_common nr_common)
 target_compile_definitions(PHY_NR_NO_AVX_256 PUBLIC USE_128BIT)
 
 add_library(PHY_NR_UE ${PHY_NR_UE_SRC})
-target_link_libraries(PHY_NR_UE PRIVATE asn1_nr_rrc_hdrs nr_phy_common nr_common)
+target_link_libraries(PHY_NR_UE PRIVATE asn1_nr_rrc_hdrs nr_phy_common nr_common UTIL)
 
 add_library(PHY_RU ${PHY_SRC_RU})
-target_link_libraries(PHY_RU PRIVATE asn1_lte_rrc_hdrs)
+target_link_libraries(PHY_RU PRIVATE asn1_lte_rrc_hdrs UTIL)
 
 #Library for mex functions
 #########################3
@@ -1218,7 +1138,7 @@ set(NR_SDAP_SRC
   ${OPENAIR2_DIR}/SDAP/nr_sdap/nr_sdap.c
   ${OPENAIR2_DIR}/SDAP/nr_sdap/nr_sdap_entity.c
   )
-  
+
 set(L2_SRC
   ${PDCP_DIR}/pdcp.c
   ${PDCP_DIR}/pdcp_fifo.c
@@ -1376,7 +1296,6 @@ set (MAC_NR_SRC_UE
   ${NR_UE_MAC_DIR}/nr_ue_scheduler.c
   ${NR_UE_MAC_DIR}/nr_ue_scheduler_sl.c
   ${NR_UE_MAC_DIR}/nr_ue_dci_configuration.c
-  ${NR_UE_MAC_DIR}/nr_ra_procedures.c
 )
 
 set (ENB_APP_SRC
@@ -1425,7 +1344,7 @@ endif()
 
 
 add_library(MAC_UE_NR ${MAC_NR_SRC_UE})
-target_link_libraries(MAC_UE_NR PRIVATE asn1_lte_rrc_hdrs asn1_nr_rrc_hdrs PUBLIC nr_ue_power_procedures)
+target_link_libraries(MAC_UE_NR PRIVATE asn1_lte_rrc_hdrs asn1_nr_rrc_hdrs PUBLIC nr_ue_power_procedures nr_ue_ra_procedures)
 
 add_library(L2_LTE ${L2_LTE_SRC})
 target_link_libraries(L2_LTE PRIVATE asn1_lte_rrc_hdrs asn1_nr_rrc_hdrs)
@@ -1469,6 +1388,7 @@ add_library(L2_UE
   ${MAC_SRC_UE}
 )
 target_link_libraries(L2_UE PRIVATE asn1_nr_rrc_hdrs asn1_lte_rrc_hdrs)
+target_link_libraries(L2_UE PRIVATE GTPV1U)
 
 add_library(L2_UE_LTE_NR
   ${L2_RRC_SRC_UE}
@@ -1480,7 +1400,7 @@ target_link_libraries(L2_UE PRIVATE asn1_lte_rrc_hdrs)
 
 add_library( NR_L2_UE ${NR_L2_SRC_UE} ${MAC_NR_SRC_UE} )
 target_link_libraries(NR_L2_UE PRIVATE f1ap nr_rlc)
-target_link_libraries(NR_L2_UE PRIVATE asn1_nr_rrc_hdrs asn1_lte_rrc_hdrs nr_common nr_ue_power_procedures)
+target_link_libraries(NR_L2_UE PRIVATE asn1_nr_rrc_hdrs asn1_lte_rrc_hdrs nr_common nr_ue_power_procedures nr_ue_ra_procedures)
 
 add_library(MAC_NR_COMMON
             ${OPENAIR2_DIR}/LAYER2/NR_MAC_COMMON/nr_mac_common.c
@@ -1562,6 +1482,10 @@ set(libnas_emm_msg_OBJS
   ${NAS_SRC}COMMON/EMM/MSG/TrackingAreaUpdateReject.c
   ${NAS_SRC}COMMON/EMM/MSG/TrackingAreaUpdateRequest.c
   ${NAS_SRC}COMMON/EMM/MSG/UplinkNasTransport.c
+)
+
+set(libnas_fgs_msg_OBJS
+  ${NAS_SRC}COMMON/EMM/MSG/fgs_service_request.c
 )
 
 set(libnas_esm_msg_OBJS
@@ -1677,7 +1601,6 @@ set (libnas_utils_OBJS
   ${NAS_SRC}COMMON/UTIL/nas_timer.c
   ${NAS_SRC}COMMON/UTIL/socket.c
   ${NAS_SRC}COMMON/UTIL/stty.c
-  ${NAS_SRC}COMMON/UTIL/TLVEncoder.c
   ${NAS_SRC}COMMON/UTIL/TLVDecoder.c
   ${NAS_SRC}COMMON/UTIL/OctetString.c
 )
@@ -1788,6 +1711,7 @@ add_library(LIB_NAS_SIMUE
   ${libnas_api_OBJS}
   ${libnas_ue_api_OBJS}
   ${libnas_emm_msg_OBJS}
+  ${libnas_fgs_msg_OBJS}
   ${libnas_esm_msg_OBJS}
   ${libnas_ies_OBJS}
   ${libnas_utils_OBJS}
@@ -1834,6 +1758,7 @@ include_directories(${NAS_SRC}UE)
 include_directories(${NAS_SRC}UE/API/USER)
 include_directories(${NAS_SRC}UE/API/USIM)
 include_directories(${NAS_SRC}UE/EMM)
+include_directories(${NAS_SRC}UE/EMM/MSG)
 include_directories(${NAS_SRC}UE/EMM/SAP)
 include_directories(${NAS_SRC}UE/ESM)
 include_directories(${NAS_SRC}UE/ESM/SAP)
@@ -1942,12 +1867,6 @@ add_executable(measurement_display
   ${OPENAIR_DIR}/common/utils/threadPool/measurement_display.c)
 target_link_libraries (measurement_display minimal_lib)
 
-add_executable(test5Gnas
-  ${OPENAIR_DIR}/openair3/TEST/test5Gnas.c
-)
-target_link_libraries (test5Gnas LIB_5GNAS_GNB minimal_lib )
-
-
 # lte-softmodem is both eNB and UE implementation
 ###################################################
 
@@ -1980,6 +1899,7 @@ target_link_libraries(lte-softmodem PRIVATE
 target_link_libraries(lte-softmodem PRIVATE pthread m CONFIG_LIB rt sctp)
 target_link_libraries(lte-softmodem PRIVATE ${T_LIB})
 target_link_libraries(lte-softmodem PRIVATE asn1_nr_rrc_hdrs asn1_lte_rrc_hdrs)
+target_link_libraries(lte-softmodem PRIVATE ${blas_LIBRARIES} ${cblas_LIBRARIES} ${lapacke_LIBRARIES} ${lapack_LIBRARIES})
 
 if(E2_AGENT)
   target_compile_definitions(lte-softmodem PRIVATE ${E2AP_VERSION} ${KPM_VERSION} E2_AGENT)
@@ -2035,6 +1955,7 @@ target_link_libraries(lte-uesoftmodem PRIVATE
 target_link_libraries(lte-uesoftmodem PRIVATE pthread m CONFIG_LIB rt sctp)
 target_link_libraries(lte-uesoftmodem PRIVATE ${T_LIB})
 target_link_libraries(lte-uesoftmodem PRIVATE asn1_nr_rrc_hdrs asn1_lte_rrc_hdrs)
+target_link_libraries(lte-uesoftmodem PRIVATE ${blas_LIBRARIES} ${cblas_LIBRARIES} ${lapacke_LIBRARIES} ${lapack_LIBRARIES})
 
 # force the generation of ASN.1 so that we don't need to wait during the build
 target_link_libraries(lte-uesoftmodem PRIVATE
@@ -2081,12 +2002,6 @@ if(E2_AGENT)
 endif()
 
 
-add_dependencies(nr-softmodem ldpc_orig ldpc_optim ldpc_optim8seg ldpc)
-
-if (ENABLE_LDPC_T2)
-  add_dependencies(nr-softmodem ldpc_t2)
-endif()
-
 # force the generation of ASN.1 so that we don't need to wait during the build
 target_link_libraries(nr-softmodem PRIVATE
   asn1_lte_rrc asn1_nr_rrc asn1_s1ap asn1_ngap asn1_m2ap asn1_m3ap asn1_x2ap asn1_f1ap asn1_lpp)
@@ -2109,7 +2024,7 @@ if(E2_AGENT)
   target_link_libraries(nr-cuup PRIVATE e2_agent e2_agent_arg e2_ran_func_cuup)
   target_compile_definitions(nr-cuup PRIVATE ${E2AP_VERSION} ${KPM_VERSION} E2_AGENT)
 endif()
-                     
+
 # nr-uesoftmodem is  UE implementation
 #######################################
 
@@ -2117,6 +2032,7 @@ add_executable(nr-uesoftmodem
   ${rrc_h}
   ${s1ap_h}
   ${OPENAIR_DIR}/executables/nr-uesoftmodem.c
+  ${OPENAIR_DIR}/executables/position_interface.c
   ${OPENAIR_DIR}/executables/nr-ue.c
   ${OPENAIR_DIR}/executables/softmodem-common.c
   ${OPENAIR_DIR}/radio/COMMON/common_lib.c
@@ -2138,12 +2054,6 @@ target_link_libraries(nr-uesoftmodem PRIVATE pthread m CONFIG_LIB rt nr_ue_phy_m
 target_link_libraries(nr-uesoftmodem PRIVATE ${T_LIB})
 target_link_libraries(nr-uesoftmodem PRIVATE asn1_nr_rrc asn1_lte_rrc)
 target_link_libraries (nr-uesoftmodem PRIVATE czmq json-c::json-c)
-
-add_dependencies( nr-uesoftmodem ldpc_orig ldpc_optim ldpc_optim8seg ldpc )
-if (ENABLE_LDPC_CUDA)
-   add_dependencies(nr-uesoftmodem ldpc_cuda)
-   add_dependencies(nr-softmodem ldpc_cuda)
-endif()
 
 # force the generation of ASN.1 so that we don't need to wait during the build
 target_link_libraries(nr-uesoftmodem PRIVATE
@@ -2198,11 +2108,6 @@ add_executable(ldpctest
    ${PHY_NR_CODINGIF}
    ${OPENAIR1_DIR}/PHY/CODING/TESTBENCH/ldpctest.c
    )
-
-add_dependencies(ldpctest ldpc_orig ldpc_optim ldpc_optim8seg ldpc)
-if (ENABLE_LDPC_CUDA)
-  add_dependencies(ldpctest ldpc_cuda)
-endif()
 target_link_libraries(ldpctest PRIVATE
   -Wl,--start-group UTIL SIMU PHY_COMMON PHY_NR_COMMON -Wl,--end-group
   m pthread dl shlib_loader ${T_LIB}
@@ -2299,10 +2204,6 @@ add_executable(nr_ulsim
   ${PHY_INTERFACE_DIR}/queue_t.c
   )
 
-if (ENABLE_LDPC_T2)
-  add_dependencies(nr_ulsim ldpc_t2)
-endif()
-
 target_link_libraries(nr_ulsim PRIVATE
   -Wl,--start-group UTIL SIMU PHY_COMMON PHY_NR_COMMON PHY_NR PHY_NR_UE SCHED_NR_LIB SCHED_NR_UE_LIB MAC_UE_NR MAC_NR_COMMON nr_rrc CONFIG_LIB L2_NR HASHTABLE x2ap SECURITY ngap -lz -Wl,--end-group
   m pthread ${T_LIB} ITTI dl shlib_loader nr_ue_phy_meas
@@ -2361,14 +2262,14 @@ if (${T_TRACER})
         #all "add_library" definitions
         ITTI lte_rrc nr_rrc s1ap x2ap m2ap m3ap f1ap
         params_libconfig oai_usrpdevif oai_bladerfdevif oai_lmssdrdevif oai_iqplayer
-        oai_eth_transpro oai_mobipass coding HASHTABLE UTIL OMG_SUMO
+        oai_eth_transpro oai_mobipass HASHTABLE UTIL OMG_SUMO
         SECURITY SCHED_LIB SCHED_NR_LIB SCHED_RU_LIB SCHED_UE_LIB SCHED_NR_UE_LIB default_sched remote_sched RAL
         NFAPI_LIB NFAPI_PNF_LIB NFAPI_VNF_LIB NFAPI_USER_LIB
         MISC_NFAPI_LTE_LIB MISC_NFAPI_NR_LIB
         PHY_COMMON PHY PHY_UE PHY_NR PHY_NR_COMMON PHY_NR_UE PHY_RU PHY_MEX
         L2 L2_LTE L2_NR L2_LTE_NR L2_UE NR_L2_UE L2_UE_LTE_NR MAC_NR_COMMON MAC_UE_NR ngap
         CN_UTILS GTPV1U SCTP_CLIENT MME_APP LIB_NAS_UE NB_IoT SIMU OPENAIR0_LIB
-        ldpc_orig ldpc_optim ldpc_optim8seg ldpc_t2 ldpc_cl ldpc_cuda ldpc dfts config_internals nr_common)
+        dfts config_internals nr_common)
     if (TARGET ${i})
       add_dependencies(${i} generate_T)
     endif()

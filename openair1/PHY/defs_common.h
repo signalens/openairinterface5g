@@ -1050,16 +1050,17 @@ typedef uint8_t(encoder_if_t)(uint8_t *input,
 
 extern int oai_exit;
 
-static inline void wait_sync(char *thread_name) {
+static inline void wait_sync(char *thread_name)
+{
   int rc;
-  printf( "waiting for sync (%s,%d/%p,%p,%p)\n",thread_name,sync_var,&sync_var,&sync_cond,&sync_mutex);
+  LOG_D(PHY, "waiting for sync (%s,%d/%p,%p,%p)\n", thread_name, sync_var, &sync_var, &sync_cond, &sync_mutex);
   AssertFatal((rc = pthread_mutex_lock( &sync_mutex ))==0,"sync mutex lock error");
 
   while (sync_var<0 && !oai_exit)
     pthread_cond_wait( &sync_cond, &sync_mutex );
 
   AssertFatal((rc = pthread_mutex_unlock( &sync_mutex ))==0,"sync mutex unlock error");
-  printf( "got sync (%s)\n", thread_name);
+  LOG_I(PHY, "got sync (%s)\n", thread_name);
   /*
    * Raphael Defosseux: added for CI to get faster the got sync message.
    */

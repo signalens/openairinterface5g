@@ -31,8 +31,17 @@
 #ifndef __NR_RRC_CONFIG_H__
 #define __NR_RRC_CONFIG_H__
 
-#include "nr_rrc_defs.h"
-#include "openair2/RRC/NR/MESSAGES/asn1_msg.h"
+#include <stdbool.h>
+#include <stdint.h>
+#include "NR_BCCH-BCH-Message.h"
+#include "NR_BCCH-DL-SCH-Message.h"
+#include "NR_CellGroupConfig.h"
+#include "NR_UE-NR-Capability.h"
+#include "NR_UL-CCCH-Message.h"
+#include "PHY/defs_common.h"
+#include "f1ap_messages_types.h"
+struct NR_MeasurementTimingConfiguration;
+struct NR_PDSCH_TimeDomainResourceAllocationList;
 
 // forward declaration of MAC configuration parameters, definition is included in C file
 struct nr_mac_config_t;

@@ -462,65 +462,49 @@ static void map_symbols(const nr_phy_pxsch_params_t p,
 }
 
 void nr_ue_ulsch_procedures(PHY_VARS_NR_UE *UE,
-                            const unsigned char harq_pid,
                             const uint32_t frame,
                             const uint8_t slot,
-                            const int gNB_id,
                             nr_phy_data_tx_t *phy_data,
                             c16_t **txdataF)
 {
-  LOG_D(PHY,"nr_ue_ulsch_procedures hard_id %d %d.%d\n",harq_pid,frame,slot);
 
-  int l_prime[2];
-  uint8_t nb_dmrs_re_per_rb;
+  int harq_pid = phy_data->ulsch.pusch_pdu.pusch_data.harq_process_id;
 
-  NR_DL_FRAME_PARMS *frame_parms = &UE->frame_parms;
+  if (UE->ul_harq_processes[harq_pid].ULstatus != ACTIVE)
+    return;
 
-  int      N_PRB_oh = 0; // higher layer (RRC) parameter xOverhead in PUSCH-ServingCellConfig
-  uint16_t number_dmrs_symbols = 0;
+  start_meas_nr_ue_phy(UE, PUSCH_PROC_STATS);
+
+  uint8_t ULSCH_ids[1];
+  unsigned int G[1];
+  uint8_t pusch_id = 0;
+  ULSCH_ids[pusch_id] = 0;
+  LOG_D(PHY, "nr_ue_ulsch_procedures_slot hard_id %d %d.%d prepare for coding\n", harq_pid, frame, slot);
 
   NR_UE_ULSCH_t *ulsch_ue = &phy_data->ulsch;
   NR_UL_UE_HARQ_t *harq_process_ul_ue = &UE->ul_harq_processes[harq_pid];
   const nfapi_nr_ue_pusch_pdu_t *pusch_pdu = &ulsch_ue->pusch_pdu;
 
-  uint32_t tb_size = pusch_pdu->pusch_data.tb_size;
-  AssertFatal(pusch_pdu->pusch_uci.harq_ack_bit_length == 0 &&
-              pusch_pdu->pusch_uci.csi_part1_bit_length == 0 &&
-              pusch_pdu->pusch_uci.csi_part2_bit_length == 0,
-              "UCI on PUSCH not supported at PHY\n");
+  uint16_t number_dmrs_symbols = 0;
 
-  int start_symbol          = pusch_pdu->start_symbol_index;
-  uint16_t ul_dmrs_symb_pos = pusch_pdu->ul_dmrs_symb_pos;
+  uint16_t nb_rb = pusch_pdu->rb_size;
   uint8_t number_of_symbols = pusch_pdu->nr_of_symbols;
-  uint8_t dmrs_type         = pusch_pdu->dmrs_config_type;
-  uint16_t start_rb         = pusch_pdu->rb_start;
-  uint16_t nb_rb            = pusch_pdu->rb_size;
-  uint8_t Nl                = pusch_pdu->nrOfLayers;
-  uint8_t mod_order         = pusch_pdu->qam_mod_order;
-  uint16_t rnti             = pusch_pdu->rnti;
-  uint8_t cdm_grps_no_data  = pusch_pdu->num_dmrs_cdm_grps_no_data;
-  uint16_t start_sc         = frame_parms->first_carrier_offset + (start_rb+pusch_pdu->bwp_start)*NR_NB_SC_PER_RB;
-
-  if (start_sc >= frame_parms->ofdm_symbol_size)
-    start_sc -= frame_parms->ofdm_symbol_size;
-
-  ulsch_ue->Nid_cell = frame_parms->Nid_cell;
+  uint8_t dmrs_type = pusch_pdu->dmrs_config_type;
+  uint8_t cdm_grps_no_data = pusch_pdu->num_dmrs_cdm_grps_no_data;
+  uint8_t nb_dmrs_re_per_rb = ((dmrs_type == pusch_dmrs_type1) ? 6 : 4) * cdm_grps_no_data;
+  int start_symbol = pusch_pdu->start_symbol_index;
+  uint16_t ul_dmrs_symb_pos = pusch_pdu->ul_dmrs_symb_pos;
+  uint8_t mod_order = pusch_pdu->qam_mod_order;
+  uint8_t Nl = pusch_pdu->nrOfLayers;
+  uint32_t tb_size = pusch_pdu->pusch_data.tb_size;
+  uint16_t rnti = pusch_pdu->rnti;
 
   for (int i = start_symbol; i < start_symbol + number_of_symbols; i++) {
-    if((ul_dmrs_symb_pos >> i) & 0x01)
+    if ((ul_dmrs_symb_pos >> i) & 0x01)
       number_dmrs_symbols += 1;
   }
 
-  nb_dmrs_re_per_rb = ((dmrs_type == pusch_dmrs_type1) ? 6:4)*cdm_grps_no_data;
-
-  LOG_D(PHY,"ulsch TX %x : start_rb %d nb_rb %d mod_order %d Nl %d Tpmi %d bwp_start %d start_sc %d start_symbol %d num_symbols %d cdmgrpsnodata %d num_dmrs %d dmrs_re_per_rb %d\n",
-        rnti,start_rb,nb_rb,mod_order,Nl,pusch_pdu->Tpmi,pusch_pdu->bwp_start,start_sc,start_symbol,number_of_symbols,cdm_grps_no_data,number_dmrs_symbols,nb_dmrs_re_per_rb);
-  // TbD num_of_mod_symbols is set but never used
-  const uint32_t N_RE_prime = NR_NB_SC_PER_RB * number_of_symbols - nb_dmrs_re_per_rb * number_dmrs_symbols - N_PRB_oh;
-  harq_process_ul_ue->num_of_mod_symbols = N_RE_prime*nb_rb;
-
-  /////////////////////////PTRS parameters' initialization/////////////////////////
-  ///////////
+  ///////////////////////PTRS parameters' initialization///////////////////
 
   unsigned int K_ptrs = 0, k_RE_ref = 0;
   uint32_t unav_res = 0;
@@ -531,32 +515,14 @@ void nr_ue_ulsch_procedures(PHY_VARS_NR_UE *UE,
 
     ulsch_ue->ptrs_symbols = 0;
 
-    set_ptrs_symb_idx(&ulsch_ue->ptrs_symbols,
-                      number_of_symbols,
-                      start_symbol,
-                      L_ptrs,
-                      ul_dmrs_symb_pos);
+    set_ptrs_symb_idx(&ulsch_ue->ptrs_symbols, number_of_symbols, start_symbol, L_ptrs, ul_dmrs_symb_pos);
     int n_ptrs = (nb_rb + K_ptrs - 1) / K_ptrs;
-    int ptrsSymbPerSlot = get_ptrs_symbols_in_slot(ulsch_ue->ptrs_symbols,
-                                                   start_symbol,
-                                                   number_of_symbols);
+    int ptrsSymbPerSlot = get_ptrs_symbols_in_slot(ulsch_ue->ptrs_symbols, start_symbol, number_of_symbols);
     unav_res = n_ptrs * ptrsSymbPerSlot;
   }
 
-  ///////////
-  ////////////////////////////////////////////////////////////////////
+  G[pusch_id] = nr_get_G(nb_rb, number_of_symbols, nb_dmrs_re_per_rb, number_dmrs_symbols, unav_res, mod_order, Nl);
 
-
-  /////////////////////////ULSCH coding/////////////////////////
-  ///////////
-
-  unsigned int G = nr_get_G(nb_rb,
-                            number_of_symbols,
-                            nb_dmrs_re_per_rb,
-                            number_dmrs_symbols,
-                            unav_res,
-                            mod_order,
-                            Nl);
   ws_trace_t tmp = {.nr = true,
                     .direction = DIRECTION_UPLINK,
                     .pdu_buffer = harq_process_ul_ue->payload_AB,
@@ -571,19 +537,59 @@ void nr_ue_ulsch_procedures(PHY_VARS_NR_UE *UE,
                     .oob_event_value = 0};
   trace_pdu(&tmp);
 
-  if (nr_ulsch_encoding(UE, ulsch_ue, frame_parms, harq_pid, tb_size, G) == -1) {
+  /////////////////////////ULSCH coding/////////////////////////
+
+  if (nr_ulsch_encoding(UE, &phy_data->ulsch, frame, slot, G, 1, ULSCH_ids) == -1) {
     NR_UL_UE_HARQ_t *harq_process_ulsch = &UE->ul_harq_processes[harq_pid];
     harq_process_ulsch->ULstatus = SCH_IDLE;
+    stop_meas_nr_ue_phy(UE, PUSCH_PROC_STATS);
     return;
   }
 
-  ///////////
-  ////////////////////////////////////////////////////////////////////
+  LOG_D(PHY, "nr_ue_ulsch_procedures_slot hard_id %d %d.%d\n", harq_pid, frame, slot);
+
+  int l_prime[2];
+
+  NR_DL_FRAME_PARMS *frame_parms = &UE->frame_parms;
+
+  int N_PRB_oh = 0; // higher layer (RRC) parameter xOverhead in PUSCH-ServingCellConfig
+
+  AssertFatal(pusch_pdu->pusch_uci.harq_ack_bit_length == 0 && pusch_pdu->pusch_uci.csi_part1_bit_length == 0
+                  && pusch_pdu->pusch_uci.csi_part2_bit_length == 0,
+              "UCI on PUSCH not supported at PHY\n");
+
+  uint16_t start_rb = pusch_pdu->rb_start;
+  uint16_t start_sc = frame_parms->first_carrier_offset + (start_rb + pusch_pdu->bwp_start) * NR_NB_SC_PER_RB;
+
+  if (start_sc >= frame_parms->ofdm_symbol_size)
+    start_sc -= frame_parms->ofdm_symbol_size;
+
+  ulsch_ue->Nid_cell = frame_parms->Nid_cell;
+
+  LOG_D(PHY,
+        "ulsch TX %x : start_rb %d nb_rb %d mod_order %d Nl %d Tpmi %d bwp_start %d start_sc %d start_symbol %d num_symbols %d "
+        "cdmgrpsnodata %d "
+        "num_dmrs %d dmrs_re_per_rb %d\n",
+        rnti,
+        start_rb,
+        nb_rb,
+        mod_order,
+        Nl,
+        pusch_pdu->Tpmi,
+        pusch_pdu->bwp_start,
+        start_sc,
+        start_symbol,
+        number_of_symbols,
+        cdm_grps_no_data,
+        number_dmrs_symbols,
+        nb_dmrs_re_per_rb);
+  // TbD num_of_mod_symbols is set but never used
+  const uint32_t N_RE_prime = NR_NB_SC_PER_RB * number_of_symbols - nb_dmrs_re_per_rb * number_dmrs_symbols - N_PRB_oh;
+  harq_process_ul_ue->num_of_mod_symbols = N_RE_prime * nb_rb;
 
   /////////////////////////ULSCH scrambling/////////////////////////
-  ///////////
 
-  uint32_t available_bits = G;
+  uint32_t available_bits = G[pusch_id];
   // +1 because size can be not modulo 4
   uint32_t scrambled_output[available_bits / (8 * sizeof(uint32_t)) + 1];
   memset(scrambled_output, 0, sizeof(scrambled_output));
@@ -595,13 +601,9 @@ void nr_ue_ulsch_procedures(PHY_VARS_NR_UE *UE,
                                false,
                                scrambled_output);
 
-  /////////////
-  //////////////////////////////////////////////////////////////////////////
-
   /////////////////////////ULSCH modulation/////////////////////////
-  ///////////
 
-  int max_num_re = Nl*number_of_symbols*nb_rb*NR_NB_SC_PER_RB;
+  int max_num_re = Nl * number_of_symbols * nb_rb * NR_NB_SC_PER_RB;
   c16_t d_mod[max_num_re] __attribute__((aligned(16)));
 
   nr_modulation(scrambled_output, // assume one codeword for the moment
@@ -609,23 +611,14 @@ void nr_ue_ulsch_procedures(PHY_VARS_NR_UE *UE,
                 mod_order,
                 (int16_t *)d_mod);
 
-    
-  ///////////
-  ////////////////////////////////////////////////////////////////////////
-
   /////////////////////////ULSCH layer mapping/////////////////////////
-  ///////////
+
   const int sz = available_bits / mod_order / Nl;
   c16_t ulsch_mod[Nl][sz];
 
   nr_ue_layer_mapping(d_mod, Nl, sz, ulsch_mod);
 
-  ///////////
-  ////////////////////////////////////////////////////////////////////////
-
-
   //////////////////////// ULSCH transform precoding ////////////////////////
-  ///////////
 
   l_prime[0] = 0; // single symbol ap 0
 
@@ -636,10 +629,9 @@ void nr_ue_ulsch_procedures(PHY_VARS_NR_UE *UE,
   memset(ulsch_mod_tp, 0, sizeof(ulsch_mod_tp));
 
   if (pusch_pdu->transform_precoding == transformPrecoder_enabled) {
-
-    uint32_t nb_re_pusch=nb_rb * NR_NB_SC_PER_RB;
+    uint32_t nb_re_pusch = nb_rb * NR_NB_SC_PER_RB;
     uint32_t y_offset = 0;
-    uint16_t num_dmrs_res_per_symbol = nb_rb*(NR_NB_SC_PER_RB/2);
+    uint16_t num_dmrs_res_per_symbol = nb_rb * (NR_NB_SC_PER_RB / 2);
 
     // Calculate index to dmrs seq array based on number of DMRS Subcarriers on this symbol
     int index = get_index_for_dmrs_lowpapr_seq(num_dmrs_res_per_symbol);
@@ -647,14 +639,16 @@ void nr_ue_ulsch_procedures(PHY_VARS_NR_UE *UE,
     v = pusch_pdu->dfts_ofdm.low_papr_sequence_number;
     dmrs_seq = dmrs_lowpaprtype1_ul_ref_sig[u][v][index];
 
-    AssertFatal(index >= 0, "Num RBs not configured according to 3GPP 38.211 section 6.3.1.4. For PUSCH with transform precoding, num RBs cannot be multiple of any other primenumber other than 2,3,5\n");
+    AssertFatal(index >= 0,
+                "Num RBs not configured according to 3GPP 38.211 section 6.3.1.4. For PUSCH with transform precoding, num RBs "
+                "cannot be multiple "
+                "of any other primenumber other than 2,3,5\n");
     AssertFatal(dmrs_seq != NULL, "DMRS low PAPR seq not found, check if DMRS sequences are generated");
 
-    LOG_D(PHY,"Transform Precoding params. u: %d, v: %d, index for dmrsseq: %d\n", u, v, index);
+    LOG_D(PHY, "Transform Precoding params. u: %d, v: %d, index for dmrsseq: %d\n", u, v, index);
 
     for (int l = start_symbol; l < start_symbol + number_of_symbols; l++) {
-
-      if((ul_dmrs_symb_pos >> l) & 0x01)
+      if ((ul_dmrs_symb_pos >> l) & 0x01)
         /* In the symbol with DMRS no data would be transmitted CDM groups is 2*/
         continue;
 
@@ -662,43 +656,35 @@ void nr_ue_ulsch_procedures(PHY_VARS_NR_UE *UE,
 
       y_offset = y_offset + nb_re_pusch;
 
-      LOG_D(PHY,"Transform precoding being done on data- symbol: %d, nb_re_pusch: %d, y_offset: %d\n", l, nb_re_pusch, y_offset);
+      LOG_D(PHY, "Transform precoding being done on data- symbol: %d, nb_re_pusch: %d, y_offset: %d\n", l, nb_re_pusch, y_offset);
 
 #ifdef DEBUG_PUSCH_MAPPING
-      printf("NR_ULSCH_UE: y_offset %u\t nb_re_pusch %u \t Symbol %d \t nb_rb %d \n",
-             y_offset, nb_re_pusch, l, nb_rb);
+      printf("NR_ULSCH_UE: y_offset %u\t nb_re_pusch %u \t Symbol %d \t nb_rb %d \n", y_offset, nb_re_pusch, l, nb_rb);
 #endif
     }
 
 #ifdef DEBUG_DFT_IDFT
-    int32_t debug_symbols[MAX_NUM_NR_RE] __attribute__ ((aligned(16)));
+    int32_t debug_symbols[MAX_NUM_NR_RE] __attribute__((aligned(16)));
     int offset = 0;
-    printf("NR_ULSCH_UE: available_bits: %u, mod_order: %d", available_bits,mod_order);
+    printf("NR_ULSCH_UE: available_bits: %u, mod_order: %d", available_bits, mod_order);
 
-    for (int ll = 0; ll < (available_bits/mod_order); ll++) {
+    for (int ll = 0; ll < (available_bits / mod_order); ll++) {
       debug_symbols[ll] = ulsch_ue->ulsch_mod_tp[ll];
     }
-      
-    printf("NR_ULSCH_UE: numSym: %d, num_dmrs_sym: %d", number_of_symbols,number_dmrs_symbols);
-    for (int ll = 0; ll < (number_of_symbols-number_dmrs_symbols); ll++) {
+
+    printf("NR_ULSCH_UE: numSym: %d, num_dmrs_sym: %d", number_of_symbols, number_dmrs_symbols);
+    for (int ll = 0; ll < (number_of_symbols - number_dmrs_symbols); ll++) {
       nr_idft(&debug_symbols[offset], nb_re_pusch);
       offset = offset + nb_re_pusch;
     }
     LOG_M("preDFT_all_symbols.m", "UE_preDFT", ulsch_mod[0], number_of_symbols * nb_re_pusch, 1, 1);
     LOG_M("postDFT_all_symbols.m", "UE_postDFT", ulsch_mod_tp, number_of_symbols * nb_re_pusch, 1, 1);
-    LOG_M("DEBUG_IDFT_SYMBOLS.m","UE_Debug_IDFT", debug_symbols,number_of_symbols*nb_re_pusch,1,1);
-    LOG_M("UE_DMRS_SEQ.m","UE_DMRS_SEQ", dmrs_seq,nb_re_pusch,1,1);
+    LOG_M("DEBUG_IDFT_SYMBOLS.m", "UE_Debug_IDFT", debug_symbols, number_of_symbols * nb_re_pusch, 1, 1);
+    LOG_M("UE_DMRS_SEQ.m", "UE_DMRS_SEQ", dmrs_seq, nb_re_pusch, 1, 1);
 #endif
-
   }
-  
-  ///////////
-  ////////////////////////////////////////////////////////////////////////
-
-
 
   /////////////////////////ULSCH RE mapping/////////////////////////
-  ///////////
 
   const int slot_sz = frame_parms->ofdm_symbol_size * frame_parms->symbols_per_slot;
   c16_t tx_precoding[Nl][slot_sz];
@@ -748,12 +734,13 @@ void nr_ue_ulsch_procedures(PHY_VARS_NR_UE *UE,
   } // for (nl=0; nl < Nl; nl++)
 
   /////////////////////////ULSCH precoding/////////////////////////
-  ///////////
+
   /// Layer Precoding and Antenna port mapping
   // ulsch_mod 0-3 are mapped on antenna ports
   // The precoding info is supported by nfapi such as num_prgs, prg_size, prgs_list and pm_idx
   // The same precoding matrix is applied on prg_size RBs, Thus
   //        pmi = prgs_list[rbidx/prg_size].pm_idx, rbidx =0,...,rbSize-1
+
   // The Precoding matrix:
   for (int ap = 0; ap < frame_parms->nb_antennas_tx; ap++) {
     for (int l = start_symbol; l < start_symbol + number_of_symbols; l++) {
@@ -834,8 +821,9 @@ void nr_ue_ulsch_procedures(PHY_VARS_NR_UE *UE,
   NR_UL_UE_HARQ_t *harq_process_ulsch = NULL;
   harq_process_ulsch = &UE->ul_harq_processes[harq_pid];
   harq_process_ulsch->ULstatus = SCH_IDLE;
-  ///////////
-  ////////////////////////////////////////////////////////////////////////
+
+  stop_meas_nr_ue_phy(UE, PUSCH_PROC_STATS);
+
 }
 
 uint8_t nr_ue_pusch_common_procedures(PHY_VARS_NR_UE *UE,

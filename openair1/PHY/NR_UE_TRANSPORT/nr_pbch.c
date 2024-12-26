@@ -38,6 +38,7 @@
 #include <openair1/PHY/NR_UE_TRANSPORT/nr_transport_proto_ue.h>
 #include <openair1/PHY/TOOLS/phy_scope_interface.h>
 #include "openair1/PHY/NR_REFSIG/nr_refsig_common.h"
+#include "instrumentation.h"
 //#define DEBUG_PBCH
 //#define DEBUG_PBCH_ENCODING
 
@@ -207,31 +208,14 @@ int nr_pbch_channel_level(struct complex16 dl_ch_estimates_ext[][PBCH_MAX_RE_PER
                           const NR_DL_FRAME_PARMS *frame_parms,
                           int nb_re)
 {
-  int16_t nb_rb=nb_re/12;
-  simde__m128i avg128;
-  simde__m128i *dl_ch128;
-  int avg1=0,avg2=0;
+  int32_t avg2 = 0;
 
   for (int aarx=0; aarx<frame_parms->nb_antennas_rx; aarx++) {
-    //clear average level
-    avg128 = simde_mm_setzero_si128();
-    dl_ch128=(simde__m128i *)dl_ch_estimates_ext[aarx];
 
-    for (int rb=0; rb<nb_rb; rb++) {
-      avg128 = simde_mm_add_epi32(avg128, simde_mm_madd_epi16(dl_ch128[0],dl_ch128[0]));
-      avg128 = simde_mm_add_epi32(avg128, simde_mm_madd_epi16(dl_ch128[1],dl_ch128[1]));
-      avg128 = simde_mm_add_epi32(avg128, simde_mm_madd_epi16(dl_ch128[2],dl_ch128[2]));
-      dl_ch128+=3;
-      /*
-      if (rb==0) {
-      print_shorts("dl_ch128",&dl_ch128[0]);
-      print_shorts("dl_ch128",&dl_ch128[1]);
-      print_shorts("dl_ch128",&dl_ch128[2]);
-      }*/
-    }
+    simde__m128i *dl_ch128 = (simde__m128i *)dl_ch_estimates_ext[aarx];
 
-    for (int i = 0; i < 4; i++)
-      avg1 += ((int *)&avg128)[i] / (nb_rb * 12);
+    //compute average level
+    int32_t avg1 = simde_mm_average(dl_ch128, nb_re, 0, nb_re);
 
     if (avg1>avg2)
       avg2 = avg1;
@@ -365,6 +349,7 @@ int nr_rx_pbch(PHY_VARS_NR_UE *ue,
                int rxdataFSize,
                const struct complex16 rxdataF[][rxdataFSize])
 {
+  TracyCZone(ctx, true);
   int max_h=0;
   int symbol;
   uint8_t Lmax=frame_parms->Lmax;
@@ -539,5 +524,6 @@ int nr_rx_pbch(PHY_VARS_NR_UE *ue,
       ue->if_inst->dl_indication(&dl_indication);
   }
 
+  TracyCZoneEnd(ctx);
   return 0;
 }

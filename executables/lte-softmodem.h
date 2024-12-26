@@ -138,7 +138,7 @@ extern int usrp_tx_thread;
 // In lte-enb.c
 extern void stop_eNB(int);
 extern void kill_eNB_proc(int inst);
-extern void init_eNB(int wait_for_sync);
+extern void init_eNB();
 
 // In lte-ru.c
 extern void stop_ru(RU_t *ru);

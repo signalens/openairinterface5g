@@ -31,8 +31,9 @@
  */
 
 #define _GNU_SOURCE
+#define SPEED_OF_LIGHT 299792458
 
-//#include "mac_defs.h"
+#include "mac_defs.h"
 #include <NR_MAC_gNB/mac_proto.h>
 #include "NR_MAC_UE/mac_proto.h"
 #include "NR_MAC-CellGroupConfig.h"
@@ -41,6 +42,7 @@
 #include "executables/softmodem-common.h"
 #include "SCHED_NR/phy_frame_config_nr.h"
 #include "oai_asn1.h"
+#include "executables/position_interface.h"
 
 void set_tdd_config_nr_ue(fapi_nr_tdd_table_t *tdd_table,
                           int mu,
@@ -252,7 +254,7 @@ static void config_common_ue(NR_UE_MAC_INST_t *mac,
 
   mac->phy_config.Mod_id = mac->ue_id;
   mac->phy_config.CC_id = cc_idP;
-  
+
   // carrier config
   LOG_D(MAC, "[UE %d] Entering UE Config Common\n", mac->ue_id);
 
@@ -872,6 +874,8 @@ void nr_rrc_mac_config_req_mib(module_id_t module_id,
                                int sched_sib)
 {
   NR_UE_MAC_INST_t *mac = get_mac_inst(module_id);
+  int ret = pthread_mutex_lock(&mac->if_mutex);
+  AssertFatal(!ret, "mutex failed %d\n", ret);
   AssertFatal(mib, "MIB should not be NULL\n");
   if (!mac->mib)
     mac->mib = calloc(1, sizeof(*mac->mib));
@@ -883,6 +887,8 @@ void nr_rrc_mac_config_req_mib(module_id_t module_id,
   else if (sched_sib == 2)
     mac->get_otherSI = true;
   nr_ue_decode_mib(mac, cc_idP);
+  ret = pthread_mutex_unlock(&mac->if_mutex);
+  AssertFatal(!ret, "mutex failed %d\n", ret);
 }
 
 static void setup_puschpowercontrol(NR_UE_MAC_INST_t *mac, NR_PUSCH_PowerControl_t *source, NR_PUSCH_PowerControl_t *target)
@@ -1607,16 +1613,17 @@ static void configure_timeAlignmentTimer(NR_timer_t *time_alignment_timer, NR_Ti
     nr_timer_start(time_alignment_timer);
 }
 
-void nr_rrc_mac_config_req_reset(module_id_t module_id,
-                                 NR_UE_MAC_reset_cause_t cause)
+void nr_rrc_mac_config_req_reset(module_id_t module_id, NR_UE_MAC_reset_cause_t cause)
 {
   NR_UE_MAC_INST_t *mac = get_mac_inst(module_id);
+  int ret = pthread_mutex_lock(&mac->if_mutex);
+  AssertFatal(!ret, "mutex failed %d\n", ret);
   fapi_nr_synch_request_t sync_req = {.target_Nid_cell = -1, .ssb_bw_scan = true};
   switch (cause) {
     case GO_TO_IDLE:
       reset_ra(mac, true);
-      release_mac_configuration(mac, cause);
       nr_ue_init_mac(mac);
+      release_mac_configuration(mac, cause);
       nr_ue_mac_default_configs(mac);
       // new sync but no target cell id -> -1
       nr_ue_send_synch_request(mac, module_id, 0, &sync_req);
@@ -1649,6 +1656,8 @@ void nr_rrc_mac_config_req_reset(module_id_t module_id,
     default:
       AssertFatal(false, "Invalid MAC reset cause %d\n", cause);
   }
+  ret = pthread_mutex_unlock(&mac->if_mutex);
+  AssertFatal(!ret, "mutex failed %d\n", ret);
 }
 
 static int get_ta_offset(long *n_TimingAdvanceOffset)
@@ -1669,6 +1678,32 @@ static int get_ta_offset(long *n_TimingAdvanceOffset)
   return -1;
 }
 
+static void configure_si_schedulingInfo(NR_UE_MAC_INST_t *mac,
+                                        NR_SI_SchedulingInfo_t *si_SchedulingInfo,
+                                        NR_SI_SchedulingInfo_v1700_t *si_SchedulingInfo_v1700)
+{
+  asn_sequence_empty(&mac->si_SchedInfo.si_SchedInfo_list);
+  if (si_SchedulingInfo) {
+    mac->si_SchedInfo.si_WindowLength = si_SchedulingInfo->si_WindowLength;
+    for (int i = 0; i < si_SchedulingInfo->schedulingInfoList.list.count; i++) {
+      si_schedinfo_config_t *config = calloc_or_fail(1, sizeof(*config));
+      config->type = NR_SI_INFO;
+      config->si_WindowPosition = i + 1;
+      config->si_Periodicity = si_SchedulingInfo->schedulingInfoList.list.array[i]->si_Periodicity;
+      ASN_SEQUENCE_ADD(&mac->si_SchedInfo.si_SchedInfo_list, config);
+    }
+  }
+  if (si_SchedulingInfo_v1700) {
+    for (int i = 0; i < si_SchedulingInfo_v1700->schedulingInfoList2_r17.list.count; i++) {
+      si_schedinfo_config_t *config = calloc_or_fail(1, sizeof(*config));
+      config->type = NR_SI_INFO_v1700;
+      config->si_WindowPosition = si_SchedulingInfo_v1700->schedulingInfoList2_r17.list.array[i]->si_WindowPosition_r17;
+      config->si_Periodicity = si_SchedulingInfo_v1700->schedulingInfoList2_r17.list.array[i]->si_Periodicity_r17;
+      ASN_SEQUENCE_ADD(&mac->si_SchedInfo.si_SchedInfo_list, config);
+    }
+  }
+}
+
 void nr_rrc_mac_config_req_sib1(module_id_t module_id,
                                 int cc_idP,
                                 NR_SI_SchedulingInfo_t *si_SchedulingInfo,
@@ -1676,11 +1711,12 @@ void nr_rrc_mac_config_req_sib1(module_id_t module_id,
                                 NR_ServingCellConfigCommonSIB_t *scc)
 {
   NR_UE_MAC_INST_t *mac = get_mac_inst(module_id);
+  int ret = pthread_mutex_lock(&mac->if_mutex);
+  AssertFatal(!ret, "mutex failed %d\n", ret);
   AssertFatal(scc, "SIB1 SCC should not be NULL\n");
 
   UPDATE_IE(mac->tdd_UL_DL_ConfigurationCommon, scc->tdd_UL_DL_ConfigurationCommon, NR_TDD_UL_DL_ConfigCommon_t);
-  UPDATE_IE(mac->si_SchedulingInfo, si_SchedulingInfo, NR_SI_SchedulingInfo_t);
-  UPDATE_IE(mac->si_SchedulingInfo_v1700, si_SchedulingInfo_v1700, NR_SI_SchedulingInfo_v1700_t);
+  configure_si_schedulingInfo(mac, si_SchedulingInfo, si_SchedulingInfo_v1700);
   mac->n_ta_offset = get_ta_offset(scc->n_TimingAdvanceOffset);
 
   config_common_ue_sa(mac, scc, cc_idP);
@@ -1708,50 +1744,95 @@ void nr_rrc_mac_config_req_sib1(module_id_t module_id,
 
   if (!get_softmodem_params()->emulate_l1)
     mac->if_module->phy_config_request(&mac->phy_config);
+  ret = pthread_mutex_unlock(&mac->if_mutex);
+  AssertFatal(!ret, "mutex failed %d\n", ret);
 }
 
-void nr_rrc_mac_config_req_sib19_r17(module_id_t module_id,
-                                     NR_SIB19_r17_t *sib19_r17)
+// computes delay between ue and sat based on SIB19 ephemeris data
+static double calculate_ue_sat_ta(const position_t *position_params, struct NR_PositionVelocity_r17 *sat_pos)
+{
+  // get UE position coordinates
+  double posx = position_params->positionX;
+  double posy = position_params->positionY;
+  double posz = position_params->positionZ;
+
+  // get sat position coordinates
+  double posx_0 = (double)sat_pos->positionX_r17 * 1.3;
+  double posy_0 = (double)sat_pos->positionY_r17 * 1.3;
+  double posz_0 = (double)sat_pos->positionZ_r17 * 1.3;
+
+  double distance = sqrt(pow(posx - posx_0, 2) + pow(posy - posy_0, 2) + pow(posz - posz_0, 2));
+  // this computation will ensure 3 decimal precision
+  double ta_ms = round(((distance / SPEED_OF_LIGHT) * 1000) * 1000.0) / 1000.0;
+
+  return ta_ms;
+}
+
+void nr_rrc_mac_config_req_sib19_r17(module_id_t module_id, const position_t *pos, NR_SIB19_r17_t *sib19_r17)
 {
   NR_UE_MAC_INST_t *mac = get_mac_inst(module_id);
+  int ret = pthread_mutex_lock(&mac->if_mutex);
+  AssertFatal(!ret, "mutex failed %d\n", ret);
+  
+  // update ntn_Config_r17 with received values
+  struct NR_NTN_Config_r17 *ntn_Config_r17 = mac->sc_info.ntn_Config_r17;
+  UPDATE_IE(ntn_Config_r17, sib19_r17->ntn_Config_r17, NR_NTN_Config_r17_t);
 
-  // ntn-Config-r17
-  UPDATE_IE(mac->sc_info.ntn_Config_r17, sib19_r17->ntn_Config_r17, NR_NTN_Config_r17_t);
-
-  // TODO handle other SIB19 elements
+  // populate ntn_ta structure from mac
+  // if ephemerisInfo_r17 present in SIB19
+  struct NR_EphemerisInfo_r17 *ephemeris_info = ntn_Config_r17->ephemerisInfo_r17;
+  if (ephemeris_info) {
+    struct NR_PositionVelocity_r17 *position_velocity = ephemeris_info->choice.positionVelocity_r17;
+    if (position_velocity
+        && (position_velocity->positionX_r17 != 0 || position_velocity->positionY_r17 != 0
+            || position_velocity->positionZ_r17 != 0)) {
+      mac->ntn_ta.N_UE_TA_adj = calculate_ue_sat_ta(pos, position_velocity);
+    }
+  }
+  // if cellSpecificKoffset_r17 is present
+  if (ntn_Config_r17->cellSpecificKoffset_r17) {
+    mac->ntn_ta.cell_specific_k_offset = *ntn_Config_r17->cellSpecificKoffset_r17;
+  }
+  // Check if ta_Info_r17 is present and convert directly ta_Common_r17 (is in units of 4.072e-3 µs)
+  if (ntn_Config_r17->ta_Info_r17) {
+    mac->ntn_ta.N_common_ta_adj = ntn_Config_r17->ta_Info_r17->ta_Common_r17 * 4.072e-6;
+    // ta_CommonDrift_r17 (is in units of 0.2e-3 µs/s)
+    if (ntn_Config_r17->ta_Info_r17->ta_CommonDrift_r17)
+      mac->ntn_ta.ntn_ta_commondrift = *ntn_Config_r17->ta_Info_r17->ta_CommonDrift_r17 * 0.2e-3;
+  }
+  mac->ntn_ta.ntn_params_changed = true;
+  ret = pthread_mutex_unlock(&mac->if_mutex);
+  AssertFatal(!ret, "mutex failed %d\n", ret);
 }
 
 static void handle_reconfiguration_with_sync(NR_UE_MAC_INST_t *mac,
                                              int cc_idP,
-                                             const NR_ReconfigurationWithSync_t *reconfigurationWithSync)
+                                             const NR_ReconfigurationWithSync_t *reconfWithSync)
 {
-  mac->crnti = reconfigurationWithSync->newUE_Identity;
+  reset_mac_inst(mac);
+  mac->crnti = reconfWithSync->newUE_Identity;
   LOG_I(NR_MAC, "Configuring CRNTI %x\n", mac->crnti);
 
   RA_config_t *ra = &mac->ra;
-  if (reconfigurationWithSync->rach_ConfigDedicated) {
-    AssertFatal(
-        reconfigurationWithSync->rach_ConfigDedicated->present == NR_ReconfigurationWithSync__rach_ConfigDedicated_PR_uplink,
-        "RACH on supplementaryUplink not supported\n");
-    UPDATE_IE(ra->rach_ConfigDedicated, reconfigurationWithSync->rach_ConfigDedicated->choice.uplink, NR_RACH_ConfigDedicated_t);
+  if (reconfWithSync->rach_ConfigDedicated) {
+    AssertFatal(reconfWithSync->rach_ConfigDedicated->present == NR_ReconfigurationWithSync__rach_ConfigDedicated_PR_uplink,
+                "RACH on supplementaryUplink not supported\n");
+    UPDATE_IE(ra->rach_ConfigDedicated, reconfWithSync->rach_ConfigDedicated->choice.uplink, NR_RACH_ConfigDedicated_t);
   }
 
-  if (reconfigurationWithSync->spCellConfigCommon) {
-    NR_ServingCellConfigCommon_t *scc = reconfigurationWithSync->spCellConfigCommon;
+  if (reconfWithSync->spCellConfigCommon) {
+    NR_ServingCellConfigCommon_t *scc = reconfWithSync->spCellConfigCommon;
     mac->n_ta_offset = get_ta_offset(scc->n_TimingAdvanceOffset);
     if (scc->physCellId)
       mac->physCellId = *scc->physCellId;
     mac->dmrs_TypeA_Position = scc->dmrs_TypeA_Position;
     UPDATE_IE(mac->tdd_UL_DL_ConfigurationCommon, scc->tdd_UL_DL_ConfigurationCommon, NR_TDD_UL_DL_ConfigCommon_t);
     config_common_ue(mac, scc, cc_idP);
+    const int bwp_id = 0;
     if (scc->downlinkConfigCommon)
-      configure_common_BWP_dl(mac,
-                              0, // bwp-id
-                              scc->downlinkConfigCommon->initialDownlinkBWP);
+      configure_common_BWP_dl(mac, bwp_id, scc->downlinkConfigCommon->initialDownlinkBWP);
     if (scc->uplinkConfigCommon)
-      configure_common_BWP_ul(mac,
-                              0, // bwp-id
-                              scc->uplinkConfigCommon->initialUplinkBWP);
+      configure_common_BWP_ul(mac, bwp_id, scc->uplinkConfigCommon->initialUplinkBWP);
   }
 
   mac->state = UE_NOT_SYNC;
@@ -2518,8 +2599,10 @@ void nr_rrc_mac_config_req_cg(module_id_t module_id,
                               NR_UE_NR_Capability_t *ue_Capability)
 {
   LOG_I(MAC,"[UE %d] Applying CellGroupConfig from gNodeB\n", module_id);
-  AssertFatal(cell_group_config, "CellGroupConfig should not be NULL\n");
   NR_UE_MAC_INST_t *mac = get_mac_inst(module_id);
+  int ret = pthread_mutex_lock(&mac->if_mutex);
+  AssertFatal(!ret, "mutex failed %d\n", ret);
+  AssertFatal(cell_group_config, "CellGroupConfig should not be NULL\n");
 
   if (cell_group_config->physicalCellGroupConfig)
     configure_physicalcellgroup(mac, cell_group_config->physicalCellGroupConfig);
@@ -2562,4 +2645,6 @@ void nr_rrc_mac_config_req_cg(module_id_t module_id,
 
   if (!mac->dl_config_request || !mac->ul_config_request)
     ue_init_config_request(mac, mac->current_DL_BWP->scs);
+  ret = pthread_mutex_unlock(&mac->if_mutex);
+  AssertFatal(!ret, "mutex failed %d\n", ret);
 }

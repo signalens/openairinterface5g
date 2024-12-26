@@ -149,6 +149,18 @@
       <nruns>3</nruns>
     </testCase>
 
+     <testCase id="nr_pbchsim.otherSCS">
+      <desc>nr_pbchsim Test cases. (Test1: PBCH-only, 15Khz, 5Mhz),
+                                   (Test2: PBCH-only, 120Khz, 50Mhz)</desc>
+      <main_exec>nr_pbchsim</main_exec>
+      <main_exec_args>-s-10 -S-8 -n10 -m0 -R25
+                      -s-10 -S-8 -n10 -m3 -R32</main_exec_args>
+      <tags>test1 test2</tags>
+      <search_expr_true>PBCH test OK</search_expr_true>
+      <search_expr_false>segmentation fault|assertion|exiting|fatal</search_expr_false>
+      <nruns>3</nruns>
+    </testCase>
+
      <testCase id="nr_dlsim.basic">
       <desc>nr_dlsim Test cases. (Test1: 106 PRB),
                                  (Test2: 217 PRB),

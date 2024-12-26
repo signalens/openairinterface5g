@@ -271,7 +271,7 @@ void nr_generate_pbch(PHY_VARS_gNB *gNB,
     pbch_a |= ((pbch_pdu[i >> 3] >> (7 - (i & 7))) & 1) << i;
 
   // NSA to signal no coreset0
-  const int ssb_sc_offset = get_softmodem_params()->sa ? config->ssb_table.ssb_subcarrier_offset.value : 31;
+  const int ssb_sc_offset = IS_SA_MODE(get_softmodem_params()) ? config->ssb_table.ssb_subcarrier_offset.value : 31;
 
   #ifdef DEBUG_PBCH_ENCODING
   for (int i = 0; i < 3; i++)

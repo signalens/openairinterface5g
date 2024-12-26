@@ -86,7 +86,7 @@ services:
         cap_drop:
             - ALL
         environment:
-            USE_ADDITIONAL_OPTIONS: --sa --rfsim --rfsimulator.prop_delay 238.74 --log_config.global_log_options level,nocolor,time
+            USE_ADDITIONAL_OPTIONS: --rfsim --rfsimulator.prop_delay 238.74 --log_config.global_log_options level,nocolor,time
             ASAN_OPTIONS: detect_leaks=0
         depends_on:
             - oai-ext-dn
@@ -110,7 +110,7 @@ services:
             - NET_ADMIN  # for interface bringup
             - NET_RAW    # for ping
         environment:
-            USE_ADDITIONAL_OPTIONS: --band 66 -C 2152680000 --CO -400000000 -r 25 --numerology 0 --ssb 48 --sa --rfsim --rfsimulator.prop_delay 238.74 --ntn-koffset 478 --ntn-ta-common 477.48 --rfsimulator.serveraddr 192.168.71.140 --log_config.global_log_options level,nocolor,time
+            USE_ADDITIONAL_OPTIONS: --band 66 -C 2152680000 --CO -400000000 -r 25 --numerology 0 --ssb 48 --rfsim --rfsimulator.prop_delay 238.74 --rfsimulator.serveraddr 192.168.71.140 --log_config.global_log_options level,nocolor,time
         depends_on:
             - oai-gnb
         networks:

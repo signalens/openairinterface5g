@@ -22,8 +22,6 @@
 #ifndef __NR_RRC_COMMON_H__
 #define __NR_RRC_COMMON_H__
 
-#include <stdio.h>
-#include <stdlib.h>
 #include <stdint.h> 
 
 #define NR_NUM_SRB 4 /* Number of Signalling Radio Bearers according to clause 4.2.2 of 3GPP TS 38.331 */

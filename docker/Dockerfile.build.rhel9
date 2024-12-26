@@ -44,6 +44,7 @@ RUN /bin/sh oaienv && \
       --build-e2 --cmake-opt -DXAPP_MULTILANGUAGE=OFF --cmake-opt \
       -DKPM_VERSION=$KPM_VERSION --cmake-opt -DE2AP_VERSION=$E2AP_VERSION \
       --build-lib 'telnetsrv enbscope uescope nrscope' \
+      --build-tool-opt -k10 \
       -w USRP -t Ethernet \
       --noavx512" && \
     echo "---- ldd on executables ----" && \

@@ -29,14 +29,13 @@
 
 #ifndef NGAP_MESSAGES_TYPES_H_
 #define NGAP_MESSAGES_TYPES_H_
+#include "common/5g_platform_types.h"
 #include "common/platform_constants.h"
 #include "common/platform_types.h"
 #include "common/5g_platform_types.h"
-#include "LTE_asn_constant.h"
 #include "s1ap_messages_types.h"
-//-------------------------------------------------------------------------------------------//
-// Defines to access message fields.
 
+// Defines to access message fields.
 #define NGAP_REGISTER_GNB_REQ(mSGpTR)           (mSGpTR)->ittiMsg.ngap_register_gnb_req
 
 #define NGAP_REGISTER_GNB_CNF(mSGpTR)           (mSGpTR)->ittiMsg.ngap_register_gnb_cnf
@@ -72,10 +71,9 @@
 #define NGAP_PDUSESSION_RELEASE_RESPONSE(mSGpTR)     (mSGpTR)->ittiMsg.ngap_pdusession_release_resp
 
 //-------------------------------------------------------------------------------------------//
-/* Maximum number of e-rabs to be setup/deleted in a single message.
- * Even if only one bearer will be modified by message.
- */
-#define NGAP_MAX_PDUSESSION  (LTE_maxDRB + 3)
+
+// maxnoofPDUSessions in 3GPP TS 38.413
+#define NGAP_MAX_PDUSESSION 16 // 256 according to specs
 
 /* Length of the transport layer address string
  * 160 bits / 8 bits by char.
@@ -555,9 +553,12 @@ typedef struct ngap_initial_context_setup_resp_s {
 } ngap_initial_context_setup_resp_t;
 
 typedef struct ngap_initial_context_setup_fail_s {
-  uint32_t  gNB_ue_ngap_id;
+  uint32_t gNB_ue_ngap_id;
 
-  /* TODO add cause */
+  uint64_t amf_ue_ngap_id;
+
+  ngap_Cause_t cause;
+  long cause_value;
 } ngap_initial_context_setup_fail_t, ngap_ue_ctxt_modification_fail_t, ngap_pdusession_setup_req_fail_t;
 
 typedef struct ngap_nas_non_delivery_ind_s {

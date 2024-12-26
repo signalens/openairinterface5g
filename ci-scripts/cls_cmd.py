@@ -217,6 +217,8 @@ class RemoteCmd(Cmd):
 		return client
 
 	def _lookup_ssh_config(hostname):
+		if is_local(hostname):
+			raise ValueError("Using localhost as SSH target is not allowed: use LocalCmd instead.")
 		ssh_config = paramiko.SSHConfig()
 		user_config_file = os.path.expanduser("~/.ssh/config")
 		if os.path.exists(user_config_file):

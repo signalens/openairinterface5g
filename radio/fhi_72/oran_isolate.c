@@ -31,8 +31,8 @@
 #include "common/utils/LOG/log.h"
 #include "common/utils/LOG/vcd_signal_dumper.h"
 #include "openair1/PHY/defs_gNB.h"
-#include "common/utils/threadPool/thread-pool.h"
 #include "oaioran.h"
+#include "oran-config.h"
 
 // include the following file for VERSIONX, version of xran lib, to print it during
 // startup. Only relevant for printing, if it ever makes problem, remove this
@@ -317,7 +317,16 @@ __attribute__((__visibility__("default"))) int transport_init(openair0_device *d
   LOG_I(HW, "Initializing O-RAN 7.2 FH interface through xran library (compiled against headers of %s)\n", VERSIONX);
 
   initNotifiedFIFO(&oran_sync_fifo);
-  eth->oran_priv = oai_oran_initialize(openair0_cfg);
+
+  struct xran_fh_init fh_init = {0};
+  struct xran_fh_config fh_config[XRAN_PORTS_NUM] = {0};
+#ifndef OAI_MPLANE_SUPPORT
+  bool success = get_xran_config(openair0_cfg, &fh_init, fh_config);
+  AssertFatal(success, "cannot get configuration for xran\n");
+#else
+  /* TODO: M-plane integration */
+#endif
+  eth->oran_priv = oai_oran_initialize(&fh_init, fh_config);
   AssertFatal(eth->oran_priv != NULL, "can not initialize fronthaul");
   // create message queues for ORAN sync
   return 0;

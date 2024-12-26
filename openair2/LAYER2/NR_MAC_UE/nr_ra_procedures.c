@@ -40,13 +40,8 @@
 
 #include <executables/softmodem-common.h>
 #include "openair2/LAYER2/RLC/rlc.h"
+#include "openair2/LAYER2/NR_MAC_UE/mac_defs.h"
 
-static double get_ta_Common_ms(NR_NTN_Config_r17_t *ntn_Config_r17)
-{
-  if (ntn_Config_r17 && ntn_Config_r17->ta_Info_r17)
-    return ntn_Config_r17->ta_Info_r17->ta_Common_r17 * 4.072e-6; // ta_Common_r17 is in units of 4.072e-3 µs
-  return 0.0;
-}
 
 int16_t get_prach_tx_power(NR_UE_MAC_INST_t *mac)
 {
@@ -621,7 +616,7 @@ void nr_Msg3_transmitted(NR_UE_MAC_INST_t *mac, uint8_t CC_id, frame_t frameP, s
 {
   RA_config_t *ra = &mac->ra;
   NR_RACH_ConfigCommon_t *nr_rach_ConfigCommon = mac->current_UL_BWP->rach_ConfigCommon;
-  const double ta_Common_ms = get_ta_Common_ms(mac->sc_info.ntn_Config_r17);
+  const double ta_Common_ms = GET_COMPLETE_TIME_ADVANCE_MS(&mac->ntn_ta);
   const int mu = mac->current_UL_BWP->scs;
   const int slots_per_ms = nr_slots_per_frame[mu] / 10;
 
@@ -656,7 +651,7 @@ static uint8_t *fill_msg3_pdu_from_rlc(NR_UE_MAC_INST_t *mac, uint8_t *pdu, int 
 {
   RA_config_t *ra = &mac->ra;
   // regular Msg3/MsgA_PUSCH with PDU coming from higher layers
-  *(NR_MAC_SUBHEADER_FIXED *)pdu = (NR_MAC_SUBHEADER_FIXED){.LCID = UL_SCH_LCID_CCCH};
+  *(NR_MAC_SUBHEADER_FIXED *)pdu = (NR_MAC_SUBHEADER_FIXED){.LCID = UL_SCH_LCID_CCCH_48_BITS};
   pdu += sizeof(NR_MAC_SUBHEADER_FIXED);
   tbs_size_t len = mac_rlc_data_req(mac->ue_id,
                                     mac->ue_id,
@@ -783,9 +778,9 @@ void nr_ue_get_rach(NR_UE_MAC_INST_t *mac, int CC_id, frame_t frame, uint8_t gNB
           ra->Msg3_size = size_sdu + sizeof(NR_MAC_SUBHEADER_SHORT) + sizeof(NR_MAC_SUBHEADER_SHORT);
         }
 
-      } else if (!get_softmodem_params()->sa) {
+      } else if (!IS_SA_MODE(get_softmodem_params())) {
         uint8_t temp_pdu[16] = {0};
-        size_sdu = nr_write_ce_ulsch_pdu(temp_pdu, mac, 0,  &(mac->crnti), NULL, NULL, NULL);
+        size_sdu = nr_write_ce_msg3_pdu(temp_pdu, mac, mac->crnti, temp_pdu + sizeof(temp_pdu));
         ra->Msg3_size = size_sdu;
       }
     } else if (ra->RA_window_cnt != -1) { // RACH is active
@@ -922,7 +917,7 @@ void nr_get_RA_window(NR_UE_MAC_INST_t *mac)
 
   NR_RACH_ConfigCommon_t *setup = mac->current_UL_BWP->rach_ConfigCommon;
   AssertFatal(&setup->rach_ConfigGeneric != NULL, "In %s: FATAL! rach_ConfigGeneric is NULL...\n", __FUNCTION__);
-  const double ta_Common_ms = get_ta_Common_ms(mac->sc_info.ntn_Config_r17);
+  const double ta_Common_ms = GET_COMPLETE_TIME_ADVANCE_MS(&mac->ntn_ta);
   const int mu = mac->current_DL_BWP->scs;
   const int slots_per_ms = nr_slots_per_frame[mu] / 10;
 
@@ -1053,7 +1048,7 @@ void trigger_MAC_UE_RA(NR_UE_MAC_INST_t *mac)
 
 void prepare_msg4_msgb_feedback(NR_UE_MAC_INST_t *mac, int pid, int ack_nack)
 {
-  NR_UE_HARQ_STATUS_t *current_harq = &mac->dl_harq_info[pid];
+  NR_UE_DL_HARQ_STATUS_t *current_harq = &mac->dl_harq_info[pid];
   int sched_slot = current_harq->ul_slot;
   int sched_frame = current_harq->ul_frame;
   mac->nr_ue_emul_l1.num_harqs = 1;
@@ -1075,4 +1070,28 @@ void prepare_msg4_msgb_feedback(NR_UE_MAC_INST_t *mac, int pid, int ack_nack)
   if (ret != 0)
     remove_ul_config_last_item(pdu);
   release_ul_config(pdu, false);
+}
+
+void free_rach_structures(NR_UE_MAC_INST_t *nr_mac, int bwp_id)
+{
+  for (int j = 0; j < MAX_NB_PRACH_CONF_PERIOD_IN_ASSOCIATION_PATTERN_PERIOD; j++)
+    for (int k = 0; k < MAX_NB_FRAME_IN_PRACH_CONF_PERIOD; k++)
+      for (int l = 0; l < MAX_NB_SLOT_IN_FRAME; l++)
+        free(nr_mac->prach_assoc_pattern[bwp_id].prach_conf_period_list[j].prach_occasion_slot_map[k][l].prach_occasion);
+
+  free(nr_mac->ssb_list[bwp_id].tx_ssb);
+}
+
+void reset_ra(NR_UE_MAC_INST_t *nr_mac, bool free_prach)
+{
+  RA_config_t *ra = &nr_mac->ra;
+  if (ra->rach_ConfigDedicated)
+    asn1cFreeStruc(asn_DEF_NR_RACH_ConfigDedicated, ra->rach_ConfigDedicated);
+  memset(ra, 0, sizeof(RA_config_t));
+
+  if (!free_prach)
+    return;
+
+  for (int i = 0; i < MAX_NUM_BWP_UE; i++)
+    free_rach_structures(nr_mac, i);
 }

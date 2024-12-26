@@ -50,7 +50,6 @@
 #include "common_lib.h"
 #include "ethernet_lib.h"
 #include "openair1/PHY/sse_intrin.h"
-#include "common/utils/threadPool/thread-pool.h"
 
 //#define DEBUG 1
 

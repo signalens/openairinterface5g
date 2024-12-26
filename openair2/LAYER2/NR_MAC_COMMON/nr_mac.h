@@ -122,6 +122,11 @@ static inline int get_mac_len(uint8_t *pdu, uint32_t pdu_len, uint16_t *mac_ce_l
     *mac_subheader_len = sizeof(*s);
     *mac_ce_len = s->L;
   }
+  if (*mac_ce_len > pdu_len) {
+    LOG_E(NR_MAC, "MAC sdu len impossible (%d)\n", *mac_ce_len);
+    return false;
+  }
+
   return true;
 }
 
@@ -133,8 +138,6 @@ typedef struct {
   uint8_t LcgID: 3;        // octet 1 MSB
 } __attribute__ ((__packed__)) NR_BSR_SHORT;
 
-typedef NR_BSR_SHORT NR_BSR_SHORT_TRUNCATED;
-
 // Long BSR for all logical channel group ID
 typedef struct {
   uint8_t LcgID0: 1;        // octet 1 [0]
@@ -144,18 +147,8 @@ typedef struct {
   uint8_t LcgID4: 1;        // octet 1 [4]
   uint8_t LcgID5: 1;        // octet 1 [5]
   uint8_t LcgID6: 1;        // octet 1 [6]
-  uint8_t LcgID7: 1;        // octet 1 [7]
-  uint8_t Buffer_size0: 8;  // octet 2 [7:0]
-  uint8_t Buffer_size1: 8;  // octet 3 [7:0]
-  uint8_t Buffer_size2: 8;  // octet 4 [7:0]
-  uint8_t Buffer_size3: 8;  // octet 5 [7:0]
-  uint8_t Buffer_size4: 8;  // octet 6 [7:0]
-  uint8_t Buffer_size5: 8;  // octet 7 [7:0]
-  uint8_t Buffer_size6: 8;  // octet 8 [7:0]
-  uint8_t Buffer_size7: 8;  // octet 9 [7:0]
+  uint8_t LcgID7: 1; // octet 1 [7]
 } __attribute__ ((__packed__)) NR_BSR_LONG;
-
-typedef NR_BSR_LONG NR_BSR_LONG_TRUNCATED;
 
 // 38.321 ch. 6.1.3.4
 typedef struct {
@@ -434,12 +427,24 @@ typedef struct {
 #define DL_SCH_LCID_CON_RES_ID                     0x3E
 #define DL_SCH_LCID_PADDING                        0x3F
 
-#define UL_SCH_LCID_CCCH1                          0x00
+#define UL_SCH_LCID_CCCH_64_BITS                   0x00
 #define UL_SCH_LCID_SRB1                           0x01
 #define UL_SCH_LCID_SRB2                           0x02
 #define UL_SCH_LCID_SRB3                           0x03
 #define UL_SCH_LCID_DTCH                           0x04
-#define UL_SCH_LCID_CCCH                           0x34
+#define UL_SCH_LCID_EXTENDED_LCID_2_OCT            0x21
+#define UL_SCH_LCID_EXTENDED_LCID_1_OCT            0x22
+#define UL_SCH_LCID_CCCH_48_BITS_REDCAP            0x23
+#define UL_SCH_LCID_CCCH_64_BITS_REDCAP            0x24
+#define UL_SCH_LCID_TRUNCATED_ENHANCED_BFR         0x2B
+#define UL_SCH_LCID_TIMING_ADVANCE_REPORT          0x2C
+#define UL_SCH_LCID_TRUNCATED_SIDELINK_BSR         0x2D
+#define UL_SCH_LCID_SIDELINK_BSR                   0x2E
+#define UL_SCH_LCID_LBT_FAILURE_4_OCT              0x30
+#define UL_SCH_LCID_LBT_FAILURE_1_OCT              0x31
+#define UL_SCH_LCID_BFR                            0x32
+#define UL_SCH_LCID_TRUNCATED_BFR                  0x33
+#define UL_SCH_LCID_CCCH_48_BITS                   0x34
 #define UL_SCH_LCID_RECOMMENDED_BITRATE_QUERY      0x35
 #define UL_SCH_LCID_MULTI_ENTRY_PHR_4_OCT          0x36
 #define UL_SCH_LCID_CONFIGURED_GRANT_CONFIRMATION  0x37

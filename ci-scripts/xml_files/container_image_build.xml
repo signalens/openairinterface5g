@@ -49,7 +49,7 @@
 	<testCase id="000010">
 		<class>Push_Local_Registry</class>
 		<desc>Push Images to Local Registry</desc>
-		<registry_svr_id>0</registry_svr_id>
+		<svr_id>0</svr_id>
 	</testCase>
 
 </testCaseList>

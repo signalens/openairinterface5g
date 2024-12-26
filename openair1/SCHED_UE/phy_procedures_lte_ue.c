@@ -2980,7 +2980,7 @@ void ue_pmch_procedures(PHY_VARS_UE *ue,
           ue->dlsch_mch_received_sf[subframe_rx%5][0]=0;
         } else {
           ue->dlsch_mch_received[0]+=1;
-          ue->dlsch_mch_received_sf[subframe_rx][0]=1;
+          ue->dlsch_mch_received_sf[subframe_rx % 5][0] = 1;
         }
       } // decoding sucessful
     } // pmch_mcs>=0

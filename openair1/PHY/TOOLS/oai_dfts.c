@@ -1268,17 +1268,16 @@ __attribute__((always_inline)) static inline void dft16_simd256(int16_t *x, int1
 
   x02t    = simde_mm256_adds_epi16(xtmp0,xtmp2);
   x13t    = simde_mm256_adds_epi16(xtmp1,xtmp3);
-  ytmp0   = simde_mm256_adds_epi16(x02t,x13t);
-  ytmp2   = simde_mm256_subs_epi16(x02t,x13t);
+  ytmp0 = simde_mm256_srai_epi16(simde_mm256_adds_epi16(x02t, x13t), 2);
+  ytmp2 = simde_mm256_srai_epi16(simde_mm256_subs_epi16(x02t, x13t), 2);
   x1_flip = simde_mm256_sign_epi16(xtmp1, *(simde__m256i *)conjugatedft);
   x1_flip = simde_mm256_shuffle_epi8(x1_flip,complex_shuffle);
   x3_flip = simde_mm256_sign_epi16(xtmp3, *(simde__m256i *)conjugatedft);
   x3_flip = simde_mm256_shuffle_epi8(x3_flip,complex_shuffle);
   x02t    = simde_mm256_subs_epi16(xtmp0,xtmp2);
   x13t    = simde_mm256_subs_epi16(x1_flip,x3_flip);
-  ytmp1   = simde_mm256_adds_epi16(x02t,x13t);  // x0 + x1f - x2 - x3f
-  ytmp3   = simde_mm256_subs_epi16(x02t,x13t);  // x0 - x1f - x2 + x3f
- 
+  ytmp1 = simde_mm256_srai_epi16(simde_mm256_adds_epi16(x02t, x13t), 2); // x0 + x1f - x2 - x3f
+  ytmp3 = simde_mm256_srai_epi16(simde_mm256_subs_epi16(x02t, x13t), 2); // x0 - x1f - x2 + x3f
 
   // [y0  y1  y2  y3  y16 y17 y18 y19]
   // [y4  y5  y6  y7  y20 y21 y22 y23]
@@ -1652,14 +1651,14 @@ void dft64(int16_t *x,int16_t *y,unsigned char scale)
 
 
   if (scale>0) {
-    y256[0]  = shiftright_int16_simd256(y256[0],3);
-    y256[1]  = shiftright_int16_simd256(y256[1],3);
-    y256[2]  = shiftright_int16_simd256(y256[2],3);
-    y256[3]  = shiftright_int16_simd256(y256[3],3);
-    y256[4]  = shiftright_int16_simd256(y256[4],3);
-    y256[5]  = shiftright_int16_simd256(y256[5],3);
-    y256[6]  = shiftright_int16_simd256(y256[6],3);
-    y256[7]  = shiftright_int16_simd256(y256[7],3);
+    y256[0] = shiftright_int16_simd256(y256[0], 1);
+    y256[1] = shiftright_int16_simd256(y256[1], 1);
+    y256[2] = shiftright_int16_simd256(y256[2], 1);
+    y256[3] = shiftright_int16_simd256(y256[3], 1);
+    y256[4] = shiftright_int16_simd256(y256[4], 1);
+    y256[5] = shiftright_int16_simd256(y256[5], 1);
+    y256[6] = shiftright_int16_simd256(y256[6], 1);
+    y256[7] = shiftright_int16_simd256(y256[7], 1);
   }
 
   simde_mm_empty();
@@ -3595,19 +3594,6 @@ void dft6144(int16_t *input, int16_t *output,unsigned char scale)
   simde_m_empty();
 }
 
-int16_t twa9216[6144] __attribute__((aligned(32)));
-int16_t twb9216[6144] __attribute__((aligned(32)));
-// 3072 x 3
-void dft9216(int16_t *input, int16_t *output,uint8_t scale) {
-
-  AssertFatal(1==0,"Need to do this ..\n");
-}
-
-void idft9216(int16_t *input, int16_t *output,uint8_t scale) {
-
-  AssertFatal(1==0,"Need to do this ..\n");
-}
-
 int16_t twa12288[8192] __attribute__((aligned(32)));
 int16_t twb12288[8192] __attribute__((aligned(32)));
 // 4096 x 3
@@ -4234,20 +4220,6 @@ void idft65536(int16_t *x,int16_t *y,unsigned char scale)
   simde_m_empty();
 }
 
-int16_t twa73728[49152] __attribute__((aligned(32)));
-int16_t twb73728[49152] __attribute__((aligned(32)));
-// 24576 x 3
-void dft73728(int16_t *input, int16_t *output,uint8_t scale) {
-
-  AssertFatal(1==0,"Need to do this ..\n");
-}
-
-void idft73728(int16_t *input, int16_t *output,uint8_t scale) {
-
-  AssertFatal(1==0,"Need to do this ..\n");
-}
-
-
 int16_t twa98304[65536] __attribute__((aligned(32)));
 int16_t twb98304[65536] __attribute__((aligned(32)));
 // 32768 x 3
@@ -4562,43 +4534,41 @@ __attribute__((always_inline)) static inline void dft12f_simd256(simd256_q15_t *
 
   simd256_q15_t tmp_dft12[12];
 
-  simd256_q15_t *tmp_dft12_ptr = &tmp_dft12[0];
-
   // msg("dft12\n");
 
   bfly4_tw1_256(x0,
 		x3,
 		x6,
 		x9,
-		tmp_dft12_ptr,
-		tmp_dft12_ptr+3,
-		tmp_dft12_ptr+6,
-		tmp_dft12_ptr+9);
+		tmp_dft12,
+		tmp_dft12+3,
+		tmp_dft12+6,
+		tmp_dft12+9);
 
 
   bfly4_tw1_256(x1,
 		x4,
 		x7,
 		x10,
-		tmp_dft12_ptr+1,
-		tmp_dft12_ptr+4,
-		tmp_dft12_ptr+7,
-		tmp_dft12_ptr+10);
+		tmp_dft12+1,
+		tmp_dft12+4,
+		tmp_dft12+7,
+		tmp_dft12+10);
   
 
   bfly4_tw1_256(x2,
 		x5,
 		x8,
 		x11,
-		tmp_dft12_ptr+2,
-		tmp_dft12_ptr+5,
-		tmp_dft12_ptr+8,
-		tmp_dft12_ptr+11);
+		tmp_dft12+2,
+		tmp_dft12+5,
+		tmp_dft12+8,
+		tmp_dft12+11);
   
   //  k2=0;
-  bfly3_tw1_256(tmp_dft12_ptr,
-		tmp_dft12_ptr+1,
-		tmp_dft12_ptr+2,
+  bfly3_tw1_256(tmp_dft12,
+		tmp_dft12+1,
+		tmp_dft12+2,
 		y0,
 		y4,
 		y8);
@@ -4606,9 +4576,9 @@ __attribute__((always_inline)) static inline void dft12f_simd256(simd256_q15_t *
   
   
   //  k2=1;
-  bfly3_256(tmp_dft12_ptr+3,
-	    tmp_dft12_ptr+4,
-	    tmp_dft12_ptr+5,
+  bfly3_256(tmp_dft12+3,
+	    tmp_dft12+4,
+	    tmp_dft12+5,
 	    y1,
 	    y5,
 	    y9,
@@ -4618,9 +4588,9 @@ __attribute__((always_inline)) static inline void dft12f_simd256(simd256_q15_t *
   
   
   //  k2=2;
-  bfly3_256(tmp_dft12_ptr+6,
-	    tmp_dft12_ptr+7,
-	    tmp_dft12_ptr+8,
+  bfly3_256(tmp_dft12+6,
+	    tmp_dft12+7,
+	    tmp_dft12+8,
 	    y2,
 	    y6,
 	    y10,
@@ -4628,9 +4598,9 @@ __attribute__((always_inline)) static inline void dft12f_simd256(simd256_q15_t *
 	    W4_12_256);
   
   //  k2=3;
-  bfly3_256(tmp_dft12_ptr+9,
-	    tmp_dft12_ptr+10,
-	    tmp_dft12_ptr+11,
+  bfly3_256(tmp_dft12+9,
+	    tmp_dft12+10,
+	    tmp_dft12+11,
 	    y3,
 	    y7,
 	    y11,
@@ -7908,8 +7878,9 @@ int dfts_autoinit(void)
 
 #ifndef MR_MAIN
 
-void dft(uint8_t sizeidx, int16_t *input,int16_t *output,unsigned char scale_flag){
-	AssertFatal((sizeidx >= 0 && sizeidx<DFT_SIZE_IDXTABLESIZE),"Invalid dft size index %i\n",sizeidx);
+void dft_implementation(uint8_t sizeidx, int16_t *input, int16_t *output, unsigned char scale_flag)
+{
+  AssertFatal((sizeidx >= 0 && sizeidx<DFT_SIZE_IDXTABLESIZE),"Invalid dft size index %i\n",sizeidx);
         int algn=0xF;
         if ( (dft_ftab[sizeidx].size%3) != 0 ) // there is no AVX2 implementation for multiples of 3 DFTs
           algn=0x1F;
@@ -7926,8 +7897,9 @@ void dft(uint8_t sizeidx, int16_t *input,int16_t *output,unsigned char scale_fla
           dft_ftab[sizeidx].func(input,output,scale_flag);
 };
 
-void idft(uint8_t sizeidx, int16_t *input,int16_t *output,unsigned char scale_flag){
-	AssertFatal((sizeidx>=0 && sizeidx<DFT_SIZE_IDXTABLESIZE),"Invalid idft size index %i\n",sizeidx);
+void idft_implementation(uint8_t sizeidx, int16_t *input, int16_t *output, unsigned char scale_flag)
+{
+  AssertFatal((sizeidx>=0 && sizeidx<DFT_SIZE_IDXTABLESIZE),"Invalid idft size index %i\n",sizeidx);
         int algn=0xF;
 	algn=0x1F;
         AssertFatal( ((intptr_t)output&algn)==0,"Buffers should be 16 bytes aligned %p",output);

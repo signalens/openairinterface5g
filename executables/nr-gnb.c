@@ -383,12 +383,16 @@ void init_gNB_Tpool(int inst) {
 
 void term_gNB_Tpool(int inst) {
   PHY_VARS_gNB *gNB = RC.gNB[inst];
-  abortTpool(&gNB->threadPool);
-  abortNotifiedFIFO(&gNB->respDecode);
   abortNotifiedFIFO(&gNB->resp_L1);
+  pthread_join(gNB->L1_rx_thread, NULL);
+  abortNotifiedFIFO(&gNB->L1_tx_out);
+  pthread_join(gNB->L1_tx_thread, NULL);
+
+  abortTpool(&gNB->threadPool);
+  abortNotifiedFIFO(&gNB->respPuschSymb);
+  abortNotifiedFIFO(&gNB->respDecode);
   abortNotifiedFIFO(&gNB->L1_tx_free);
   abortNotifiedFIFO(&gNB->L1_tx_filled);
-  abortNotifiedFIFO(&gNB->L1_tx_out);
   abortNotifiedFIFO(&gNB->L1_rx_out);
 
   gNB_L1_proc_t *proc = &gNB->proc;
@@ -400,23 +404,16 @@ void term_gNB_Tpool(int inst) {
 void init_eNB_afterRU(void) {
   int inst,ru_id,i,aa;
   PHY_VARS_gNB *gNB;
-  LOG_I(PHY,"%s() RC.nb_nr_inst:%d\n", __FUNCTION__, RC.nb_nr_inst);
 
-  if(NFAPI_MODE == NFAPI_MODE_PNF)
-    RC.nb_nr_inst = 1;
   for (inst=0; inst<RC.nb_nr_inst; inst++) {
-    LOG_I(PHY,"RC.nb_nr_CC[inst:%d]:%p\n", inst, RC.gNB[inst]);
-
     gNB = RC.gNB[inst];
-    gNB->ldpc_offload_flag = get_softmodem_params()->ldpc_offload_flag;
 
     phy_init_nr_gNB(gNB);
 
     // map antennas and PRACH signals to gNB RX
     if (0) AssertFatal(gNB->num_RU>0,"Number of RU attached to gNB %d is zero\n",gNB->Mod_id);
 
-    LOG_I(PHY,"Mapping RX ports from %d RUs to gNB %d\n",gNB->num_RU,gNB->Mod_id);
-    LOG_I(PHY,"gNB->num_RU:%d\n", gNB->num_RU);
+    LOG_D(NR_PHY, "Mapping RX ports from %d RUs to gNB %d\n", gNB->num_RU, gNB->Mod_id);
 
     for (ru_id=0,aa=0; ru_id<gNB->num_RU; ru_id++) {
       AssertFatal(gNB->RU_list[ru_id]->common.rxdataF != NULL, "RU %d : common.rxdataF is NULL\n", gNB->RU_list[ru_id]->idx);
@@ -440,55 +437,47 @@ void init_eNB_afterRU(void) {
 
 }
 
-void init_gNB(int wait_for_sync) {
-
-  int inst;
-  PHY_VARS_gNB *gNB;
-
+/**
+ * @brief Initialize gNB struct in RAN context
+ */
+void init_gNB()
+{
+  LOG_I(NR_PHY, "Initializing gNB RAN context: RC.nb_nr_L1_inst = %d \n", RC.nb_nr_L1_inst);
   if (RC.gNB == NULL) {
-    RC.gNB = (PHY_VARS_gNB **) calloc(1+RC.nb_nr_L1_inst, sizeof(PHY_VARS_gNB *));
-    LOG_I(PHY,"gNB L1 structure RC.gNB allocated @ %p\n",RC.gNB);
+    RC.gNB = (PHY_VARS_gNB **)calloc_or_fail(RC.nb_nr_L1_inst, sizeof(PHY_VARS_gNB *));
+    LOG_D(NR_PHY, "gNB L1 structure RC.gNB allocated @ %p\n", RC.gNB);
   }
 
-  for (inst=0; inst<RC.nb_nr_L1_inst; inst++) {
-
+  for (int inst = 0; inst < RC.nb_nr_L1_inst; inst++) {
+    // Allocate L1 instance
     if (RC.gNB[inst] == NULL) {
-      RC.gNB[inst] = (PHY_VARS_gNB *) calloc(1, sizeof(PHY_VARS_gNB));
-      LOG_I(PHY,"[nr-gnb.c] gNB structure RC.gNB[%d] allocated @ %p\n",inst,RC.gNB[inst]);
+      RC.gNB[inst] = (PHY_VARS_gNB *)calloc_or_fail(1, sizeof(PHY_VARS_gNB));
+      LOG_D(NR_PHY, "[nr-gnb.c] gNB structure RC.gNB[%d] allocated @ %p\n", inst, RC.gNB[inst]);
     }
-    gNB = RC.gNB[inst];
-    /*nr_polar_init(&gNB->nrPolar_params,
-      NR_POLAR_PBCH_MESSAGE_TYPE,
-      NR_POLAR_PBCH_PAYLOAD_BITS,
-      NR_POLAR_PBCH_AGGREGATION_LEVEL);*/
-    LOG_I(PHY,"Initializing gNB %d\n",inst);
-    LOG_I(PHY,"Initializing gNB %d\n",inst);
+    PHY_VARS_gNB *gNB = RC.gNB[inst];
+    LOG_D(NR_PHY, "Initializing gNB %d\n", inst);
 
-    LOG_I(PHY,"Registering with MAC interface module (before %p)\n",gNB->if_inst);
-    AssertFatal((gNB->if_inst         = NR_IF_Module_init(inst))!=NULL,"Cannot register interface");
-    LOG_I(PHY,"Registering with MAC interface module (after %p)\n",gNB->if_inst);
-    gNB->if_inst->NR_Schedule_response   = nr_schedule_response;
-    gNB->if_inst->NR_PHY_config_req      = nr_phy_config_request;
-    memset((void *)&gNB->UL_INFO,0,sizeof(gNB->UL_INFO));
-    LOG_I(PHY,"Setting indication lists\n");
+    // Init module ID
+    gNB->Mod_id = inst;
 
+    // Register MAC interface module
+    AssertFatal((gNB->if_inst = NR_IF_Module_init(inst)) != NULL, "Cannot register interface");
+    LOG_I(NR_PHY, "Registered with MAC interface module (%p)\n", gNB->if_inst);
+
+    // Set function pointers in MAC IF module
+    gNB->if_inst->NR_Schedule_response = nr_schedule_response;
+    gNB->if_inst->NR_PHY_config_req = nr_phy_config_request;
+
+    // Clear UL_INFO and set rx/crc indication lists
+    memset((void *)&gNB->UL_INFO, 0, sizeof(gNB->UL_INFO));
     gNB->UL_INFO.rx_ind.pdu_list = gNB->rx_pdu_list;
     gNB->UL_INFO.crc_ind.crc_list = gNB->crc_pdu_list;
-    /*gNB->UL_INFO.sr_ind.sr_indication_body.sr_pdu_list = gNB->sr_pdu_list;
-    gNB->UL_INFO.harq_ind.harq_indication_body.harq_pdu_list = gNB->harq_pdu_list;
-    gNB->UL_INFO.cqi_ind.cqi_pdu_list = gNB->cqi_pdu_list;
-    gNB->UL_INFO.cqi_ind.cqi_raw_pdu_list = gNB->cqi_raw_pdu_list;*/
 
     gNB->prach_energy_counter = 0;
     gNB->chest_time = get_softmodem_params()->chest_time;
     gNB->chest_freq = get_softmodem_params()->chest_freq;
-
   }
-  
-
-  LOG_I(PHY,"[nr-gnb.c] gNB structure allocated\n");
 }
-
 
 void stop_gNB(int nb_inst) {
   for (int inst=0; inst<nb_inst; inst++) {

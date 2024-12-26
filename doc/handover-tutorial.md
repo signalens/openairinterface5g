@@ -48,15 +48,15 @@ done, follow below steps to trigger a handover:
 
 Start the CU including telnet support:
 
-    sudo ./nr-softmodem --sa -O ../../../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb-cu.sa.f1.conf --telnetsrv --telnetsrv.shrmod ci
+    sudo ./nr-softmodem -O ../../../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb-cu.sa.f1.conf --telnetsrv --telnetsrv.shrmod ci
 
 Start DU0:
 
-    sudo ./nr-softmodem --sa --rfsim -O ../../../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb-du.sa.band78.106prb.rfsim.pci0.conf --rfsimulator.serveraddr 127.0.0.1
+    sudo ./nr-softmodem --rfsim -O ../../../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb-du.sa.band78.106prb.rfsim.pci0.conf --rfsimulator.serveraddr 127.0.0.1
 
 Start the UE, and let it connect completely:
 
-    sudo ./nr-uesoftmodem --sa -C 3450720000 -r 106 --numerology 1 --ssb 516 -O <config>  --rfsim --rfsimulator.serveraddr server
+    sudo ./nr-uesoftmodem -C 3450720000 -r 106 --numerology 1 --ssb 516 -O <config>  --rfsim --rfsimulator.serveraddr server
 
 Note how the RFsimulator roles have been switched, and RFsim server is at the
 UE side; _this is important_. Replace `<config>` with the UE configuration
@@ -65,7 +65,7 @@ matching your core. If you followed the CN and oaiUE tutorials, you can remove
 
 Once the UE is connected, start DU1:
 
-    sudo ./nr-softmodem --sa --rfsim -O ../../../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb-du.sa.band78.106prb.rfsim.pci1.conf --rfsimulator.serveraddr 127.0.0.1
+    sudo ./nr-softmodem --rfsim -O ../../../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb-du.sa.band78.106prb.rfsim.pci1.conf --rfsimulator.serveraddr 127.0.0.1
 
 Once DU1 is online, you can trigger a handover by issuing this command
 

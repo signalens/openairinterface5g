@@ -226,30 +226,12 @@ void nr_pdcch_channel_level(int32_t rx_size,
                             int nb_rb)
 {
   for (int aarx = 0; aarx < frame_parms->nb_antennas_rx; aarx++) {
-    //clear average level
-    simde__m128i avg128P = simde_mm_setzero_si128();
+
     simde__m128i *dl_ch128 = (simde__m128i *)&dl_ch_estimates_ext[aarx][symbol * nb_rb * 12];
 
-    for (int rb = 0; rb < (nb_rb * 3) >> 2; rb++) {
-      avg128P = simde_mm_add_epi32(avg128P,simde_mm_madd_epi16(dl_ch128[0],dl_ch128[0]));
-      avg128P = simde_mm_add_epi32(avg128P,simde_mm_madd_epi16(dl_ch128[1],dl_ch128[1]));
-      avg128P = simde_mm_add_epi32(avg128P,simde_mm_madd_epi16(dl_ch128[2],dl_ch128[2]));
-      //      for (int i=0;i<24;i+=2) printf("pdcch channel re %d (%d,%d)\n",(rb*12)+(i>>1),((int16_t*)dl_ch128)[i],((int16_t*)dl_ch128)[i+1]);
-      dl_ch128+=3;
-      /*
-      if (rb==0) {
-      print_shorts("dl_ch128",&dl_ch128[0]);
-      print_shorts("dl_ch128",&dl_ch128[1]);
-      print_shorts("dl_ch128",&dl_ch128[2]);
-      }
-      */
-    }
-
-    DevAssert(nb_rb);
-    avg[aarx] = 0;
-    for (int i = 0; i < 4; i++)
-      avg[aarx] += ((int32_t *)&avg128P)[i] / (nb_rb * 9);
-    LOG_DDD("Channel level : %d\n",avg[aarx]);
+    //compute average level
+    avg[aarx] = simde_mm_average(dl_ch128, nb_rb * 12, 0, nb_rb * 12);
+    //LOG_DDD("Channel level : %d\n", avg[aarx]);
   }
 }
 

@@ -35,9 +35,8 @@
 
 #include <pthread.h>
 #include <stdint.h>
+#include "assertions.h"
 #include "nfapi_nr_interface_scf.h"
-#include "common/platform_constants.h"
-#include "common/platform_types.h"
 
 #define MAX_NUM_DL_PDU 100
 #define MAX_NUM_UL_PDU 100

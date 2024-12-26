@@ -60,7 +60,7 @@ void nr_ue_init_mac(NR_UE_MAC_INST_t *mac)
   mac->get_sib1 = false;
   mac->get_otherSI = false;
   memset(&mac->phy_config, 0, sizeof(mac->phy_config));
-  mac->si_window_start = -1;
+  mac->si_SchedInfo.si_window_start = -1;
   mac->servCellIndex = 0;
   mac->harq_ACK_SpatialBundlingPUCCH = false;
   mac->harq_ACK_SpatialBundlingPUSCH = false;
@@ -70,6 +70,8 @@ void nr_ue_init_mac(NR_UE_MAC_INST_t *mac)
   mac->p_Max = INT_MIN;
   mac->p_Max_alt = INT_MIN;
   mac->n_ta_offset = -1;
+  mac->ntn_ta.ntn_params_changed = false;
+  pthread_mutex_init(&mac->if_mutex, NULL);
   reset_mac_inst(mac);
 
   // need to inizialize because might not been setup (optional timer)
@@ -85,29 +87,6 @@ void nr_ue_init_mac(NR_UE_MAC_INST_t *mac)
 
   mac->pucch_power_control_initialized = false;
   mac->pusch_power_control_initialized = false;
-
-  // Fake SIB19 reception for NTN
-  // TODO: remove this and implement the actual SIB19 reception instead!
-  if (get_nrUE_params()->ntn_koffset || get_nrUE_params()->ntn_ta_common || get_nrUE_params()->ntn_ta_commondrift) {
-    NR_SIB19_r17_t *sib19_r17 = calloc(1, sizeof(*sib19_r17));
-    sib19_r17->ntn_Config_r17 = calloc(1, sizeof(*sib19_r17->ntn_Config_r17));
-
-    // NTN cellSpecificKoffset-r17
-    if (get_nrUE_params()->ntn_koffset) {
-      asn1cCallocOne(sib19_r17->ntn_Config_r17->cellSpecificKoffset_r17, get_nrUE_params()->ntn_koffset);
-    }
-
-    // NTN ta-Common-r17
-    if (get_nrUE_params()->ntn_ta_common || get_nrUE_params()->ntn_ta_commondrift) {
-      sib19_r17->ntn_Config_r17->ta_Info_r17 = calloc(1, sizeof(*sib19_r17->ntn_Config_r17->ta_Info_r17));
-      sib19_r17->ntn_Config_r17->ta_Info_r17->ta_Common_r17 = get_nrUE_params()->ntn_ta_common / 4.072e-6; // ta-Common-r17 is in units of 4.072e-3 µs, ntn_ta_common is in ms
-      if (get_nrUE_params()->ntn_ta_commondrift)
-        asn1cCallocOne(sib19_r17->ntn_Config_r17->ta_Info_r17->ta_CommonDrift_r17, get_nrUE_params()->ntn_ta_commondrift / 0.2e-3); // is in units of 0.2e-3 µs/s, ntn_ta_commondrift is in µs/s
-    }
-
-    nr_rrc_mac_config_req_sib19_r17(mac->ue_id, sib19_r17);
-    asn1cFreeStruc(asn_DEF_NR_SIB19_r17, sib19_r17);
-  }
 }
 
 void nr_ue_mac_default_configs(NR_UE_MAC_INST_t *mac)
@@ -160,7 +139,7 @@ NR_UE_MAC_INST_t *nr_l2_init_ue(int nb_inst)
     mac->ue_id = j;
     nr_ue_init_mac(mac);
     nr_ue_mac_default_configs(mac);
-    if (get_softmodem_params()->sa)
+    if (IS_SA_MODE(get_softmodem_params()))
       ue_init_config_request(mac, get_softmodem_params()->numerology);
   }
 
@@ -191,7 +170,6 @@ void reset_mac_inst(NR_UE_MAC_INST_t *nr_mac)
   for (int i = 0; i < NR_MAX_NUM_LCID; i++) {
     LOG_D(NR_MAC, "Applying default logical channel config for LCID %d\n", i);
     nr_mac->scheduling_info.lc_sched_info[i].Bj = 0;
-    nr_mac->scheduling_info.lc_sched_info[i].LCID_buffer_with_data = false;
     nr_mac->scheduling_info.lc_sched_info[i].LCID_buffer_remain = 0;
   }
 
@@ -240,8 +218,7 @@ void reset_mac_inst(NR_UE_MAC_INST_t *nr_mac)
   nr_mac->scheduling_info.phr_info.was_mac_reset = true;
 
   // flush the soft buffers for all DL HARQ processes
-  for (int k = 0; k < NR_MAX_HARQ_PROCESSES; k++)
-    memset(&nr_mac->dl_harq_info[k], 0, sizeof(NR_UE_HARQ_STATUS_t));
+  memset(nr_mac->dl_harq_info, 0, sizeof(nr_mac->dl_harq_info));
 
   // for each DL HARQ process, consider the next received transmission for a TB as the very first transmission
   for (int k = 0; k < NR_MAX_HARQ_PROCESSES; k++)
@@ -262,7 +239,7 @@ void release_mac_configuration(NR_UE_MAC_INST_t *mac, NR_UE_MAC_reset_cause_t ca
     asn1cFreeStruc(asn_DEF_NR_MIB, mac->mib);
     asn1cFreeStruc(asn_DEF_NR_SearchSpace, mac->search_space_zero);
     asn1cFreeStruc(asn_DEF_NR_ControlResourceSet, mac->coreset0);
-    asn1cFreeStruc(asn_DEF_NR_SI_SchedulingInfo, mac->si_SchedulingInfo);
+    asn_sequence_empty(&mac->si_SchedInfo.si_SchedInfo_list);
     asn1cFreeStruc(asn_DEF_NR_TDD_UL_DL_ConfigCommon, mac->tdd_UL_DL_ConfigurationCommon);
     for (int i = mac->lc_ordered_list.count; i > 0 ; i--)
       asn_sequence_del(&mac->lc_ordered_list, i - 1, 1);
@@ -324,28 +301,4 @@ void release_mac_configuration(NR_UE_MAC_INST_t *mac, NR_UE_MAC_reset_cause_t ca
   memset(&mac->ul_time_alignment, 0, sizeof(mac->ul_time_alignment));
   for (int i = mac->TAG_list.count; i > 0 ; i--)
     asn_sequence_del(&mac->TAG_list, i - 1, 1);
-}
-
-void free_rach_structures(NR_UE_MAC_INST_t *nr_mac, int bwp_id)
-{
-  for (int j = 0; j < MAX_NB_PRACH_CONF_PERIOD_IN_ASSOCIATION_PATTERN_PERIOD; j++)
-    for (int k = 0; k < MAX_NB_FRAME_IN_PRACH_CONF_PERIOD; k++)
-      for (int l = 0; l < MAX_NB_SLOT_IN_FRAME; l++)
-        free(nr_mac->prach_assoc_pattern[bwp_id].prach_conf_period_list[j].prach_occasion_slot_map[k][l].prach_occasion);
-
-  free(nr_mac->ssb_list[bwp_id].tx_ssb);
-}
-
-void reset_ra(NR_UE_MAC_INST_t *nr_mac, bool free_prach)
-{
-  RA_config_t *ra = &nr_mac->ra;
-  if(ra->rach_ConfigDedicated)
-    asn1cFreeStruc(asn_DEF_NR_RACH_ConfigDedicated, ra->rach_ConfigDedicated);
-  memset(ra, 0, sizeof(RA_config_t));
-
-  if (!free_prach)
-    return;
-
-  for (int i = 0; i < MAX_NUM_BWP_UE; i++)
-    free_rach_structures(nr_mac, i);
 }

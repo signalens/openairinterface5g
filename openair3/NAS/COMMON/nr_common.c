@@ -21,6 +21,7 @@
  *      contact@openairinterface.org
  */
 
+#include <arpa/inet.h>
 #include <openair3/NAS/COMMON/NR_NAS_defs.h>
 #include <openair3/SECU/secu_defs.h>
 #include <openair3/SECU/kdf.h>

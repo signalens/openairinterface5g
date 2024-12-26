@@ -36,6 +36,7 @@
 #include "FGSNASSecurityModeComplete.h"
 #include "FGSDeregistrationRequestUEOriginating.h"
 #include "RegistrationComplete.h"
+#include "EMM/MSG/fgs_service_request.h"
 #include "as_message.h"
 #include "FGSUplinkNasTransport.h"
 #include <openair3/UICC/usim_interface.h>
@@ -47,6 +48,9 @@
 #define SECURITY_PROTECTED_5GS_NAS_MESSAGE_HEADER_LENGTH 7
 #define PAYLOAD_CONTAINER_LENGTH_MIN 3
 #define PAYLOAD_CONTAINER_LENGTH_MAX 65537
+
+/* 3GPP TS 24.501: 9.11.3.50 Service type */
+#define SERVICE_TYPE_DATA 0x1
 
 /* List of allowed NSSAI from NAS messaging. */
 typedef struct {
@@ -106,6 +110,7 @@ typedef struct {
 typedef union {
   mm_msg_header_t header;
   registration_request_msg registration_request;
+  fgs_service_request_msg_t service_request;
   fgs_identiy_response_msg fgs_identity_response;
   fgs_authentication_response_msg fgs_auth_response;
   fgs_deregistration_request_ue_originating_msg fgs_deregistration_request_ue_originating;
@@ -158,7 +163,9 @@ typedef struct {
 
 nr_ue_nas_t *get_ue_nas_info(module_id_t module_id);
 void generateRegistrationRequest(as_nas_info_t *initialNasMsg, nr_ue_nas_t *nas);
+void generateServiceRequest(as_nas_info_t *initialNasMsg, nr_ue_nas_t *nas);
 void *nas_nrue_task(void *args_p);
 void *nas_nrue(void *args_p);
+void nas_init_nrue(int num_ues);
 
 #endif /* __NR_NAS_MSG_SIM_H__*/

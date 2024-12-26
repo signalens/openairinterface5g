@@ -616,7 +616,7 @@ static bool allocate_dl_retransmission(module_id_t module_id,
   return true;
 }
 
-uint32_t pf_tbs[3][29]; // pre-computed, approximate TBS values for PF coefficient
+static uint32_t pf_tbs[3][29]; // pre-computed, approximate TBS values for PF coefficient
 typedef struct UEsched_s {
   float coef;
   NR_UE_info_t * UE;
@@ -636,7 +636,7 @@ static void pf_dl(module_id_t module_id,
   gNB_MAC_INST *mac = RC.nrmac[module_id];
   NR_ServingCellConfigCommon_t *scc=mac->common_channels[0].ServingCellConfigCommon;
   // UEs that could be scheduled
-  UEsched_t UE_sched[MAX_MOBILES_PER_GNB] = {0};
+  UEsched_t UE_sched[MAX_MOBILES_PER_GNB + 1] = {0};
   int remainUEs = max_num_ue;
   int curUE = 0;
   int CC_id = 0;
@@ -968,6 +968,9 @@ void nr_schedule_ue_spec(module_id_t module_id,
   NR_UEs_t *UE_info = &gNB_mac->UE_info;
   nfapi_nr_dl_tti_request_body_t *dl_req = &DL_req->dl_tti_request_body;
 
+  const NR_BWP_t *initialDL = &scc->downlinkConfigCommon->initialDownlinkBWP->genericParameters;
+  gNB_mac->mac_stats.total_prb_aggregate += NRRIV2BW(initialDL->locationAndBandwidth, MAX_BWP_SIZE);
+
   UE_iterator(UE_info->list, UE) {
     NR_UE_sched_ctrl_t *sched_ctrl = &UE->UE_sched_ctrl;
     NR_UE_DL_BWP_t *current_BWP = &UE->current_DL_BWP;
@@ -1282,6 +1285,7 @@ void nr_schedule_ue_spec(module_id_t module_id,
       T(T_GNB_MAC_RETRANSMISSION_DL_PDU_WITH_DATA, T_INT(module_id), T_INT(CC_id), T_INT(rnti),
         T_INT(frame), T_INT(slot), T_INT(current_harq_pid), T_INT(harq->round), T_BUFFER(harq->transportBlock, TBS));
       UE->mac_stats.dl.total_rbs_retx += sched_pdsch->rbSize;
+      gNB_mac->mac_stats.used_prb_aggregate += sched_pdsch->rbSize;
     } else { /* initial transmission */
       LOG_D(NR_MAC, "Initial HARQ transmission in %d.%d\n", frame, slot);
       uint8_t *buf = (uint8_t *) harq->transportBlock;
@@ -1404,6 +1408,7 @@ void nr_schedule_ue_spec(module_id_t module_id,
       UE->mac_stats.dl.num_mac_sdu += sdus;
       UE->mac_stats.dl.current_rbs = sched_pdsch->rbSize;
       UE->mac_stats.dl.total_sdu_bytes += dlsch_total_bytes;
+      gNB_mac->mac_stats.used_prb_aggregate += sched_pdsch->rbSize;
 
       /* save retransmission information */
       harq->sched_pdsch = *sched_pdsch;

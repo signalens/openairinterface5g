@@ -22,12 +22,11 @@
 #ifndef _RRC_GNB_DRBS_H_
 #define _RRC_GNB_DRBS_H_
 
-#include "nr_rrc_defs.h"
-#include "NR_SDAP-Config.h"
+#include <stdbool.h>
+#include <stdint.h>
 #include "NR_DRB-ToAddMod.h"
-#include "NR_SRB-ToAddMod.h"
-
-#include "common/platform_constants.h"
+#include "e1ap_messages_types.h"
+#include "nr_rrc_defs.h"
 
 #define DRB_ACTIVE_NONGBR       (2)   /* DRB is used for Non-GBR Flows */
 #define DRB_ACTIVE              (1)

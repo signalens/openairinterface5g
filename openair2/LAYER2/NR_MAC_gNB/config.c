@@ -30,26 +30,37 @@
 
  */
 
-#include "common/platform_types.h"
-#include "common/platform_constants.h"
-#include "common/ran_context.h"
-#include "common/utils/nr/nr_common.h"
-#include "common/utils/LOG/log.h"
-#include "common/utils/LOG/vcd_signal_dumper.h"
-
+#include <complex.h>
+#include <math.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include "BIT_STRING.h"
+#include "LAYER2/NR_MAC_COMMON/nr_mac_common.h"
+#include "LAYER2/NR_MAC_gNB/mac_proto.h"
+#include "NR_MIB.h"
+#include "NR_MAC_COMMON/nr_mac_extern.h"
+#include "NR_MAC_gNB/nr_mac_gNB.h"
 #include "NR_BCCH-BCH-Message.h"
 #include "NR_ServingCellConfigCommon.h"
-#include "uper_encoder.h"
-
-#include "LAYER2/NR_MAC_gNB/mac_proto.h"
-#include "SCHED_NR/phy_frame_config_nr.h"
-
 #include "NR_MIB.h"
-#include "LAYER2/NR_MAC_COMMON/nr_mac_common.h"
-#include "nfapi/oai_integration/vendor_ext.h"
-/* Softmodem params */
+#include "PHY/TOOLS/tools_defs.h"
+#include "PHY/defs_common.h"
+#include "RRC/NR/nr_rrc_config.h"
+#include "SCHED_NR/phy_frame_config_nr.h"
+#include "T.h"
+#include "asn_internal.h"
+#include "assertions.h"
+#include "common/ran_context.h"
+#include "common/utils/T/T.h"
+#include "common/utils/nr/nr_common.h"
 #include "executables/softmodem-common.h"
-#include <complex.h>
+#include "f1ap_messages_types.h"
+#include "nfapi/oai_integration/vendor_ext.h"
+#include "nfapi_interface.h"
+#include "nfapi_nr_interface.h"
+#include "nfapi_nr_interface_scf.h"
+#include "utils.h"
 
 extern RAN_CONTEXT_t RC;
 //extern int l2_init_gNB(void);
@@ -288,7 +299,6 @@ static void config_common(gNB_MAC_INST *nrmac,
   cfg->carrier_config.dl_bandwidth.value = get_supported_bw_mhz(frequency_range, bw_index);
   cfg->carrier_config.dl_bandwidth.tl.tag = NFAPI_NR_CONFIG_DL_BANDWIDTH_TAG; // temporary
   cfg->num_tlv++;
-  LOG_I(NR_MAC, "DL_Bandwidth:%d\n", cfg->carrier_config.dl_bandwidth.value);
 
   cfg->carrier_config.dl_frequency.value = from_nrarfcn(*frequencyInfoDL->frequencyBandList.list.array[0],
                                                         *scc->ssbSubcarrierSpacing,
@@ -318,7 +328,6 @@ static void config_common(gNB_MAC_INST *nrmac,
   cfg->carrier_config.uplink_bandwidth.value = get_supported_bw_mhz(frequency_range, bw_index);
   cfg->carrier_config.uplink_bandwidth.tl.tag = NFAPI_NR_CONFIG_UPLINK_BANDWIDTH_TAG; // temporary
   cfg->num_tlv++;
-  LOG_I(NR_MAC, "DL_Bandwidth:%d\n", cfg->carrier_config.uplink_bandwidth.value);
 
   int UL_pointA;
   if (frequencyInfoUL->absoluteFrequencyPointA == NULL)
@@ -346,9 +355,6 @@ static void config_common(gNB_MAC_INST *nrmac,
       cfg->carrier_config.ul_k0[i].value = 0;
     }
   }
-
-  uint32_t band = *frequencyInfoDL->frequencyBandList.list.array[0];
-  frequency_range = band < 100 ? FR1 : FR2;
 
   frame_type_t frame_type = get_frame_type(*frequencyInfoDL->frequencyBandList.list.array[0], *scc->ssbSubcarrierSpacing);
   nrmac->common_channels[0].frame_type = frame_type;
@@ -439,7 +445,7 @@ static void config_common(gNB_MAC_INST *nrmac,
         + (get_N_RA_RB(cfg->prach_config.prach_sub_c_spacing.value,
                        frequencyInfoUL->scs_SpecificCarrierList.list.array[0]->subcarrierSpacing)
            * i);
-    if (get_softmodem_params()->sa) {
+    if (IS_SA_MODE(get_softmodem_params())) {
       prach_fd_occasion->k1.value =
           NRRIV2PRBOFFSET(scc->uplinkConfigCommon->initialUplinkBWP->genericParameters.locationAndBandwidth, MAX_BWP_SIZE)
           + rach_ConfigCommon->rach_ConfigGeneric.msg1_FrequencyStart
@@ -496,7 +502,7 @@ static void config_common(gNB_MAC_INST *nrmac,
 
   nrmac->ssb_SubcarrierOffset = cfg->ssb_table.ssb_subcarrier_offset.value;
   nrmac->ssb_OffsetPointA = cfg->ssb_table.ssb_offset_point_a.value;
-  LOG_I(NR_MAC,
+  LOG_D(NR_MAC,
         "ssb_OffsetPointA %d, ssb_SubcarrierOffset %d\n",
         cfg->ssb_table.ssb_offset_point_a.value,
         cfg->ssb_table.ssb_subcarrier_offset.value);
@@ -582,7 +588,7 @@ static void config_common(gNB_MAC_INST *nrmac,
                   __FUNCTION__);
       cfg->tdd_table.tdd_period.value = *scc->tdd_UL_DL_ConfigurationCommon->pattern1.ext1->dl_UL_TransmissionPeriodicity_v1530;
     }
-    LOG_I(NR_MAC, "Setting TDD configuration period to %d\n", cfg->tdd_table.tdd_period.value);
+    LOG_D(NR_MAC, "Setting TDD configuration period to %d\n", cfg->tdd_table.tdd_period.value);
     int periods_per_frame = set_tdd_config_nr(cfg,
                                               frequencyInfoUL->scs_SpecificCarrierList.list.array[0]->subcarrierSpacing,
                                               scc->tdd_UL_DL_ConfigurationCommon->pattern1.nrofDownlinkSlots,
@@ -675,7 +681,7 @@ void nr_mac_config_scc(gNB_MAC_INST *nrmac, NR_ServingCellConfigCommon_t *scc, c
 
   initialize_beam_information(&nrmac->beam_info, *scc->ssbSubcarrierSpacing, n);
 
-  LOG_I(NR_MAC, "Configuring common parameters from NR ServingCellConfig\n");
+  LOG_D(NR_MAC, "Configuring common parameters from NR ServingCellConfig\n");
 
   config_common(nrmac, config, scc);
   fapi_beam_index_allocation(scc, nrmac);
@@ -714,14 +720,6 @@ void nr_mac_config_scc(gNB_MAC_INST *nrmac, NR_ServingCellConfigCommon_t *scc, c
           (nrmac->ulsch_slot_bitmap[slot / 64] & ((uint64_t)1 << (slot % 64))) != 0);
   }
 
-  if (get_softmodem_params()->phy_test) {
-    nrmac->pre_processor_dl = nr_preprocessor_phytest;
-    nrmac->pre_processor_ul = nr_ul_preprocessor_phytest;
-  } else {
-    nrmac->pre_processor_dl = nr_init_fr1_dlsch_preprocessor(0);
-    nrmac->pre_processor_ul = nr_init_fr1_ulsch_preprocessor(0);
-  }
-
   NR_COMMON_channels_t *cc = &nrmac->common_channels[0];
   NR_SCHED_LOCK(&nrmac->sched_lock);
   for (int n = 0; n < NR_NB_RA_PROC_MAX; n++) {
@@ -753,7 +751,7 @@ void nr_fill_sched_osi(gNB_MAC_INST *nrmac, const struct NR_SetupRelease_PDCCH_C
 
 void nr_mac_configure_sib1(gNB_MAC_INST *nrmac, const f1ap_plmn_t *plmn, uint64_t cellID, int tac)
 {
-  AssertFatal(get_softmodem_params()->sa > 0, "error: SIB1 only applicable for SA\n");
+  AssertFatal(IS_SA_MODE(get_softmodem_params()), "error: SIB1 only applicable for SA\n");
 
   NR_COMMON_channels_t *cc = &nrmac->common_channels[0];
   NR_ServingCellConfigCommon_t *scc = cc->ServingCellConfigCommon;
@@ -765,7 +763,7 @@ void nr_mac_configure_sib1(gNB_MAC_INST *nrmac, const f1ap_plmn_t *plmn, uint64_
 
 void nr_mac_configure_sib19(gNB_MAC_INST *nrmac)
 {
-  AssertFatal(get_softmodem_params()->sa > 0, "error: SIB19 only applicable for SA\n");
+  AssertFatal(IS_SA_MODE(get_softmodem_params()), "error: SIB19 only applicable for SA\n");
   NR_COMMON_channels_t *cc = &nrmac->common_channels[0];
   NR_ServingCellConfigCommon_t *scc = cc->ServingCellConfigCommon;
   NR_BCCH_DL_SCH_Message_t *sib19 = get_SIB19_NR(scc);

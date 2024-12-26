@@ -118,7 +118,7 @@ int nas_itti_nas_establish_req(as_cause_t cause, as_call_type_t type, as_stmsi_t
   NAS_CONN_ESTABLI_REQ(message_p).type                        = type;
   NAS_CONN_ESTABLI_REQ(message_p).s_tmsi                      = s_tmsi;
   NAS_CONN_ESTABLI_REQ(message_p).plmnID                      = plmnID;
-  NAS_CONN_ESTABLI_REQ(message_p).initialNasMsg.data          = data;
+  NAS_CONN_ESTABLI_REQ(message_p).initialNasMsg.nas_data = data;
   NAS_CONN_ESTABLI_REQ(message_p).initialNasMsg.length        = length;
   return itti_send_msg_to_task(TASK_RRC_UE, NB_eNB_INST + user_id, message_p);
 }
@@ -127,7 +127,7 @@ int nas_itti_ul_data_req(const uint32_t ue_id, void *const data, const uint32_t 
   MessageDef *message_p;
   message_p = itti_alloc_new_message(TASK_NAS_UE, 0, NAS_UPLINK_DATA_REQ);
   NAS_UPLINK_DATA_REQ(message_p).UEid          = ue_id;
-  NAS_UPLINK_DATA_REQ(message_p).nasMsg.data   = data;
+  NAS_UPLINK_DATA_REQ(message_p).nasMsg.nas_data = data;
   NAS_UPLINK_DATA_REQ(message_p).nasMsg.length = length;
   return itti_send_msg_to_task(TASK_RRC_UE, NB_eNB_INST + user_id, message_p);
 }

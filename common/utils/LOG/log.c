@@ -69,13 +69,13 @@ typedef struct {
 
 static log_mem_cnt_t log_mem_d[2];
 static int log_mem_flag = 0;
-volatile int log_mem_side=0;
+static volatile int log_mem_side = 0;
 static pthread_mutex_t log_mem_lock;
 static pthread_cond_t log_mem_notify;
 static pthread_t log_mem_thread;
 static int log_mem_file_cnt=0;
-volatile int log_mem_write_flag=0;
-volatile int log_mem_write_side=0;
+static volatile int log_mem_write_flag = 0;
+static volatile int log_mem_write_side = 0;
 static char * log_mem_filename;
 
 static mapping log_level_names[] = {{"error", OAILOG_ERR},
@@ -517,7 +517,6 @@ int logInit (void)
 		   "Invalid log options: time and wall_clock both set but are mutually exclusive\n");
 
   g_log->flag =  g_log->flag | FLAG_INITIALIZED;
-  printf("log init done\n");
   return 0;
 }
 
@@ -946,7 +945,6 @@ int logInit_log_mem (char * filename)
     return -1;
   }
   pthread_create(&log_mem_thread, NULL, (void *(*)(void *))flush_mem_to_file, (void *)NULL);
-  printf("log init done\n");
   
   return 0;
 }

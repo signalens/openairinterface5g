@@ -535,7 +535,8 @@ int nas_message_encode(
 #endif
                        emm_security_context);
       /* Set the message authentication code of the NAS message */
-      *(uint32_t*)(buffer + sizeof(uint8_t)) = htonl(mac);
+      uint32_t mac_nl = htonl(mac);
+      memcpy(buffer + sizeof(uint8_t), &mac_nl, sizeof(mac_nl));
 
       if (emm_security_context) {
 #ifdef NAS_MME

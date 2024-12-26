@@ -8,3 +8,7 @@ target_include_directories(f1ap_lib PUBLIC
                            ${CMAKE_SOURCE_DIR}
                            ${CMAKE_CURRENT_SOURCE_DIR}
 )
+
+if(ENABLE_TESTS)
+  target_compile_definitions(f1ap_lib PRIVATE ENABLE_TESTS)
+endif()

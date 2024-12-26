@@ -26,6 +26,7 @@
 #include "PHY/defs_gNB.h"
 #include "PHY/NR_REFSIG/nr_refsig.h"
 #include "PHY/INIT/nr_phy_init.h"
+#include "PHY/CODING/nrLDPC_coding/nrLDPC_coding_interface.h"
 #include "PHY/CODING/nrPolar_tools/nr_polar_pbch_defs.h"
 #include "PHY/NR_TRANSPORT/nr_transport_proto.h"
 #include "PHY/NR_TRANSPORT/nr_transport_common_proto.h"
@@ -40,29 +41,26 @@
 #include "PHY/NR_REFSIG/nr_refsig.h"
 #include "SCHED_NR/fapi_nr_l1.h"
 #include "PHY/NR_REFSIG/ul_ref_seq_nr.h"
+#include <string.h>
 
-int l1_north_init_gNB() {
+int l1_north_init_gNB()
+{
+  AssertFatal(RC.nb_nr_L1_inst > 0, "Failed to init PHY callbacks: nb_nr_L1_inst = %d\n", RC.nb_nr_L1_inst);
+  AssertFatal(RC.gNB != NULL, "Failed to init PHY callbacks: RC.gNB is null\n");
 
-  if (RC.nb_nr_L1_inst > 0 &&  RC.gNB != NULL) {
+  for (uint8_t i = 0; i < RC.nb_nr_L1_inst; i++) {
 
-    AssertFatal(RC.nb_nr_L1_inst>0,"nb_nr_L1_inst=%d\n",RC.nb_nr_L1_inst);
-    AssertFatal(RC.gNB!=NULL,"RC.gNB is null\n");
-    LOG_I(PHY,"%s() RC.nb_nr_L1_inst:%d\n", __FUNCTION__, RC.nb_nr_L1_inst);
-
-    for (int i=0; i<RC.nb_nr_L1_inst; i++) {
-      AssertFatal(RC.gNB[i]!=NULL,"RC.gNB[%d] is null\n",i);
-
-      if ((RC.gNB[i]->if_inst =  NR_IF_Module_init(i))<0) return(-1);
-      
-      LOG_I(PHY,"%s() RC.gNB[%d] installing callbacks\n", __FUNCTION__, i);
-      RC.gNB[i]->if_inst->NR_PHY_config_req = nr_phy_config_request;
-      RC.gNB[i]->if_inst->NR_Schedule_response = nr_schedule_response;
+    if ((RC.gNB[i]->if_inst = NR_IF_Module_init(i)) < 0) {
+      LOG_E(NR_PHY, "Error: Failed to initialize NR_IF_Module for gNB[%d]\n", i);
+      return -1;
     }
-  } else {
-    LOG_I(PHY,"%s() Not installing PHY callbacks - RC.nb_nr_L1_inst:%d RC.gNB:%p\n", __FUNCTION__, RC.nb_nr_L1_inst, RC.gNB);
+
+    LOG_D(NR_PHY, "RC.gNB[%d]: installing callbacks\n", i);
+    RC.gNB[i]->if_inst->NR_PHY_config_req = nr_phy_config_request;
+    RC.gNB[i]->if_inst->NR_Schedule_response = nr_schedule_response;
   }
 
-  return(0);
+  return 0;
 }
 
 NR_gNB_PHY_STATS_t *get_phy_stats(PHY_VARS_gNB *gNB, uint16_t rnti)
@@ -100,9 +98,6 @@ void reset_active_stats(PHY_VARS_gNB *gNB, int frame)
   }
 }
 
-// A global var to reduce the changes size
-ldpc_interface_t ldpc_interface = {0}, ldpc_interface_offload = {0};
-
 void phy_init_nr_gNB(PHY_VARS_gNB *gNB)
 {
   // shortcuts
@@ -125,7 +120,7 @@ void phy_init_nr_gNB(PHY_VARS_gNB *gNB)
 
   AssertFatal(Ptx > 0 && Ptx < 9,"Ptx %d is not supported\n", Ptx);
   AssertFatal(Prx > 0 && Prx < 9,"Prx %d is not supported\n", Prx);
-  LOG_I(PHY, "[gNB %d]About to wait for gNB to be configured\n", gNB->Mod_id);
+  LOG_D(PHY, "[gNB %d]About to wait for gNB to be configured\n", gNB->Mod_id);
 
   while(gNB->configured == 0)
     usleep(10000);
@@ -138,14 +133,10 @@ void phy_init_nr_gNB(PHY_VARS_gNB *gNB)
 
   nr_init_fde(); // Init array for frequency equalization of transform precoding of PUSCH
 
-  load_LDPClib(NULL, &ldpc_interface);
+  int ret_loader = load_nrLDPC_coding_interface(NULL, &gNB->nrLDPC_coding_interface);
+  AssertFatal(ret_loader == 0, "error loading LDPC library\n");
 
   pthread_mutex_init(&gNB->UL_INFO.crc_rx_mutex, NULL);
-
-  if (gNB->ldpc_offload_flag)
-    load_LDPClib("_t2", &ldpc_interface_offload);
-  else
-    load_LDPClib(NULL, &ldpc_interface);
 
   gNB->max_nb_pdsch = MAX_MOBILES_PER_GNB;
   init_delay_table(fp->ofdm_symbol_size, MAX_DELAY_COMP, NR_MAX_OFDM_SYMBOL_SIZE, fp->delay_table);
@@ -312,15 +303,6 @@ void install_nr_schedule_handlers(NR_IF_Module_t *if_inst)
   if_inst->NR_PHY_config_req = nr_phy_config_request;
   if_inst->NR_Schedule_response = nr_schedule_response;
 }
-/*
-void install_schedule_handlers(IF_Module_t *if_inst)
-{
-  if_inst->PHY_config_req = phy_config_request;
-  if_inst->schedule_response = schedule_response;
-}*/
-
-/// this function is a temporary addition for NR configuration
-
 
 void nr_phy_config_request_sim(PHY_VARS_gNB *gNB,
                                int N_RB_DL,
@@ -381,8 +363,7 @@ void nr_phy_config_request_sim(PHY_VARS_gNB *gNB,
   init_symbol_rotation(fp);
   init_timeshift_rotation(fp);
 
-  gNB->configured    = 1;
-  LOG_I(PHY,"gNB configured\n");
+  gNB->configured = 1;
 }
 
 void nr_phy_config_request(NR_PHY_Config_t *phy_config)
@@ -406,7 +387,7 @@ void nr_phy_config_request(NR_PHY_Config_t *phy_config)
   LOG_I(PHY, "DL frequency %lu Hz, UL frequency %lu Hz: band %d, uldl offset %d Hz\n", fp->dl_CarrierFreq, fp->ul_CarrierFreq, fp->nr_band, dlul_offset);
 
   fp->threequarter_fs = get_softmodem_params()->threequarter_fs;
-  LOG_A(PHY,"Configuring MIB for instance %d, : (Nid_cell %d,DL freq %llu, UL freq %llu)\n",
+  LOG_D(PHY,"Configuring MIB for instance %d, : (Nid_cell %d,DL freq %llu, UL freq %llu)\n",
         Mod_id,
         gNB_config->cell_config.phy_cell_id.value,
         (unsigned long long)fp->dl_CarrierFreq,
@@ -434,8 +415,6 @@ void nr_phy_config_request(NR_PHY_Config_t *phy_config)
   fp->ofdm_offset_divisor = RC.gNB[Mod_id]->ofdm_offset_divisor;
   init_symbol_rotation(fp);
   init_timeshift_rotation(fp);
-
-  LOG_I(PHY,"gNB %d configured\n",Mod_id);
 }
 
 void init_DLSCH_struct(PHY_VARS_gNB *gNB, processingData_L1tx_t *msg)
@@ -476,7 +455,6 @@ void init_nr_transport(PHY_VARS_gNB *gNB)
 
   NR_DL_FRAME_PARMS *fp = &gNB->frame_parms;
   const nfapi_nr_config_request_scf_t *cfg = &gNB->gNB_config;
-  LOG_I(PHY, "Initialise nr transport\n");
 
   int nb_slots_per_period = cfg->cell_config.frame_duplex_type.value ?
                             fp->slots_per_frame / get_nb_periods_per_frame(cfg->tdd_table.tdd_period.value) :

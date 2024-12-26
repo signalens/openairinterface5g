@@ -2,6 +2,7 @@
 #define NR_UESOFTMODEM_H
 #include <executables/nr-softmodem-common.h>
 #include <executables/softmodem-common.h>
+#include "common/utils/threadPool/thread-pool.h"
 #include "PHY/defs_nr_UE.h"
 
 #define  CONFIG_HLP_IF_FREQ                "IF frequency for RF, if needed\n"
@@ -11,9 +12,6 @@
 #define  CONFIG_HLP_MAX_LDPC_ITERATIONS    "Maximum LDPC decoder iterations\n"
 #define  CONFIG_HLP_TIME_SYNC_P            "coefficient for Proportional part of time sync PI controller\n"
 #define  CONFIG_HLP_TIME_SYNC_I            "coefficient for Integrating part of time sync PI controller\n"
-#define  CONFIG_HLP_NTN_KOFFSET            "NTN cellSpecificKoffset-r17 (number of slots for a given subcarrier spacing of 15 kHz)\n"
-#define  CONFIG_HLP_NTN_TA_COMMON          "NTN ta-Common, but given in ms\n"
-#define  CONFIG_HLP_NTN_TA_COMMONDRIFT     "NTN ta-CommonDrift, but given in µs/s\n"
 #define  CONFIG_HLP_AUTONOMOUS_TA          "Autonomously update TA based on DL drift (useful if main contribution to DL drift is movement, e.g. LEO satellite)\n"
 #define  CONFIG_HLP_AGC                    "Rx Gain control used for UE\n"
 
@@ -41,7 +39,6 @@
   {"dlsch-parallel",           CONFIG_HLP_DLSCH_PARA,          0,               .u8ptr=NULL,                              .defintval=0,                    TYPE_UINT8,    0}, \
   {"offset-divisor",           CONFIG_HLP_OFFSET_DIV,          0,               .uptr=&nrUE_params.ofdm_offset_divisor,   .defuintval=8,                   TYPE_UINT32,   0}, \
   {"max-ldpc-iterations",      CONFIG_HLP_MAX_LDPC_ITERATIONS, 0,               .iptr=&nrUE_params.max_ldpc_iterations,   .defuintval=8,                  TYPE_UINT8,    0}, \
-  {"ldpc-offload-enable",      CONFIG_HLP_LDPC_OFFLOAD,        PARAMFLAG_BOOL,  .iptr=&(nrUE_params.ldpc_offload_flag),   .defintval=0,                   TYPE_INT,      0}, \
   {"V" ,                       CONFIG_HLP_VCD,                 PARAMFLAG_BOOL,  .iptr=&nrUE_params.vcdflag,                 .defintval=0,                    TYPE_INT,      0}, \
   {"uecap_file",               CONFIG_HLP_UECAP_FILE,          0,               .strptr=&nrUE_params.uecap_file,            .defstrval="./uecap_ports1.xml", TYPE_STRING,   0}, \
   {"reconfig-file",            CONFIG_HLP_RE_CFG_FILE,         0,               .strptr=&nrUE_params.reconfig_file,         .defstrval="./reconfig.raw",     TYPE_STRING,   0}, \
@@ -66,9 +63,6 @@
   {"num-ues",                      NULL,                       0,               .iptr=&(NB_UE_INST),                         .defuintval=1,     TYPE_INT,      0}, \
   {"time-sync-P",                  CONFIG_HLP_TIME_SYNC_P,     0,               .dblptr=&(nrUE_params.time_sync_P),          .defdblval=0.5,    TYPE_DOUBLE,   0}, \
   {"time-sync-I",                  CONFIG_HLP_TIME_SYNC_I,     0,               .dblptr=&(nrUE_params.time_sync_I),          .defdblval=0.0,    TYPE_DOUBLE,   0}, \
-  {"ntn-koffset",                  CONFIG_HLP_NTN_KOFFSET,     0,               .uptr=&(nrUE_params.ntn_koffset),            .defuintval=0,     TYPE_UINT,     0}, \
-  {"ntn-ta-common",                CONFIG_HLP_NTN_TA_COMMON,   0,               .dblptr=&(nrUE_params.ntn_ta_common),        .defdblval=0.0,    TYPE_DOUBLE,   0}, \
-  {"ntn-ta-commondrift",           CONFIG_HLP_NTN_TA_COMMONDRIFT, 0,            .dblptr=&(nrUE_params.ntn_ta_commondrift),   .defdblval=0.0,    TYPE_DOUBLE,   0}, \
   {"autonomous-ta",                CONFIG_HLP_AUTONOMOUS_TA,   PARAMFLAG_BOOL,  .iptr=&(nrUE_params.autonomous_ta),          .defintval=0,      TYPE_INT,      0}, \
   {"agc",                          CONFIG_HLP_AGC,             PARAMFLAG_BOOL,  .iptr=&(nrUE_params.agc),                    .defintval=0,      TYPE_INT,      0}, \
 }
@@ -78,7 +72,7 @@ typedef struct {
   uint64_t optmask; // mask to store boolean config options
   uint32_t ofdm_offset_divisor; // Divisor for sample offset computation for each OFDM symbol
   int max_ldpc_iterations; // number of maximum LDPC iterations
-  tpool_t Tpool; // thread pool
+  tpool_t Tpool;
   int UE_scan_carrier;
   int UE_fo_compensation;
   uint64_t if_freq;
@@ -90,12 +84,8 @@ typedef struct {
   int nb_antennas_tx;
   int N_RB_DL;
   int ssb_start_subcarrier;
-  int ldpc_offload_flag;
   double time_sync_P;
   double time_sync_I;
-  unsigned int ntn_koffset;
-  double ntn_ta_common;
-  double ntn_ta_commondrift;
   int autonomous_ta;
   int agc;
   char *usrp_args;

@@ -322,5 +322,7 @@ int nr_ue_ul_indication(nr_uplink_indication_t *ul_info);
 
 void nr_ue_sl_indication(nr_sidelink_indication_t *sl_indication);
 
+void print_ue_mac_stats(const module_id_t mod, const int frame_rx, const int slot_rx);
+
 #endif
 

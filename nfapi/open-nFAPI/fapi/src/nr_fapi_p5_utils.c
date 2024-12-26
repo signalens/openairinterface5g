@@ -18,38 +18,7 @@
  * For more information about the OpenAirInterface (OAI) Software Alliance:
  *      contact@openairinterface.org
  */
-/*! \file nfapi/open-nFAPI/fapi/src/nr_fapi_p5_utils.c
- * \brief
- * \author Ruben S. Silva
- * \date 2024
- * \version 0.1
- * \company OpenAirInterface Software Alliance
- * \email: contact@openairinterface.org, rsilva@allbesmart.pt
- * \note
- * \warning
- */
 #include "nr_fapi_p5_utils.h"
-
-void copy_vendor_extension_value(nfapi_vendor_extension_tlv_t *dst, const nfapi_vendor_extension_tlv_t *src)
-{
-  nfapi_tl_t *dst_tlv = (nfapi_tl_t *)dst;
-  nfapi_tl_t *src_tlv = (nfapi_tl_t *)src;
-
-  switch (dst_tlv->tag) {
-    case VENDOR_EXT_TLV_2_TAG: {
-      vendor_ext_tlv_2 *dst_ve = (vendor_ext_tlv_2 *)dst_tlv;
-      vendor_ext_tlv_2 *src_ve = (vendor_ext_tlv_2 *)src_tlv;
-
-      dst_ve->dummy = src_ve->dummy;
-    } break;
-    case VENDOR_EXT_TLV_1_TAG: {
-      vendor_ext_tlv_1 *dst_ve = (vendor_ext_tlv_1 *)dst_tlv;
-      vendor_ext_tlv_1 *src_ve = (vendor_ext_tlv_1 *)src_tlv;
-
-      dst_ve->dummy = src_ve->dummy;
-    } break;
-  }
-}
 
 bool eq_param_request(const nfapi_nr_param_request_scf_t *unpacked_req, const nfapi_nr_param_request_scf_t *req)
 {
@@ -276,9 +245,8 @@ bool eq_config_request(const nfapi_nr_config_request_scf_t *unpacked_req, const 
   const uint8_t slotsperframe[5] = {10, 20, 40, 80, 160};
   // Assuming always CP_Normal, because Cyclic prefix is not included in CONFIG.request 10.02, but is present in 10.04
   uint8_t cyclicprefix = 1;
-  bool normal_CP = cyclicprefix ? false : true;
   // 3GPP 38.211 Table 4.3.2.1 & Table 4.3.2.2
-  uint8_t number_of_symbols_per_slot = normal_CP ? 14 : 12;
+  uint8_t number_of_symbols_per_slot = cyclicprefix ? 14 : 12;
 
   for (int i = 0; i < slotsperframe[unpacked_req->ssb_config.scs_common.value]; i++) {
     for (int k = 0; k < number_of_symbols_per_slot; k++) {
@@ -805,9 +773,8 @@ void copy_config_request(const nfapi_nr_config_request_scf_t *src, nfapi_nr_conf
   const uint8_t slotsperframe[5] = {10, 20, 40, 80, 160};
   // Assuming always CP_Normal, because Cyclic prefix is not included in CONFIG.request 10.02, but is present in 10.04
   uint8_t cyclicprefix = 1;
-  bool normal_CP = cyclicprefix ? false : true;
   // 3GPP 38.211 Table 4.3.2.1 & Table 4.3.2.2
-  uint8_t number_of_symbols_per_slot = normal_CP ? 14 : 12;
+  uint8_t number_of_symbols_per_slot = cyclicprefix ? 14 : 12;
   dst->tdd_table.max_tdd_periodicity_list = (nfapi_nr_max_tdd_periodicity_t *)malloc(slotsperframe[dst->ssb_config.scs_common.value]
                                                                                      * sizeof(nfapi_nr_max_tdd_periodicity_t));
 

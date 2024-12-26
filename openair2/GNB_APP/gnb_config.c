@@ -27,27 +27,64 @@
   EMAIL   : Lionel.Gauthier@eurecom.fr, navid.nikaein@eurecom.fr, kroempa@gmail.com
 */
 
-#include "executables/softmodem-common.h"
 #include "gnb_config.h"
-#include "enb_paramdef.h"
-#include "UTIL/OTG/otg.h"
-#include "sctp_default_values.h"
-#include "f1ap_common.h"
-#include "PHY/INIT/nr_phy_init.h"
-#include "radio/ETHERNET/ethernet_lib.h"
-#include "nfapi_vnf.h"
-#include "nfapi_pnf.h"
-#include "prs_nr_paramdef.h"
+#include <limits.h>
+#include <math.h>
+#include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <unistd.h>
+#include "BIT_STRING.h"
 #include "L1_nr_paramdef.h"
 #include "MACRLC_nr_paramdef.h"
-#include "gnb_paramdef.h"
-#include "NR_MAC_gNB/mac_proto.h"
+#include "PHY/INIT/nr_phy_init.h"
+#include "PHY/defs_common.h"
+#include "PHY/defs_gNB.h"
+#include "PHY/defs_nr_common.h"
+#include "RRC/NR/nr_rrc_config.h"
 #include "RRC/NR/nr_rrc_extern.h"
+#include "RRC_nr_paramsvalues.h"
+#include "T.h"
+#include "asn_SEQUENCE_OF.h"
+#include "asn_codecs.h"
+#include "asn_internal.h"
+#include "NR_MAC_gNB/nr_mac_gNB.h"
+#include "NR_MAC_gNB/mac_proto.h"
+#include "common/5g_platform_types.h"
+#include "common/config/config_paramdesc.h"
+#include "common/config/config_userapi.h"
+#include "common/openairinterface5g_limits.h"
+#include "common/ran_context.h"
+#include "common/utils/T/T.h"
+#include "common_lib.h"
+#include "constr_TYPE.h"
+#include "enb_paramdef.h"
+#include "executables/softmodem-common.h"
+#include "f1ap_common.h"
+#include "gnb_paramdef.h"
+#include "lib/f1ap_interface_management.h"
 #include "nfapi/oai_integration/vendor_ext.h"
+#include "nfapi_pnf.h"
+#include "nfapi_vnf.h"
+#include "ngap_gNB.h"
+#include "ngap_messages_types.h"
+#include "nr_common.h"
+#include "oai_asn1.h"
+#include "openair1/PHY/defs_common.h"
+#include "prs_nr_paramdef.h"
+#include "radio/ETHERNET/if_defs.h"
+#include "rrc_messages_types.h"
+#include "s1ap_messages_types.h"
+#include "sctp_default_values.h"
+#include "seq_arr.h"
+#include "uper_encoder.h"
+#include "utils.h"
+#include "x2ap_messages_types.h"
 #ifdef ENABLE_AERIAL
 #include "nfapi/oai_integration/aerial/fapi_vnf_p5.h"
 #endif
-#include "lib/f1ap_interface_management.h"
 
 static int DEFBANDS[] = {7};
 static int DEFENBS[] = {0};
@@ -746,25 +783,15 @@ void RCconfig_nr_prs(void)
   prs_config_t *prs_config = NULL;
   char str[7][100] = {0};
 
+  AssertFatal(RC.gNB != NULL, "gNB context is null, cannot complete PRS configuration\n");
+
   paramdef_t PRS_Params[] = PRS_PARAMS_DESC;
   paramlist_def_t PRS_ParamList = {CONFIG_STRING_PRS_CONFIG,NULL,0};
-  if (RC.gNB == NULL) {
-    RC.gNB                       = (PHY_VARS_gNB **)malloc((1+NUMBER_OF_gNB_MAX)*sizeof(PHY_VARS_gNB*));
-    LOG_I(NR_PHY,"RC.gNB = %p\n",RC.gNB);
-    memset(RC.gNB,0,(1+NUMBER_OF_gNB_MAX)*sizeof(PHY_VARS_gNB*));
-  }
-
   config_getlist(config_get_if(), &PRS_ParamList, PRS_Params, sizeofArray(PRS_Params), NULL);
 
   if (PRS_ParamList.numelt > 0) {
     for (j = 0; j < RC.nb_nr_L1_inst; j++) {
-
-      if (RC.gNB[j] == NULL) {
-        RC.gNB[j]                       = (PHY_VARS_gNB *)malloc(sizeof(PHY_VARS_gNB));
-        LOG_I(NR_PHY,"RC.gNB[%d] = %p\n",j,RC.gNB[j]);
-        memset(RC.gNB[j],0,sizeof(PHY_VARS_gNB));
-	      RC.gNB[j]->Mod_id  = j;
-      }
+      AssertFatal(RC.gNB[j] != NULL, "gNB L1 instance is null at index %d, cannot complete L1 configuration\n", j);
 
       RC.gNB[j]->prs_vars.NumPRSResources = *(PRS_ParamList.paramarray[j][NUM_PRS_RESOURCES].uptr);
       for (k = 0; k < RC.gNB[j]->prs_vars.NumPRSResources; k++)
@@ -834,132 +861,123 @@ void RCconfig_nr_prs(void)
   }
 }
 
+#define ALL_SYMBOLS_TAKEN 0x3FFF
+
+/**
+ * @brief Get number or blacklisted UL PRBs and their mapping from gNB config
+ */
+static int get_prb_blacklist(uint8_t instance, uint16_t *prbbl)
+{
+  paramdef_t GNBSParams[] = GNBSPARAMS_DESC;
+  paramlist_def_t GNBParamList = {GNB_CONFIG_STRING_GNB_LIST, NULL, 0};
+  config_get(config_get_if(), GNBSParams, sizeofArray(GNBSParams), NULL);
+  int num_gnbs = GNBSParams[GNB_ACTIVE_GNBS_IDX].numelt;
+  AssertFatal(num_gnbs > 0, "Failed to parse config file, no GNBs found in field %s \n", GNB_CONFIG_STRING_ACTIVE_GNBS);
+  paramdef_t GNBParams[] = GNBPARAMS_DESC;
+  config_getlist(config_get_if(), &GNBParamList, GNBParams, sizeofArray(GNBParams), NULL);
+
+  int num_prbbl = 0;
+  char *ulprbbl = *GNBParamList.paramarray[0][GNB_ULPRBBLACKLIST_IDX].strptr;
+
+  if (!ulprbbl)
+    return -1;
+
+  LOG_D(NR_PHY, "PRB blacklist found: %s\n", ulprbbl);
+  char *save = NULL;
+  char *pt = strtok_r(ulprbbl, ",", &save);
+
+  while (pt) {
+    const int rb = atoi(pt);
+    AssertFatal(rb < MAX_BWP_SIZE, "RB %d out of bounds (max 275 PRBs)\n", rb);
+    prbbl[rb] = ALL_SYMBOLS_TAKEN;
+    LOG_D(NR_PHY, "Blacklisting prb %d\n", rb);
+    pt = strtok_r(NULL, ",", &save);
+    num_prbbl++;
+  }
+  return num_prbbl;
+}
+
 void RCconfig_NR_L1(void)
 {
-  int j = 0;
-  if (RC.gNB == NULL) {
-    RC.gNB = (PHY_VARS_gNB **)malloc((1 + NUMBER_OF_gNB_MAX) * sizeof(PHY_VARS_gNB *));
-    LOG_I(NR_PHY, "RC.gNB = %p\n", RC.gNB);
-    memset(RC.gNB, 0, (1 + NUMBER_OF_gNB_MAX) * sizeof(PHY_VARS_gNB *));
+  LOG_I(NR_PHY, "Initializing NR L1: RC.nb_nr_L1_inst = %d\n", RC.nb_nr_L1_inst);
 
-    if (RC.gNB[j] == NULL) {
-      RC.gNB[j] = calloc(1, sizeof(PHY_VARS_gNB));
-    }
-  }
-  if (NFAPI_MODE != NFAPI_MODE_PNF) {
-    paramdef_t GNBSParams[] = GNBSPARAMS_DESC;
-    ////////// Identification parameters
-    paramdef_t GNBParams[] = GNBPARAMS_DESC;
+  for (int j = 0; j < RC.nb_nr_L1_inst; j++) {
+    PHY_VARS_gNB *gNB = RC.gNB[j];
+    AssertFatal(RC.gNB[j] != NULL, "gNB L1 instance is null at index %d, cannot complete L1 configuration\n", j);
+    // gNB params
+    if (NFAPI_MODE != NFAPI_MODE_PNF) {
+      paramdef_t GNBSParams[] = GNBSPARAMS_DESC;
+      paramlist_def_t GNBParamList = {GNB_CONFIG_STRING_GNB_LIST, NULL, 0};
+      config_get(config_get_if(), GNBSParams, sizeofArray(GNBSParams), NULL);
+      int num_gnbs = GNBSParams[GNB_ACTIVE_GNBS_IDX].numelt;
+      AssertFatal(num_gnbs > 0, "Failed to parse config file, no GNBs found in field %s \n", GNB_CONFIG_STRING_ACTIVE_GNBS);
 
-    paramlist_def_t GNBParamList = {GNB_CONFIG_STRING_GNB_LIST, NULL, 0};
+      paramdef_t GNBParams[] = GNBPARAMS_DESC;
+      config_getlist(config_get_if(), &GNBParamList, GNBParams, sizeofArray(GNBParams), NULL);
+      int N1 = *GNBParamList.paramarray[0][GNB_PDSCH_ANTENNAPORTS_N1_IDX].iptr;
+      int N2 = *GNBParamList.paramarray[0][GNB_PDSCH_ANTENNAPORTS_N2_IDX].iptr;
+      int XP = *GNBParamList.paramarray[0][GNB_PDSCH_ANTENNAPORTS_XP_IDX].iptr;
 
-    config_get(config_get_if(), GNBSParams, sizeofArray(GNBSParams), NULL);
-    int num_gnbs = GNBSParams[GNB_ACTIVE_GNBS_IDX].numelt;
-    AssertFatal(num_gnbs > 0, "Failed to parse config file no gnbs %s \n", GNB_CONFIG_STRING_ACTIVE_GNBS);
-
-    config_getlist(config_get_if(), &GNBParamList, GNBParams, sizeofArray(GNBParams), NULL);
-    int N1 = *GNBParamList.paramarray[0][GNB_PDSCH_ANTENNAPORTS_N1_IDX].iptr;
-    int N2 = *GNBParamList.paramarray[0][GNB_PDSCH_ANTENNAPORTS_N2_IDX].iptr;
-    int XP = *GNBParamList.paramarray[0][GNB_PDSCH_ANTENNAPORTS_XP_IDX].iptr;
-    char *ulprbbl = *GNBParamList.paramarray[0][GNB_ULPRBBLACKLIST_IDX].strptr;
-    if (ulprbbl)
-      LOG_I(NR_PHY, "PRB blacklist %s\n", ulprbbl);
-    char *save = NULL;
-    char *pt = strtok_r(ulprbbl, ",", &save);
-    int prbbl[275];
-    int num_prbbl = 0;
-    memset(prbbl, 0, 275 * sizeof(int));
-
-    while (pt) {
-      const int rb = atoi(pt);
-      AssertFatal(rb < 275, "RB %d out of bounds (max 275)\n", rb);
-      prbbl[rb] = 0x3FFF; // all symbols taken
-      LOG_I(NR_PHY, "Blacklisting prb %d\n", atoi(pt));
-      pt = strtok_r(NULL, ",", &save);
-      num_prbbl++;
-    }
-
-    RC.gNB[j]->num_ulprbbl = num_prbbl;
-    LOG_I(NR_PHY, "Copying %d blacklisted PRB to L1 context\n", num_prbbl);
-    memcpy(RC.gNB[j]->ulprbbl, prbbl, 275 * sizeof(int));
-
-    RC.gNB[j]->ap_N1 = N1;
-    RC.gNB[j]->ap_N2 = N2;
-    RC.gNB[j]->ap_XP = XP;
-  }
-
-  paramdef_t L1_Params[] = L1PARAMS_DESC;
-  paramlist_def_t L1_ParamList = {CONFIG_STRING_L1_LIST, NULL, 0};
-
-  config_getlist(config_get_if(), &L1_ParamList, L1_Params, sizeofArray(L1_Params), NULL);
-
-  if (L1_ParamList.numelt > 0) {
-    for (j = 0; j < RC.nb_nr_L1_inst; j++) {
-      if (RC.gNB[j] == NULL) {
-        RC.gNB[j] = (PHY_VARS_gNB *)malloc(sizeof(PHY_VARS_gNB));
-        LOG_I(NR_PHY, "RC.gNB[%d] = %p\n", j, RC.gNB[j]);
-        memset(RC.gNB[j], 0, sizeof(PHY_VARS_gNB));
-        RC.gNB[j]->Mod_id = j;
+      // PRB Blacklist
+      uint16_t prbbl[MAX_BWP_SIZE] = {0};
+      int num_ulprbbl = get_prb_blacklist(j, prbbl);
+      if (num_ulprbbl != -1) {
+        RC.gNB[j]->num_ulprbbl = num_ulprbbl;
+        LOG_D(NR_PHY, "Copying %d blacklisted PRB to L1 context\n", RC.gNB[j]->num_ulprbbl);
+        memcpy(RC.gNB[j]->ulprbbl, prbbl, MAX_BWP_SIZE * sizeof(prbbl[0]));
       }
-      AssertFatal(*L1_ParamList.paramarray[j][L1_THREAD_POOL_SIZE].uptr == 2022, "thread_pool_size removed, please use --thread-pool\n");
-      RC.gNB[j]->ofdm_offset_divisor = *(L1_ParamList.paramarray[j][L1_OFDM_OFFSET_DIVISOR].uptr);
-      RC.gNB[j]->pucch0_thres = *(L1_ParamList.paramarray[j][L1_PUCCH0_DTX_THRESHOLD].uptr);
-      RC.gNB[j]->prach_thres = *(L1_ParamList.paramarray[j][L1_PRACH_DTX_THRESHOLD].uptr);
-      RC.gNB[j]->pusch_thres = *(L1_ParamList.paramarray[j][L1_PUSCH_DTX_THRESHOLD].uptr);
-      RC.gNB[j]->srs_thres = *(L1_ParamList.paramarray[j][L1_SRS_DTX_THRESHOLD].uptr);
-      RC.gNB[j]->max_ldpc_iterations = *(L1_ParamList.paramarray[j][L1_MAX_LDPC_ITERATIONS].uptr);
-      RC.gNB[j]->L1_rx_thread_core = *(L1_ParamList.paramarray[j][L1_RX_THREAD_CORE].iptr);
-      RC.gNB[j]->L1_tx_thread_core = *(L1_ParamList.paramarray[j][L1_TX_THREAD_CORE].iptr);
-      LOG_I(PHY,"L1_RX_THREAD_CORE %d (%d)\n",*(L1_ParamList.paramarray[j][L1_RX_THREAD_CORE].iptr),L1_RX_THREAD_CORE);
-      RC.gNB[j]->TX_AMP = (int16_t)(32767.0 / pow(10.0, .05 * (double)(*L1_ParamList.paramarray[j][L1_TX_AMP_BACKOFF_dB].uptr)));
-      RC.gNB[j]->phase_comp = *L1_ParamList.paramarray[j][L1_PHASE_COMP].uptr;
-      LOG_I(PHY, "TX_AMP = %d (-%d dBFS)\n", RC.gNB[j]->TX_AMP, *L1_ParamList.paramarray[j][L1_TX_AMP_BACKOFF_dB].uptr);
-      AssertFatal(RC.gNB[j]->TX_AMP > 300, "TX_AMP is too small, must be larger than 300 (is %d)\n", RC.gNB[j]->TX_AMP);
+
+      // Antenna ports
+      gNB->ap_N1 = N1;
+      gNB->ap_N2 = N2;
+      gNB->ap_XP = XP;
+    }
+
+    // L1 params
+    paramdef_t L1_Params[] = L1PARAMS_DESC;
+    paramlist_def_t L1_ParamList = {CONFIG_STRING_L1_LIST, NULL, 0};
+    config_getlist(config_get_if(), &L1_ParamList, L1_Params, sizeofArray(L1_Params), NULL);
+    if (L1_ParamList.numelt > 0) {
+      AssertFatal(*L1_ParamList.paramarray[j][L1_THREAD_POOL_SIZE].uptr == 2022,
+                  "thread_pool_size removed, please use --thread-pool\n");
+      gNB->ofdm_offset_divisor = *(L1_ParamList.paramarray[j][L1_OFDM_OFFSET_DIVISOR].uptr);
+      gNB->pucch0_thres = *(L1_ParamList.paramarray[j][L1_PUCCH0_DTX_THRESHOLD].uptr);
+      gNB->prach_thres = *(L1_ParamList.paramarray[j][L1_PRACH_DTX_THRESHOLD].uptr);
+      gNB->pusch_thres = *(L1_ParamList.paramarray[j][L1_PUSCH_DTX_THRESHOLD].uptr);
+      gNB->srs_thres = *(L1_ParamList.paramarray[j][L1_SRS_DTX_THRESHOLD].uptr);
+      gNB->max_ldpc_iterations = *(L1_ParamList.paramarray[j][L1_MAX_LDPC_ITERATIONS].uptr);
+      gNB->L1_rx_thread_core = *(L1_ParamList.paramarray[j][L1_RX_THREAD_CORE].iptr);
+      gNB->L1_tx_thread_core = *(L1_ParamList.paramarray[j][L1_TX_THREAD_CORE].iptr);
+      LOG_I(NR_PHY, "L1_RX_THREAD_CORE %d (%d)\n", *(L1_ParamList.paramarray[j][L1_RX_THREAD_CORE].iptr), L1_RX_THREAD_CORE);
+      gNB->TX_AMP = (int16_t)(32767.0 / pow(10.0, .05 * (double)(*L1_ParamList.paramarray[j][L1_TX_AMP_BACKOFF_dB].uptr)));
+      gNB->phase_comp = *L1_ParamList.paramarray[j][L1_PHASE_COMP].uptr;
+      gNB->dmrs_num_antennas_per_thread = *(L1_ParamList.paramarray[j][NUM_ANTENNAS_PER_THREAD].uptr);
+      LOG_I(NR_PHY, "TX_AMP = %d (-%d dBFS)\n", gNB->TX_AMP, *L1_ParamList.paramarray[j][L1_TX_AMP_BACKOFF_dB].uptr);
+      AssertFatal(gNB->TX_AMP > 300, "TX_AMP is too small, must be larger than 300 (is %d)\n", gNB->TX_AMP);
+      // Midhaul configuration
       if (strcmp(*(L1_ParamList.paramarray[j][L1_TRANSPORT_N_PREFERENCE_IDX].strptr), "local_mac") == 0) {
-        // sf_ahead = 2; // Need 4 subframe gap between RX and TX
+        // do nothing
       } else if (strcmp(*(L1_ParamList.paramarray[j][L1_TRANSPORT_N_PREFERENCE_IDX].strptr), "nfapi") == 0) {
-        RC.gNB[j]->eth_params_n.my_addr = strdup(*(L1_ParamList.paramarray[j][L1_LOCAL_N_ADDRESS_IDX].strptr));
-        RC.gNB[j]->eth_params_n.remote_addr = strdup(*(L1_ParamList.paramarray[j][L1_REMOTE_N_ADDRESS_IDX].strptr));
-        RC.gNB[j]->eth_params_n.my_portc = *(L1_ParamList.paramarray[j][L1_LOCAL_N_PORTC_IDX].iptr);
-        RC.gNB[j]->eth_params_n.remote_portc = *(L1_ParamList.paramarray[j][L1_REMOTE_N_PORTC_IDX].iptr);
-        RC.gNB[j]->eth_params_n.my_portd = *(L1_ParamList.paramarray[j][L1_LOCAL_N_PORTD_IDX].iptr);
-        RC.gNB[j]->eth_params_n.remote_portd = *(L1_ParamList.paramarray[j][L1_REMOTE_N_PORTD_IDX].iptr);
-        RC.gNB[j]->eth_params_n.transp_preference = ETH_UDP_MODE;
+        gNB->eth_params_n.my_addr = strdup(*(L1_ParamList.paramarray[j][L1_LOCAL_N_ADDRESS_IDX].strptr));
+        gNB->eth_params_n.remote_addr = strdup(*(L1_ParamList.paramarray[j][L1_REMOTE_N_ADDRESS_IDX].strptr));
+        gNB->eth_params_n.my_portc = *(L1_ParamList.paramarray[j][L1_LOCAL_N_PORTC_IDX].iptr);
+        gNB->eth_params_n.remote_portc = *(L1_ParamList.paramarray[j][L1_REMOTE_N_PORTC_IDX].iptr);
+        gNB->eth_params_n.my_portd = *(L1_ParamList.paramarray[j][L1_LOCAL_N_PORTD_IDX].iptr);
+        gNB->eth_params_n.remote_portd = *(L1_ParamList.paramarray[j][L1_REMOTE_N_PORTD_IDX].iptr);
+        gNB->eth_params_n.transp_preference = ETH_UDP_MODE;
 
-        // sf_ahead = 2; // Cannot cope with 4 subframes betweem RX and TX - set it to 2
-
-        RC.nb_nr_macrlc_inst = 1; // This is used by mac_top_init_gNB()
-
-        // This is used by init_gNB_afterRU()
-        RC.nb_nr_CC = (int *)malloc((1 + RC.nb_nr_inst) * sizeof(int));
-        RC.nb_nr_CC[0] = 1;
-
-        LOG_I(PHY, "%s() NFAPI PNF mode - RC.nb_nr_inst=1 this is because phy_init_RU() uses that to index and not RC.num_gNB - why the 2 similar variables?\n", __FUNCTION__);
-        LOG_I(PHY, "%s() NFAPI PNF mode - RC.nb_nr_CC[0]=%d for init_gNB_afterRU()\n", __FUNCTION__, RC.nb_nr_CC[0]);
-        LOG_I(PHY, "%s() NFAPI PNF mode - RC.nb_nr_macrlc_inst:%d because used by mac_top_init_gNB()\n", __FUNCTION__, RC.nb_nr_macrlc_inst);
-
-        configure_nr_nfapi_pnf(RC.gNB[j]->eth_params_n.remote_addr,
-                               RC.gNB[j]->eth_params_n.remote_portc,
-                               RC.gNB[j]->eth_params_n.my_addr,
-                               RC.gNB[j]->eth_params_n.my_portd,
-                               RC.gNB[j]->eth_params_n.remote_portd);
-      } else { // other midhaul
+        configure_nr_nfapi_pnf(gNB->eth_params_n.remote_addr,
+                               gNB->eth_params_n.remote_portc,
+                               gNB->eth_params_n.my_addr,
+                               gNB->eth_params_n.my_portd,
+                               gNB->eth_params_n.remote_portd);
+      } else {
+        // other midhaul, do nothing
       }
-    } // for (j = 0; j < RC.nb_nr_L1_inst; j++)
-    printf("Initializing northbound interface for L1\n");
-    l1_north_init_gNB();
-  } else {
-    LOG_I(PHY, "No " CONFIG_STRING_L1_LIST " configuration found");
-
-    // need to create some structures for VNF
-
-    j = 0;
-
-    if (RC.gNB[j] == NULL) {
-      RC.gNB[j] = (PHY_VARS_gNB *)malloc(sizeof(PHY_VARS_gNB));
-      memset((void *)RC.gNB[j], 0, sizeof(PHY_VARS_gNB));
-      LOG_I(PHY, "RC.gNB[%d] = %p\n", j, RC.gNB[j]);
-      RC.gNB[j]->Mod_id = j;
+      LOG_D(NR_PHY, "Initializing northbound interface for L1\n");
+      l1_north_init_gNB();
+    } else {
+      LOG_E(NR_PHY, "No " CONFIG_STRING_L1_LIST " configuration found");
     }
   }
 }
@@ -1000,7 +1018,7 @@ static NR_ServingCellConfigCommon_t *get_scc_config(configmodule_interface_t *cf
                                      *scc->ssbSubcarrierSpacing,
                                      *frequencyInfoDL->absoluteFrequencySSB);
     LOG_I(RRC, "absoluteFrequencySSB %ld corresponds to %lu Hz\n", *frequencyInfoDL->absoluteFrequencySSB, ssb_freq);
-    if (get_softmodem_params()->sa)
+    if (IS_SA_MODE(get_softmodem_params()))
       check_ssb_raster(ssb_freq, *frequencyInfoDL->frequencyBandList.list.array[0], *scc->ssbSubcarrierSpacing);
     fix_scc(scc, ssb_bitmap);
   }
@@ -1100,6 +1118,8 @@ static int read_du_cell_info(configmodule_interface_t *cfg,
   paramdef_t PLMNParams[] = GNBPLMNPARAMS_DESC;
   /* map parameter checking array instances to parameter definition array instances */
   checkedparam_t config_check_PLMNParams[] = PLMNPARAMS_CHECK;
+  static_assert(sizeofArray(config_check_PLMNParams) == sizeofArray(PLMNParams),
+                "config_check_PLMNParams and PLMNParams should have the same size");
   for (int I = 0; I < sizeof(PLMNParams) / sizeof(paramdef_t); ++I)
     PLMNParams[I].chkPptr = &(config_check_PLMNParams[I]);
   paramlist_def_t PLMNParamList = {GNB_CONFIG_STRING_PLMN_LIST, NULL, 0};
@@ -1133,6 +1153,8 @@ static int read_du_cell_info(configmodule_interface_t *cfg,
   paramdef_t SNSSAIParams[] = GNBSNSSAIPARAMS_DESC;
   paramlist_def_t SNSSAIParamList = {GNB_CONFIG_STRING_SNSSAI_LIST, NULL, 0};
   checkedparam_t config_check_SNSSAIParams[] = SNSSAIPARAMS_CHECK;
+  static_assert(sizeofArray(config_check_SNSSAIParams) == sizeofArray(SNSSAIParams),
+                "config_check_SNSSAIParams and SNSSAIParams should have the same size");
   for (int J = 0; J < sizeofArray(SNSSAIParams); ++J)
     SNSSAIParams[J].chkPptr = &(config_check_SNSSAIParams[J]);
   char snssaistr[MAX_OPTNAME_SIZE * 2 + 8];
@@ -1148,7 +1170,7 @@ static int read_du_cell_info(configmodule_interface_t *cfg,
   return 1;
 }
 
-static f1ap_tdd_info_t read_tdd_config(const NR_ServingCellConfigCommon_t *scc)
+f1ap_tdd_info_t read_tdd_config(const NR_ServingCellConfigCommon_t *scc)
 {
   const NR_FrequencyInfoDL_t *dl = scc->downlinkConfigCommon->frequencyInfoDL;
   f1ap_tdd_info_t tdd = {
@@ -1177,7 +1199,27 @@ static f1ap_fdd_info_t read_fdd_config(const NR_ServingCellConfigCommon_t *scc)
   return fdd;
 }
 
-static f1ap_setup_req_t *RC_read_F1Setup(uint64_t id,
+f1ap_gnb_du_system_info_t *get_sys_info(NR_BCCH_BCH_Message_t *mib, const NR_BCCH_DL_SCH_Message_t *sib1)
+{
+  int buf_len = 3;
+  f1ap_gnb_du_system_info_t *sys_info = calloc_or_fail(1, sizeof(*sys_info));
+
+  sys_info->mib = calloc_or_fail(buf_len, sizeof(*sys_info->mib));
+  DevAssert(mib != NULL);
+  sys_info->mib_length = encode_MIB_NR(mib, 0, sys_info->mib, buf_len);
+  DevAssert(sys_info->mib_length == buf_len);
+
+  DevAssert(sib1 != NULL);
+  NR_SIB1_t *bcch_SIB1 = sib1->message.choice.c1->choice.systemInformationBlockType1;
+  sys_info->sib1 = calloc_or_fail(NR_MAX_SIB_LENGTH / 8, sizeof(*sys_info->sib1));
+  asn_enc_rval_t enc_rval = uper_encode_to_buffer(&asn_DEF_NR_SIB1, NULL, (void *)bcch_SIB1, sys_info->sib1, NR_MAX_SIB_LENGTH / 8);
+  AssertFatal(enc_rval.encoded > 0, "ASN1 message encoding failed (%s, %lu)!\n", enc_rval.failed_type->name, enc_rval.encoded);
+  sys_info->sib1_length = (enc_rval.encoded + 7) / 8;
+
+  return sys_info;
+}
+
+f1ap_setup_req_t *RC_read_F1Setup(uint64_t id,
                                          const char *name,
                                          const f1ap_served_cell_info_t *info,
                                          const NR_ServingCellConfigCommon_t *scc,
@@ -1223,27 +1265,10 @@ static f1ap_setup_req_t *RC_read_F1Setup(uint64_t id,
   req->cell[0].info.measurement_timing_config = mtc_buf;
   req->cell[0].info.measurement_timing_config_len = len;
 
-  if (get_softmodem_params()->sa) {
+  if (IS_SA_MODE(get_softmodem_params())) {
     // in NSA we don't transmit SIB1, so cannot fill DU system information
     // so cannot send MIB either
-
-    int buf_len = 3; // this is what we assume in monolithic
-    req->cell[0].sys_info = calloc(1, sizeof(*req->cell[0].sys_info));
-    AssertFatal(req->cell[0].sys_info != NULL, "out of memory\n");
-    f1ap_gnb_du_system_info_t *sys_info = req->cell[0].sys_info;
-    sys_info->mib = calloc(buf_len, sizeof(*sys_info->mib));
-    DevAssert(sys_info->mib != NULL);
-    DevAssert(mib != NULL);
-    // encode only the mib message itself
-    sys_info->mib_length = encode_MIB_NR_setup(mib->message.choice.mib, 0, sys_info->mib, buf_len);
-    DevAssert(sys_info->mib_length == buf_len);
-
-    DevAssert(sib1 != NULL);
-    NR_SIB1_t *bcch_SIB1 = sib1->message.choice.c1->choice.systemInformationBlockType1;
-    sys_info->sib1 = calloc(NR_MAX_SIB_LENGTH / 8, sizeof(*sys_info->sib1));
-    asn_enc_rval_t enc_rval = uper_encode_to_buffer(&asn_DEF_NR_SIB1, NULL, (void *)bcch_SIB1, sys_info->sib1, NR_MAX_SIB_LENGTH / 8);
-    AssertFatal(enc_rval.encoded > 0, "ASN1 message encoding failed (%s, %lu)!\n", enc_rval.failed_type->name, enc_rval.encoded);
-    sys_info->sib1_length = (enc_rval.encoded + 7) / 8;
+    req->cell[0].sys_info = get_sys_info(mib, sib1);
   }
 
   int num = read_version(TO_STRING(NR_RRC_VERSION), &req->rrc_ver[0], &req->rrc_ver[1], &req->rrc_ver[2]);
@@ -1255,8 +1280,6 @@ static f1ap_setup_req_t *RC_read_F1Setup(uint64_t id,
 void RCconfig_nr_macrlc(configmodule_interface_t *cfg)
 {
   int j = 0;
-  uint16_t prbbl[275] = {0};
-  int num_prbbl = 0;
 
   paramlist_def_t GNBParamList = {GNB_CONFIG_STRING_GNB_LIST, NULL, 0};
   paramdef_t GNBSParams[] = GNBSPARAMS_DESC;
@@ -1269,29 +1292,18 @@ void RCconfig_nr_macrlc(configmodule_interface_t *cfg)
   paramdef_t GNBParams[] = GNBPARAMS_DESC;
   /* map parameter checking array instances to parameter definition array instances */
   checkedparam_t config_check_GNBParams[] = GNBPARAMS_CHECK;
+  static_assert(sizeofArray(config_check_GNBParams) == sizeofArray(GNBParams),
+                "config_check_GNBParams and GNBParams should have the same size");
   for (int i = 0; i < sizeofArray(GNBParams); ++i)
     GNBParams[i].chkPptr = &(config_check_GNBParams[i]);
   config_getlist(cfg, &GNBParamList, GNBParams, sizeofArray(GNBParams), NULL);
 
-  if (NFAPI_MODE != NFAPI_MODE_PNF) {
-    ////////// Identification parameters
-
-    char *ulprbbl = *GNBParamList.paramarray[0][GNB_ULPRBBLACKLIST_IDX].strptr;
-    char *save = NULL;
-    char *pt = strtok_r(ulprbbl, ",", &save);
-    memset(prbbl, 0, sizeof(prbbl));
-    while (pt) {
-      const int prb = atoi(pt);
-      AssertFatal(prb < 275, "RB %d out of bounds (max 275)\n", prb);
-      prbbl[prb] = 0x3FFF; // all symbols taken
-      pt = strtok_r(NULL, ",", &save);
-      num_prbbl++;
-    }
-  }
   paramdef_t MacRLC_Params[] = MACRLCPARAMS_DESC;
   paramlist_def_t MacRLC_ParamList = {CONFIG_STRING_MACRLC_LIST, NULL, 0};
   /* map parameter checking array instances to parameter definition array instances */
   checkedparam_t config_check_MacRLCParams[] = MACRLCPARAMS_CHECK;
+  static_assert(sizeofArray(config_check_MacRLCParams) == sizeofArray(MacRLC_Params),
+                "config_check_MacRLCParams and MacRLC_Params should have the same size");
   for (int i = 0; i < sizeofArray(MacRLC_Params); ++i)
     MacRLC_Params[i].chkPptr = &(config_check_MacRLCParams[i]);
   config_getlist(config_get_if(), &MacRLC_ParamList, MacRLC_Params, sizeofArray(MacRLC_Params), NULL);
@@ -1398,7 +1410,6 @@ void RCconfig_nr_macrlc(configmodule_interface_t *cfg)
   NR_ServingCellConfig_t *scd = get_scd_config(cfg);
 
   if (MacRLC_ParamList.numelt > 0) {
-    RC.nb_nr_macrlc_inst = MacRLC_ParamList.numelt;
     ngran_node_t node_type = get_node_type();
     mac_top_init_gNB(node_type, scc, scd, &config);
     RC.nb_nr_mac_CC = (int *)malloc(RC.nb_nr_macrlc_inst * sizeof(int));
@@ -1422,7 +1433,6 @@ void RCconfig_nr_macrlc(configmodule_interface_t *cfg)
 
       } else if (strcmp(*(MacRLC_ParamList.paramarray[j][MACRLC_TRANSPORT_N_PREFERENCE_IDX].strptr), "f1") == 0
                  || strcmp(*(MacRLC_ParamList.paramarray[j][MACRLC_TRANSPORT_N_PREFERENCE_IDX].strptr), "cudu") == 0) {
-        printf("Configuring F1 interfaces for MACRLC\n");
         char **f1caddr = MacRLC_ParamList.paramarray[j][MACRLC_LOCAL_N_ADDRESS_IDX].strptr;
         RC.nrmac[j]->eth_params_n.my_addr = strdup(*f1caddr);
         char **f1uaddr = MacRLC_ParamList.paramarray[j][MACRLC_LOCAL_N_ADDRESS_F1U_IDX].strptr;
@@ -1447,16 +1457,14 @@ void RCconfig_nr_macrlc(configmodule_interface_t *cfg)
         RC.nrmac[j]->eth_params_s.remote_portd = *(MacRLC_ParamList.paramarray[j][MACRLC_REMOTE_S_PORTD_IDX].iptr);
         RC.nrmac[j]->eth_params_s.transp_preference = ETH_UDP_MODE;
 
-        printf("**************** vnf_port:%d\n", RC.nrmac[j]->eth_params_s.my_portc);
         configure_nr_nfapi_vnf(
             RC.nrmac[j]->eth_params_s.my_addr, RC.nrmac[j]->eth_params_s.my_portc, RC.nrmac[j]->eth_params_s.remote_addr, RC.nrmac[j]->eth_params_s.remote_portd, RC.nrmac[j]->eth_params_s.my_portd);
-        printf("**************** RETURNED FROM configure_nfapi_vnf() vnf_port:%d\n", RC.nrmac[j]->eth_params_s.my_portc);
       } else if(strcmp(*(MacRLC_ParamList.paramarray[j][MACRLC_TRANSPORT_S_PREFERENCE_IDX].strptr), "aerial") == 0){
 #ifdef ENABLE_AERIAL
         RC.nrmac[j]->nvipc_params_s.nvipc_shm_prefix =
             strdup(*(MacRLC_ParamList.paramarray[j][MACRLC_TRANSPORT_S_SHM_PREFIX].strptr));
         RC.nrmac[j]->nvipc_params_s.nvipc_poll_core = *(MacRLC_ParamList.paramarray[j][MACRLC_TRANSPORT_S_POLL_CORE].i8ptr);
-        printf("Configuring VNF for Aerial connection with prefix %s\n", RC.nrmac[j]->eth_params_s.local_if_name);
+        LOG_I(GNB_APP, "Configuring VNF for Aerial connection with prefix %s\n", RC.nrmac[j]->eth_params_s.local_if_name);
         aerial_configure_nr_fapi_vnf();
 #endif
       } else { // other midhaul
@@ -1482,8 +1490,13 @@ void RCconfig_nr_macrlc(configmodule_interface_t *cfg)
       RC.nrmac[j]->min_grant_prb = *(MacRLC_ParamList.paramarray[j][MACRLC_MIN_GRANT_PRB_IDX].u8ptr);
       RC.nrmac[j]->min_grant_mcs = *(MacRLC_ParamList.paramarray[j][MACRLC_MIN_GRANT_MCS_IDX].u8ptr);
       RC.nrmac[j]->identity_pm = *(MacRLC_ParamList.paramarray[j][MACRLC_IDENTITY_PM_IDX].u8ptr);
-      RC.nrmac[j]->num_ulprbbl = num_prbbl;
-      memcpy(RC.nrmac[j]->ulprbbl, prbbl, 275 * sizeof(prbbl[0]));
+      // PRB Blacklist
+      uint16_t prbbl[MAX_BWP_SIZE] = {0};
+      int num_ulprbbl = get_prb_blacklist(j, prbbl);
+      if (num_ulprbbl != -1) {
+        LOG_I(NR_PHY, "Copying %d blacklisted PRB to L1 context\n", num_ulprbbl);
+        memcpy(RC.nrmac[j]->ulprbbl, prbbl, MAX_BWP_SIZE * sizeof(prbbl[0]));
+      }
       bool ab = *MacRLC_ParamList.paramarray[j][MACRLC_ANALOG_BEAMFORMING_IDX].u8ptr;
       if (ab) {
         NR_beam_info_t *beam_info = &RC.nrmac[j]->beam_info;
@@ -1503,7 +1516,7 @@ void RCconfig_nr_macrlc(configmodule_interface_t *cfg)
     f1ap_served_cell_info_t info;
     read_du_cell_info(cfg, NODE_IS_DU(node_type), &gnb_id, &gnb_du_id, &name, &info, 1);
 
-    if (get_softmodem_params()->sa) {
+    if (IS_SA_MODE(get_softmodem_params())) {
       nr_mac_configure_sib1(RC.nrmac[0], &info.plmn, info.nr_cellid, *info.tac);
       if (scc->ext2 && scc->ext2->ntn_Config_r17)
         nr_mac_configure_sib19(RC.nrmac[0]);
@@ -1797,8 +1810,14 @@ static void fill_measurement_configuration(uint8_t gnb_idx, gNB_RRC_INST *rrc)
   }
 }
 
-void RCconfig_NRRRC(gNB_RRC_INST *rrc)
+/**
+ * @brief Allocates and initializes RRC instances
+ *        Currently assuming 1 instance
+ */
+gNB_RRC_INST *RCconfig_NRRRC()
 {
+  // Allocate memory for 1 RRC instance
+  gNB_RRC_INST *rrc = calloc(1, sizeof(*rrc));
 
   int num_gnbs = 0;
   char aprefix[MAX_OPTNAME_SIZE*2 + 8];
@@ -1826,7 +1845,7 @@ void RCconfig_NRRRC(gNB_RRC_INST *rrc)
     config_getlist(config_get_if(), &GNBParamList, GNBParams, sizeofArray(GNBParams), NULL);
     if (GNBParamList.paramarray[i][GNB_GNB_ID_IDX].uptr == NULL) {
     // Calculate a default gNB ID
-      if (get_softmodem_params()->sa) { 
+      if (IS_SA_MODE(get_softmodem_params())) {
         uint32_t hash;
         hash = ngap_generate_gNB_id ();
         gnb_id = i + (hash & 0xFFFFFF8);
@@ -1839,7 +1858,7 @@ void RCconfig_NRRRC(gNB_RRC_INST *rrc)
 
     sprintf(aprefix, "%s.[%i]", GNB_CONFIG_STRING_GNB_LIST, 0);
 
-    printf("NRRRC %d: Southbound Transport %s\n", i, *(GNBParamList.paramarray[i][GNB_TRANSPORT_S_PREFERENCE_IDX].strptr));
+    LOG_D(GNB_APP, "NRRRC %d: Southbound Transport %s\n", i, *(GNBParamList.paramarray[i][GNB_TRANSPORT_S_PREFERENCE_IDX].strptr));
 
     rrc->node_type = get_node_type();
     rrc->node_id        = gnb_id;
@@ -1895,6 +1914,8 @@ void RCconfig_NRRRC(gNB_RRC_INST *rrc)
         paramlist_def_t PLMNParamList = {GNB_CONFIG_STRING_PLMN_LIST, NULL, 0};
         /* map parameter checking array instances to parameter definition array instances */
         checkedparam_t config_check_PLMNParams [] = PLMNPARAMS_CHECK;
+        static_assert(sizeofArray(config_check_PLMNParams) == sizeofArray(PLMNParams),
+                      "config_check_PLMNParams and PLMNParams should have the same size");
 
         for (int I = 0; I < sizeofArray(PLMNParams); ++I)
           PLMNParams[I].chkPptr = &(config_check_PLMNParams[I]);
@@ -1938,7 +1959,9 @@ void RCconfig_NRRRC(gNB_RRC_INST *rrc)
   }//End if (num_gnbs>0)
 
   config_security(rrc);
-}//End RCconfig_NRRRC function
+
+  return rrc;
+}
 
 int RCconfig_NR_NG(MessageDef *msg_p, uint32_t i) {
 
@@ -1978,7 +2001,7 @@ int RCconfig_NR_NG(MessageDef *msg_p, uint32_t i) {
       for (k = 0; k < GNBParamList.numelt; k++) {
         if (GNBParamList.paramarray[k][GNB_GNB_ID_IDX].uptr == NULL) {
           // Calculate a default gNB ID
-          if (get_softmodem_params()->sa) {
+          if (IS_SA_MODE(get_softmodem_params())) {
             uint32_t hash;
           
           hash = ngap_generate_gNB_id ();
@@ -2000,7 +2023,11 @@ int RCconfig_NR_NG(MessageDef *msg_p, uint32_t i) {
             paramlist_def_t SNSSAIParamList = {GNB_CONFIG_STRING_SNSSAI_LIST, NULL, 0};
             /* map parameter checking array instances to parameter definition array instances */
             checkedparam_t config_check_PLMNParams [] = PLMNPARAMS_CHECK;
+            static_assert(sizeofArray(config_check_PLMNParams) == sizeofArray(PLMNParams),
+                          "config_check_PLMNParams and PLMNParams should have the same size");
             checkedparam_t config_check_SNSSAIParams [] = SNSSAIPARAMS_CHECK;
+            static_assert(sizeofArray(config_check_SNSSAIParams) == sizeofArray(SNSSAIParams),
+                          "config_check_SNSSAIParams and SNSSAIParams should have the same size");
 
             for (int I = 0; I < sizeofArray(PLMNParams); ++I)
               PLMNParams[I].chkPptr = &(config_check_PLMNParams[I]);
@@ -2119,7 +2146,7 @@ int RCconfig_NR_NG(MessageDef *msg_p, uint32_t i) {
             // SCTP SETTING
             NGAP_REGISTER_GNB_REQ (msg_p).sctp_out_streams = SCTP_OUT_STREAMS;
             NGAP_REGISTER_GNB_REQ (msg_p).sctp_in_streams  = SCTP_IN_STREAMS;
-            if (get_softmodem_params()->sa) {
+            if (IS_SA_MODE(get_softmodem_params())) {
               sprintf(aprefix,"%s.[%i].%s",GNB_CONFIG_STRING_GNB_LIST,k,GNB_CONFIG_STRING_SCTP_CONFIG);
               config_get(config_get_if(), SCTPParams, sizeofArray(SCTPParams), aprefix);
               NGAP_REGISTER_GNB_REQ (msg_p).sctp_in_streams = (uint16_t)*(SCTPParams[GNB_SCTP_INSTREAMS_IDX].uptr);
@@ -2149,32 +2176,68 @@ int RCconfig_NR_NG(MessageDef *msg_p, uint32_t i) {
   return 0;
 }
 
-void NRRCConfig(void) {
+static pthread_mutex_t rc_mutex = PTHREAD_MUTEX_INITIALIZER;
+static bool rc_done = false;
 
-  paramlist_def_t MACRLCParamList = {CONFIG_STRING_MACRLC_LIST,NULL,0};
-  paramlist_def_t L1ParamList     = {CONFIG_STRING_L1_LIST,NULL,0};
-  paramlist_def_t RUParamList     = {CONFIG_STRING_RU_LIST,NULL,0};
+/**
+ * @brief This function is initializing the RAN context
+ *        the its various layer instances
+ */
+void NRRCConfig(void)
+{
+  // Call NRRCConfig only once
+  pthread_mutex_lock(&rc_mutex);
+  if (rc_done) {
+    LOG_E(GNB_APP, "RAN Context has been already initialized\n");
+    pthread_mutex_unlock(&rc_mutex);
+    return;
+  }
+
+  memset((void *)&RC, 0, sizeof(RC));
+
   paramdef_t GNBSParams[]         = GNBSPARAMS_DESC;
-  
-/* get global parameters, defined outside any section in the config file */
-
-  LOG_I(GNB_APP, "Getting GNBSParams\n");
-
   config_get(config_get_if(), GNBSParams, sizeofArray(GNBSParams), NULL);
-  RC.nb_nr_inst = GNBSParams[GNB_ACTIVE_GNBS_IDX].numelt;
 
-  // Get num MACRLC instances
+  // Set num of gNBs instances
+  RC.nb_nr_inst = GNBSParams[GNB_ACTIVE_GNBS_IDX].numelt;
+  AssertFatal(RC.nb_nr_inst == NUMBER_OF_gNB_MAX,
+              "Configuration error: RC.nb_nr_inst (%d) must equal NUMBER_OF_gNB_MAX (%d).\n"
+              "Currently, only one instance of each layer (L1, L2, L3) is supported.\n"
+              "Ensure that nb_nr_inst matches the maximum allowed gNB instances in this configuration.",
+              RC.nb_nr_inst, NUMBER_OF_gNB_MAX);
+
+  // Set num MACRLC instances
+  paramlist_def_t MACRLCParamList = {CONFIG_STRING_MACRLC_LIST, NULL, 0};
   config_getlist(config_get_if(), &MACRLCParamList, NULL, 0, NULL);
-  RC.nb_nr_macrlc_inst  = MACRLCParamList.numelt;
-  // Get num L1 instances
+  RC.nb_nr_macrlc_inst = MACRLCParamList.numelt;
+
+  // Set num L1 instances
+  paramlist_def_t L1ParamList = {CONFIG_STRING_L1_LIST, NULL, 0};
   config_getlist(config_get_if(), &L1ParamList, NULL, 0, NULL);
   RC.nb_nr_L1_inst = L1ParamList.numelt;
-  
-  // Get num RU instances
-  config_getlist(config_get_if(), &RUParamList, NULL, 0, NULL);
-  RC.nb_RU     = RUParamList.numelt; 
-}
 
+  // Set num RU instances
+  paramlist_def_t RUParamList = {CONFIG_STRING_RU_LIST, NULL, 0};
+  config_getlist(config_get_if(), &RUParamList, NULL, 0, NULL);
+  RC.nb_RU = RUParamList.numelt;
+
+  // Set num component carriers
+  RC.nb_nr_CC = calloc_or_fail(1, sizeof(*RC.nb_nr_CC));
+  *RC.nb_nr_CC = RC.nb_nr_L1_inst;
+  AssertFatal(*RC.nb_nr_CC <= MAX_NUM_CCs, "Configured number of CCs (%d) not supported\n", *RC.nb_nr_CC);
+
+  LOG_I(GNB_APP,
+        "Initialized RAN Context: RC.nb_nr_inst = %d, RC.nb_nr_macrlc_inst = %d, RC.nb_nr_L1_inst = %d, RC.nb_RU = %d, "
+        "RC.nb_nr_CC[0] = %d\n",
+        RC.nb_nr_inst,
+        RC.nb_nr_macrlc_inst,
+        RC.nb_nr_L1_inst,
+        RC.nb_RU,
+        *RC.nb_nr_CC);
+
+  rc_done = true;
+  pthread_mutex_unlock(&rc_mutex);
+}
 
 int RCconfig_NR_X2(MessageDef *msg_p, uint32_t i) {
   int   J, l;
@@ -2210,7 +2273,7 @@ int RCconfig_NR_X2(MessageDef *msg_p, uint32_t i) {
       for (k = 0; k < GNBParamList.numelt; k++) {
         if (GNBParamList.paramarray[k][GNB_GNB_ID_IDX].uptr == NULL) {
           // Calculate a default eNB ID
-          if (get_softmodem_params()->sa) {
+          if (IS_SA_MODE(get_softmodem_params())) {
             uint32_t hash;
             hash = ngap_generate_gNB_id ();
             gnb_id = k + (hash & 0xFFFFFF8);
@@ -2228,6 +2291,8 @@ int RCconfig_NR_X2(MessageDef *msg_p, uint32_t i) {
             paramlist_def_t PLMNParamList = {GNB_CONFIG_STRING_PLMN_LIST, NULL, 0};
             /* map parameter checking array instances to parameter definition array instances */
             checkedparam_t config_check_PLMNParams [] = PLMNPARAMS_CHECK;
+            static_assert(sizeofArray(config_check_PLMNParams) == sizeofArray(PLMNParams),
+                          "config_check_PLMNParams and PLMNParams should have the same size");
 
             for (int I = 0; I < sizeofArray(PLMNParams); ++I)
               PLMNParams[I].chkPptr = &(config_check_PLMNParams[I]);
@@ -2345,7 +2410,7 @@ int RCconfig_NR_X2(MessageDef *msg_p, uint32_t i) {
             X2AP_REGISTER_ENB_REQ (msg_p).sctp_out_streams = SCTP_OUT_STREAMS;
             X2AP_REGISTER_ENB_REQ (msg_p).sctp_in_streams  = SCTP_IN_STREAMS;
 
-            if (get_softmodem_params()->sa) {
+            if (IS_SA_MODE(get_softmodem_params())) {
               sprintf(aprefix,"%s.[%i].%s",GNB_CONFIG_STRING_GNB_LIST,k,GNB_CONFIG_STRING_SCTP_CONFIG);
               config_get(config_get_if(), SCTPParams, sizeofArray(SCTPParams), aprefix);
               X2AP_REGISTER_ENB_REQ (msg_p).sctp_in_streams = (uint16_t)*(SCTPParams[GNB_SCTP_INSTREAMS_IDX].uptr);
@@ -2409,7 +2474,6 @@ int gNB_app_handle_f1ap_gnb_cu_configuration_update(f1ap_gnb_cu_configuration_up
         gnb_cu_cfg_update->num_cells_to_activate, RC.nb_nr_inst);
 
   AssertFatal(gnb_cu_cfg_update->num_cells_to_activate == 1, "only one cell supported at the moment\n");
-  AssertFatal(RC.nb_nr_inst == 1, "expected one instance\n");
   gNB_MAC_INST *mac = RC.nrmac[0];
   NR_SCHED_LOCK(&mac->sched_lock);
   for (j = 0; j < gnb_cu_cfg_update->num_cells_to_activate; j++) {
@@ -2479,12 +2543,9 @@ ngran_node_t get_node_type(void)
   char aprefix[MAX_OPTNAME_SIZE*2 + 8];
   sprintf(aprefix, "%s.[%i]", GNB_CONFIG_STRING_GNB_LIST, 0);
   config_getlist(config_get_if(), &GNBE1ParamList, GNBE1Params, sizeofArray(GNBE1Params), aprefix);
-  if (MacRLC_ParamList.numelt > 0) {
-    RC.nb_nr_macrlc_inst = MacRLC_ParamList.numelt; 
-    for (int j = 0; j < RC.nb_nr_macrlc_inst; j++) {
-      if (strcmp(*(MacRLC_ParamList.paramarray[j][MACRLC_TRANSPORT_N_PREFERENCE_IDX].strptr), "f1") == 0) {
-        return ngran_gNB_DU; // MACRLCs present in config: it must be a DU
-      }
+  for (int j = 0; j < MacRLC_ParamList.numelt; j++) {
+    if (strcmp(*(MacRLC_ParamList.paramarray[j][MACRLC_TRANSPORT_N_PREFERENCE_IDX].strptr), "f1") == 0) {
+      return ngran_gNB_DU; // MACRLCs present in config: it must be a DU
     }
   }
 

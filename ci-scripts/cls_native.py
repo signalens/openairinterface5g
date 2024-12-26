@@ -22,10 +22,14 @@
 
 import logging
 import re
+import os
 
 import cls_cmd
 import cls_oai_html
+import cls_analysis
 import constants as CONST
+
+LOG_PATH_PHYSIM = 'phy_sim_logs'
 
 class Native():
 
@@ -61,4 +65,20 @@ class Native():
 		else:
 			logging.error('\u001B[1m Building OAI Failed\u001B[0m')
 			HTML.CreateHtmlTestRow(options, 'KO', CONST.ALL_PROCESSES_OK)
+		return success
+
+	def Run_Physim(HTML, host, directory, options, physim_test, threshold):
+		logging.debug(f'Runnin {physim_test} on server: {host}')
+		workSpacePath = f'{directory}/cmake_targets'
+		os.system(f'mkdir -p ./{LOG_PATH_PHYSIM}')
+		runLogFile=f'physim_{HTML.testCase_id}.log'
+		with cls_cmd.getConnection(host) as cmd:
+			cmd.run(f'sudo {workSpacePath}/ran_build/build/{physim_test} {options} >> {workSpacePath}/{runLogFile}')
+			cmd.copyin(src=f'{workSpacePath}/{runLogFile}', tgt=f'{LOG_PATH_PHYSIM}/{runLogFile}')
+		success, msg = cls_analysis.Analysis.analyze_physim(f'{LOG_PATH_PHYSIM}/{runLogFile}', physim_test, options, threshold)
+		if success:
+			HTML.CreateHtmlTestRowQueue(options, 'OK', [msg])
+		else:
+			logging.error(msg)
+			HTML.CreateHtmlTestRowQueue(options, 'KO', [msg])
 		return success

@@ -25,7 +25,6 @@
 
 #include <common/utils/LOG/log.h>
 #include <openair3/UICC/usim_interface.h>
-#include <openair2/LAYER2/NR_MAC_gNB/nr_mac_gNB.h>
 
 /* TS 24.007 possible L3 formats:
    Table 11.1: Formats of information elements
@@ -72,9 +71,9 @@ typedef enum {
   TYPE_DEF(FGS_DEREGISTRATION_ACCEPT_UE_ORIGINATING, 0x46)   \
   TYPE_DEF(DeregistrationrequestUEterminated, 0x47)          \
   TYPE_DEF(DeregistrationacceptUEterminated, 0x48)           \
-  TYPE_DEF(Servicerequest, 0x4c)                             \
-  TYPE_DEF(Servicereject, 0x4d)                              \
-  TYPE_DEF(Serviceaccept, 0x4e)                              \
+  TYPE_DEF(FGS_SERVICE_REQUEST, 0x4c)                        \
+  TYPE_DEF(FGS_SERVICE_REJECT, 0x4d)                         \
+  TYPE_DEF(FGS_SERVICE_ACCEPT, 0x4e)                         \
   TYPE_DEF(Controlplaneservicerequest, 0x4f)                 \
   TYPE_DEF(Networkslicespecificauthenticationcommand, 0x50)  \
   TYPE_DEF(Networkslicespecificauthenticationcomplete, 0x51) \
@@ -257,6 +256,7 @@ typedef enum {
 } cause_secu_id_t;
 								
 // IEI (information element identifier) are spread in each message definition
+#define IEI_NULL 0x00
 #define IEI_RAND 0x21
 #define IEI_AUTN 0x20
 #define IEI_EAP  0x78
@@ -381,18 +381,6 @@ int resToresStar(uint8_t *msg, const uicc_t* uicc);
 
 int identityResponse(void **msg, nr_user_nas_t *UE);
 int authenticationResponse(void **msg, nr_user_nas_t *UE);
-void UEprocessNAS(void *msg,nr_user_nas_t *UE);
-void SGSabortUE(void *msg, NRUEcontext_t *UE) ;
-void SGSregistrationReq(void *msg, NRUEcontext_t *UE);
-void SGSderegistrationUEReq(void *msg, NRUEcontext_t *UE);
-void SGSauthenticationResp(void *msg, NRUEcontext_t *UE);
-void SGSidentityResp(void *msg, NRUEcontext_t *UE);
-void SGSsecurityModeComplete(void *msg, NRUEcontext_t *UE);
-void SGSregistrationComplete(void *msg, NRUEcontext_t *UE);
-void processNAS(void *msg, NRUEcontext_t *UE);
-int identityRequest(void **msg, NRUEcontext_t *UE);
-int authenticationRequest(void **msg, NRUEcontext_t *UE);
-int securityModeCommand(void **msg, NRUEcontext_t *UE);
 void servingNetworkName(uint8_t *msg, char * imsiStr, int nmc_size);
 
 #endif

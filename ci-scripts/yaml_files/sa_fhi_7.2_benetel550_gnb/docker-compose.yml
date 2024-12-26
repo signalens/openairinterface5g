@@ -10,7 +10,7 @@ services:
         container_name: oai-gnb
         environment:
             TZ: Europe/Paris
-            USE_ADDITIONAL_OPTIONS: --sa --thread-pool 6,7,8,9
+            USE_ADDITIONAL_OPTIONS: --thread-pool 6,7,8,9
         devices:
             - /dev/vfio:/dev/vfio/
         volumes:

@@ -106,51 +106,51 @@ typedef enum RA_trigger_e {
 
 typedef struct UE_RRC_SI_INFO_NR_r17_s {
   uint32_t default_otherSI_map_r17;
-  NR_SIB15_r17_t *sib15;
+  bool sib15_validity;
   NR_timer_t sib15_timer;
-  NR_SIB16_r17_t *sib16;
+  bool sib16_validity;
   NR_timer_t sib16_timer;
-  NR_SIB17_r17_t *sib17;
+  bool sib17_validity;
   NR_timer_t sib17_timer;
-  NR_SIB18_r17_t *sib18;
+  bool sib18_validity;
   NR_timer_t sib18_timer;
-  NR_SIB19_r17_t *sib19;
+  bool sib19_validity;
   NR_timer_t sib19_timer;
-  NR_SIB20_r17_t *sib20;
+  bool sib20_validity;
   NR_timer_t sib20_timer;
-  NR_SIB21_r17_t *sib21;
+  bool sib21_validity;
   NR_timer_t sib21_timer;
 } NR_UE_RRC_SI_INFO_r17;
 
 typedef struct UE_RRC_SI_INFO_NR_s {
   uint32_t default_otherSI_map;
-  NR_SIB1_t *sib1;
+  bool sib1_validity;
   NR_timer_t sib1_timer;
-  NR_SIB2_t *sib2;
+  bool sib2_validity;
   NR_timer_t sib2_timer;
-  NR_SIB3_t *sib3;
+  bool sib3_validity;
   NR_timer_t sib3_timer;
-  NR_SIB4_t *sib4;
+  bool sib4_validity;
   NR_timer_t sib4_timer;
-  NR_SIB5_t *sib5;
+  bool sib5_validity;
   NR_timer_t sib5_timer;
-  NR_SIB6_t *sib6;
+  bool sib6_validity;
   NR_timer_t sib6_timer;
-  NR_SIB7_t *sib7;
+  bool sib7_validity;
   NR_timer_t sib7_timer;
-  NR_SIB8_t *sib8;
+  bool sib8_validity;
   NR_timer_t sib8_timer;
-  NR_SIB9_t *sib9;
+  bool sib9_validity;
   NR_timer_t sib9_timer;
-  NR_SIB10_r16_t *sib10;
+  bool sib10_validity;
   NR_timer_t sib10_timer;
-  NR_SIB11_r16_t *sib11;
+  bool sib11_validity;
   NR_timer_t sib11_timer;
-  NR_SIB12_r16_t *sib12;
+  bool sib12_validity;
   NR_timer_t sib12_timer;
-  NR_SIB13_r16_t *sib13;
+  bool sib13_validity;
   NR_timer_t sib13_timer;
-  NR_SIB14_r16_t *sib14;
+  bool sib14_validity;
   NR_timer_t sib14_timer;
   NR_UE_RRC_SI_INFO_r17 SInfo_r17;
 } NR_UE_RRC_SI_INFO;
@@ -175,6 +175,7 @@ typedef struct NR_UE_Timers_Constants_s {
   // constants (limits configured by the network)
   uint32_t N310_k;
   uint32_t N311_k;
+  NR_UE_TimersAndConstants_t *sib1_TimersAndConstants;
 } NR_UE_Timers_Constants_t;
 
 typedef enum {
@@ -195,6 +196,8 @@ typedef struct rrcPerNB {
   NR_RSRP_Range_t s_measure;
 } rrcPerNB_t;
 
+/* forward declaration */
+struct position;
 typedef struct NR_UE_RRC_INST_s {
   instance_t ue_id;
   rrcPerNB_t perNB[NB_CNX_UE];
@@ -230,9 +233,12 @@ typedef struct NR_UE_RRC_INST_s {
   NR_RRCRelease_t *RRCRelease;
   long selected_plmn_identity;
   Rrc_State_NR_t nrRrcState;
-
+  // flag to identify 1st reconfiguration after reestablishment
+  bool reconfig_after_reestab;
   //Sidelink params
   NR_SL_PreconfigurationNR_r16_t *sl_preconfig;
+
+  struct position *position_coordinates;
 
 } NR_UE_RRC_INST_t;
 

@@ -43,12 +43,12 @@ RUN /bin/sh oaienv && \
     cd ../build-cross/ && \
     # install missing libyaml-cpp-dev for arm64
     apt install -y libyaml-cpp-dev:arm64 && \
-    cmake ../../.. -GNinja \
+    cmake ../../.. -GNinja -DENABLE_TELNETSRV=ON \
       -DCMAKE_TOOLCHAIN_FILE=../../../cmake_targets/cross-arm.cmake -DNATIVE_DIR=../build \
       -DCMAKE_C_FLAGS="-Werror" -DCMAKE_CXX_FLAGS="-Werror" && \
     echo "====== Start of log for cross-build executables ======" && \
     # making always passing so we can analyze the all.txt file
-    ninja dlsim ulsim ldpctest polartest smallblocktest nr_pbchsim nr_dlschsim nr_ulschsim nr_dlsim nr_ulsim nr_pucchsim nr_prachsim lte-softmodem nr-softmodem nr-cuup oairu lte-uesoftmodem nr-uesoftmodem params_libconfig coding rfsimulator > ../../log/all.txt 2>&1; \
+    ninja -k10 dlsim ulsim ldpctest polartest smallblocktest nr_pbchsim nr_dlschsim nr_ulschsim nr_dlsim nr_ulsim nr_pucchsim nr_prachsim lte-softmodem nr-softmodem nr-cuup oairu lte-uesoftmodem nr-uesoftmodem params_libconfig coding rfsimulator telnetsrv > ../../log/all.txt 2>&1; \
     # displaying errors and warnings
     grep -E -A3 "warning:|error:" ../../log/all.txt || true && \
     # will fail only if string "errors:" is found

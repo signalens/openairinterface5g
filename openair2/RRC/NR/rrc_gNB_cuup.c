@@ -19,9 +19,24 @@
  *      contact@openairinterface.org
  */
 
+#include <netinet/in.h>
+#include <netinet/sctp.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include "PHY/defs_common.h"
+#include "RRC/NR/nr_rrc_proto.h"
+#include "T.h"
+#include "as_message.h"
+#include "assertions.h"
 #include "common/ran_context.h"
+#include "common/utils/T/T.h"
+#include "e1ap_messages_types.h"
+#include "intertask_interface.h"
 #include "nr_rrc_defs.h"
 #include "openair2/F1AP/f1ap_ids.h"
+#include "rrc_messages_types.h"
+#include "tree.h"
 
 static int cuup_compare(const nr_rrc_cuup_container_t *a, const nr_rrc_cuup_container_t *b)
 {
@@ -46,10 +61,10 @@ static const nr_rrc_cuup_container_t *select_cuup_slice(const struct rrc_cuup_tr
       for (int s = 0; s < sr->plmn[p].supported_slices; ++s) {
         e1ap_nssai_t *nssai = &sr->plmn[p].slice[s];
         if (nssai->sst == sst && nssai->sd == sd) {
-          LOG_A(RRC, "selecting CU-UP ID %ld based on exact NSSAI match (%d:0x%06x)\n", sr->gNB_cu_up_id, sst, sd);
+          LOG_UE_EVENT(ue, "selecting CU-UP ID %ld based on exact NSSAI match (%d:0x%06x)\n", sr->gNB_cu_up_id, sst, sd);
           return cuup; /* exact match */
         } else if (nssai->sst == sst && second_best_match == NULL) {
-          LOG_I(RRC, "second best match: CU-UP ID %ld matches SST %d\n", sr->gNB_cu_up_id, sst);
+          LOG_UE_EVENT(ue, "second best match: CU-UP ID %ld matches SST %d\n", sr->gNB_cu_up_id, sst);
           second_best_match = cuup; /* only the SST matches -> "good enough" */
         }
       }

@@ -80,65 +80,55 @@ int as_message_decode(const char* buffer, as_message_t* msg, int length)
 {
   LOG_FUNC_IN;
 
-  int bytes;
   /* pointers to msg fields possibly not aligned because msg  points to a packed structure
- * Using these possibly unaligned pointers in a function call may trigger alignment errors at run time and
- * gcc, from v9,  now warns about it. fix these warnings by removing the indirection on data
- * (in fact i don't understand this code data seems to be useless...)
- */
-  Byte_t *data = NULL;
+   * Using these possibly unaligned pointers in a function call may trigger alignment errors at run time and
+   * gcc, from v9,  now warns about it. fix these warnings by removing the indirection on data
+   * (in fact i don't understand this code data seems to be useless...)
+   */
 
   /* Get the message type */
   msg->msgID = *(uint16_t*)(buffer);
-  bytes = sizeof(uint16_t);
+  int bytes = 0;
 
   switch (msg->msgID) {
   case AS_NAS_ESTABLISH_REQ:
     /* NAS signalling connection establish request */
-    bytes += sizeof(nas_establish_req_t) - sizeof(Byte_t*);
-    data = msg->msg.nas_establish_req.initialNasMsg.data;
+    bytes = sizeof(uint16_t) + sizeof(nas_establish_req_t) - sizeof(as_nas_info_t);
     break;
 
   case AS_NAS_ESTABLISH_IND:
     /* NAS signalling connection establishment indication */
-    bytes += sizeof(nas_establish_ind_t) - sizeof(Byte_t*);
-    data = msg->msg.nas_establish_ind.initialNasMsg.data;
+    bytes = sizeof(uint16_t) + sizeof(nas_establish_ind_t) - sizeof(as_nas_info_t);
     break;
 
   case AS_NAS_ESTABLISH_RSP:
     /* NAS signalling connection establishment response */
-    bytes += sizeof(nas_establish_rsp_t) - sizeof(Byte_t*);
-    data = msg->msg.nas_establish_rsp.nasMsg.data;
+    bytes = sizeof(uint16_t) + sizeof(nas_establish_rsp_t) - sizeof(as_nas_info_t);
     break;
 
   case AS_NAS_ESTABLISH_CNF:
     /* NAS signalling connection establishment confirm */
-    bytes += sizeof(nas_establish_cnf_t) - sizeof(Byte_t*);
-    data = msg->msg.nas_establish_cnf.nasMsg.data;
+    bytes = sizeof(uint16_t) + sizeof(nas_establish_cnf_t) - sizeof(as_nas_info_t);
     break;
 
   case AS_UL_INFO_TRANSFER_REQ:
     /* Uplink L3 data transfer request */
-    bytes += sizeof(ul_info_transfer_req_t) - sizeof(Byte_t*);
-    data = msg->msg.ul_info_transfer_req.nasMsg.data;
+    bytes = sizeof(uint16_t) + sizeof(ul_info_transfer_req_t) - sizeof(as_nas_info_t);
     break;
 
   case AS_UL_INFO_TRANSFER_IND:
     /* Uplink L3 data transfer indication */
-    bytes += sizeof(ul_info_transfer_ind_t) - sizeof(Byte_t*);
-    data = msg->msg.ul_info_transfer_ind.nasMsg.data;
+    bytes = sizeof(uint16_t) + sizeof(ul_info_transfer_ind_t) - sizeof(as_nas_info_t);
     break;
 
   case AS_DL_INFO_TRANSFER_REQ:
     /* Downlink L3 data transfer request */
-    bytes += sizeof(dl_info_transfer_req_t) - sizeof(Byte_t*);
-    data = msg->msg.dl_info_transfer_req.nasMsg.data;
+    bytes = sizeof(uint16_t) + sizeof(dl_info_transfer_req_t) - sizeof(as_nas_info_t);
     break;
 
   case AS_DL_INFO_TRANSFER_IND:
     /* Downlink L3 data transfer indication */
-    bytes += sizeof(dl_info_transfer_ind_t) - sizeof(Byte_t*);
-    data = msg->msg.dl_info_transfer_ind.nasMsg.data;
+    bytes = sizeof(uint16_t) + sizeof(dl_info_transfer_ind_t) - sizeof(as_nas_info_t);
     break;
 
   case AS_BROADCAST_INFO_IND:
@@ -169,14 +159,8 @@ int as_message_decode(const char* buffer, as_message_t* msg, int length)
   }
 
   if (bytes > 0) {
-    if (data) {
-      /* Set the pointer to dedicated NAS information */
-      /* wasn't data already computed above for specific cases here we override ?? */
-      data = (Byte_t *)buffer + bytes;
-    }
-
     /* Decode the message */
-    memcpy(msg, (as_message_t*)buffer, bytes);
+    memcpy(msg, buffer, bytes);
     LOG_FUNC_RETURN (msg->msgID);
   }
 
@@ -254,7 +238,7 @@ int as_message_encode(char* buffer, as_message_t* msg, int length)
     /* NAS signalling connection establish indication */
     bytes += sizeof(nas_establish_ind_t) - sizeof(Byte_t*);
     nas_msg = msg->msg.nas_establish_ind.initialNasMsg;
-    dataptr=(Byte_t *)&(msg->msg.nas_establish_ind.initialNasMsg.data);
+    dataptr = (Byte_t*)&(msg->msg.nas_establish_ind.initialNasMsg.nas_data);
     len=msg->msg.nas_establish_ind.initialNasMsg.length;
     break;
 
@@ -269,7 +253,7 @@ int as_message_encode(char* buffer, as_message_t* msg, int length)
     /* NAS signalling connection establish confirm */
     bytes += sizeof(nas_establish_cnf_t) - sizeof(Byte_t*);
     nas_msg = msg->msg.nas_establish_cnf.nasMsg;
-    dataptr=(Byte_t *)&(msg->msg.nas_establish_cnf.nasMsg.data);
+    dataptr = (Byte_t*)&(msg->msg.nas_establish_cnf.nasMsg.nas_data);
     len=msg->msg.nas_establish_ind.initialNasMsg.length;
     break;
 
@@ -361,10 +345,10 @@ int as_message_encode(char* buffer, as_message_t* msg, int length)
 
     if ( (dataptr!=NULL) && (len > 0) ) {
       /* Copy the NAS message */
-      memcpy(buffer + bytes, nas_msg.data, nas_msg.length);
+      memcpy(buffer + bytes, nas_msg.nas_data, nas_msg.length);
       bytes += len;
       /* Release NAS message memory */
-      free(nas_msg.data);
+      free(nas_msg.nas_data);
       len=0;
       dataptr = NULL;
     }

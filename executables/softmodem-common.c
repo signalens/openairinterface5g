@@ -46,7 +46,6 @@ static softmodem_params_t softmodem_params;
 char *parallel_config=NULL;
 char *worker_config=NULL;
 int usrp_tx_thread = 0;
-char *nfapi_str=NULL;
 uint8_t nfapi_mode=0;
 
 static mapping softmodem_funcs[] = MAPPING_SOFTMODEM_FUNCTIONS;
@@ -106,8 +105,9 @@ void get_common_options(configmodule_interface_t *cfg, uint32_t execmask)
 
   paramdef_t cmdline_params[] = CMDLINE_PARAMS_DESC;
   checkedparam_t cmdline_CheckParams[] = CMDLINE_PARAMS_CHECK_DESC;
+  static_assert(sizeofArray(cmdline_params) == sizeofArray(cmdline_CheckParams),
+                "cmdline_params and cmdline_CheckParams should have the same size");
   int numparams = sizeofArray(cmdline_params);
-  AssertFatal(numparams == sizeofArray(cmdline_CheckParams), "Error in arrays size (%d!=%lu)\n", numparams, sizeofArray(cmdline_CheckParams));
   config_set_checkfunctions(cmdline_params, cmdline_CheckParams, numparams);
   config_get(cfg, cmdline_params, numparams, NULL);
   nfapi_index = config_paramidx_fromname(cmdline_params, numparams, "nfapi");
@@ -116,9 +116,10 @@ void get_common_options(configmodule_interface_t *cfg, uint32_t execmask)
 
   paramdef_t cmdline_logparams[] =CMDLINE_LOGPARAMS_DESC ;
   checkedparam_t cmdline_log_CheckParams[] = CMDLINE_LOGPARAMS_CHECK_DESC;
-  int numlogparams = sizeofArray(cmdline_logparams);
-  AssertFatal(numlogparams == sizeofArray(cmdline_log_CheckParams), "Error in arrays size (%d!=%lu)\n", numlogparams, sizeofArray(cmdline_log_CheckParams));
+  static_assert(sizeofArray(cmdline_logparams) == sizeofArray(cmdline_log_CheckParams),
+                "cmdline_logparams and cmdline_log_CheckParams should have the same size");
 
+  int numlogparams = sizeofArray(cmdline_logparams);
   config_set_checkfunctions(cmdline_logparams, cmdline_log_CheckParams, numlogparams);
   config_get(cfg, cmdline_logparams, numlogparams, NULL);
 
@@ -174,6 +175,24 @@ void get_common_options(configmodule_interface_t *cfg, uint32_t execmask)
   if (stats_disabled)
     set_softmodem_optmask(SOFTMODEM_NOSTATS_BIT);
 }
+
+void softmodem_verify_mode(const softmodem_params_t *p)
+{
+  if (IS_SA_MODE(p)) {
+    LOG_I(UTIL, "running in SA mode (no --phy-test, --do-ra, --nsa option present)\n");
+    return;
+  }
+
+  if (p->phy_test)
+    LOG_I(UTIL, "running in phy-test mode (--phy-test)\n");
+  if (p->do_ra)
+    LOG_I(UTIL, "running in do-ra mode (--do-ra)\n");
+  if (p->nsa)
+    LOG_I(UTIL, "running in NSA mode (--nsa)\n");
+  int num_modes = p->phy_test + p->do_ra + p->nsa;
+  AssertFatal(num_modes == 1, "--phy-test, --do-ra, and --nsa are mutually exclusive\n");
+}
+
 void softmodem_printresources(int sig, telnet_printfunc_t pf) {
   struct rusage usage;
   struct timespec stop;

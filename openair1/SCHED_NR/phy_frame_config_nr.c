@@ -31,9 +31,18 @@
 
 #include "PHY/defs_nr_common.h"
 #include "PHY/defs_gNB.h"
-#include "PHY/defs_nr_UE.h"
 #include "SCHED_NR/phy_frame_config_nr.h"
 #include "common/utils/nr/nr_common.h"
+
+#ifdef NR_UNIT_TEST
+  #define FILE_NAME                " "
+  #define LINE_FILE                (0)
+  #define NR_TST_PHY_PRINTF(...)   printf(__VA_ARGS__)
+#else
+  #define FILE_NAME                (__FILE__)
+  #define LINE_FILE                (__LINE__)
+  #define NR_TST_PHY_PRINTF(...)
+#endif
 
 /*******************************************************************
 *

@@ -94,6 +94,8 @@ MessageDef *RCconfig_NR_CU_E1(const E1_t *entity)
     paramlist_def_t PLMNParamList = {GNB_CONFIG_STRING_PLMN_LIST, NULL, 0};
     /* map parameter checking array instances to parameter definition array instances */
     checkedparam_t config_check_PLMNParams[] = PLMNPARAMS_CHECK;
+    static_assert(sizeofArray(config_check_PLMNParams) == sizeofArray(PLMNParams),
+                  "config_check_PLMNParams and PLMNParams should have the same size");
 
     for (int I = 0; I < sizeofArray(PLMNParams); ++I)
       PLMNParams[I].chkPptr = &(config_check_PLMNParams[I]);

@@ -117,13 +117,10 @@ runmode_t mode = normal_txrx;
 
 FILE *input_fd=NULL;
 
-
 #if MAX_NUM_CCs == 1
-rx_gain_t rx_gain_mode[MAX_NUM_CCs][4] = {{max_gain,max_gain,max_gain,max_gain}};
 double tx_gain[MAX_NUM_CCs][4] = {{20,0,0,0}};
 double rx_gain[MAX_NUM_CCs][4] = {{110,0,0,0}};
 #else
-rx_gain_t                rx_gain_mode[MAX_NUM_CCs][4] = {{max_gain,max_gain,max_gain,max_gain},{max_gain,max_gain,max_gain,max_gain}};
 double tx_gain[MAX_NUM_CCs][4] = {{20,0,0,0},{20,0,0,0}};
 double rx_gain[MAX_NUM_CCs][4] = {{110,0,0,0},{20,0,0,0}};
 #endif
@@ -191,6 +188,16 @@ bool nr_pdcp_data_req_drb(protocol_ctxt_t *ctxt_pP,
                           const uint32_t *const destinationL2Id)
 {
   abort();
+}
+
+/* hack: nfapi code is common for 4G/5G, so some function calls are hardcoded.
+ * Provide body for 5G function not used in 4G code */
+void handle_nr_srs_measurements(const module_id_t module_id,
+                                const frame_t frame,
+                                const sub_frame_t slot,
+                                nfapi_nr_srs_indication_pdu_t *srs_ind)
+{
+  return;
 }
 
 /* forward declarations */
@@ -363,7 +370,6 @@ void wait_RUs(void) {
   }
 
   pthread_mutex_unlock(&RC.ru_mutex);
-  LOG_I(PHY,"RUs configured\n");
 }
 
 void wait_eNBs(void) {
@@ -446,9 +452,7 @@ int main ( int argc, char **argv )
   printf("Reading in command-line options\n");
   get_options(uniqCfg);
 
-  EPC_MODE_ENABLED = !IS_SOFTMODEM_NOS1;
-
-  if (CONFIG_ISFLAGSET(CONFIG_ABORT) ) {
+  if (CONFIG_ISFLAGSET(CONFIG_ABORT)) {
     fprintf(stderr,"Getting configuration failed\n");
     exit(-1);
   }
@@ -461,7 +465,7 @@ int main ( int argc, char **argv )
   printf("configuring for RAU/RRU\n");
 
   cpuf=get_cpu_freq_GHz();
-  printf("ITTI init, useMME: %i\n",EPC_MODE_ENABLED);
+  printf("ITTI init, useMME: %i\n", !IS_SOFTMODEM_NOS1);
   itti_init(TASK_MAX, tasks_info);
 
   init_opt();
@@ -533,8 +537,8 @@ int main ( int argc, char **argv )
   printf("RC.nb_L1_inst:%d\n", RC.nb_L1_inst);
 
   if (RC.nb_L1_inst > 0) {
-    printf("Initializing eNB threads wait_for_sync:%d\n", get_softmodem_params()->wait_for_sync);
-    init_eNB(get_softmodem_params()->wait_for_sync);
+    printf("Initializing eNB threads\n");
+    init_eNB();
   }
   for (int x=0; x < RC.nb_L1_inst; x++)
     for (int CC_id=0; CC_id<RC.nb_L1_CC[x]; CC_id++) {

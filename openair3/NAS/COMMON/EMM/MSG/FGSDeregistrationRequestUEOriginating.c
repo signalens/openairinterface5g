@@ -33,6 +33,7 @@
 #include <stdint.h>
 
 #include "FGSDeregistrationRequestUEOriginating.h"
+#include "NR_NAS_defs.h"
 
 int encode_fgs_deregistration_request_ue_originating(fgs_deregistration_request_ue_originating_msg *drr,
                                                      uint8_t *buffer,
@@ -45,7 +46,7 @@ int encode_fgs_deregistration_request_ue_originating(fgs_deregistration_request_
                       | ((dt->access_type & 0x3) << 4);
 
   int encode_result;
-  if ((encode_result = encode_nas_key_set_identifier(&drr->naskeysetidentifier, 0, buffer + encoded, len - encoded)) < 0)
+  if ((encode_result = encode_nas_key_set_identifier(&drr->naskeysetidentifier, IEI_NULL)) < 0)
     return encode_result;
 
   encoded++;

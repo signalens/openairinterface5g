@@ -57,13 +57,7 @@ typedef struct {
   uint32_t K;
   /// Number of "Filler" bits
   uint32_t F;
-  /// Modulation order
-  uint8_t Qm;
-  uint32_t Tbslbrm;
-  unsigned int G;
-  nrLDPC_params_per_cb_t perCB[NR_LDPC_MAX_NUM_CB];
-  // Redundancy version index
-  uint8_t rv;
+  task_ans_t *ans;
 } encoder_implemparams_t;
 
 typedef int32_t(LDPC_initfunc_t)(void);

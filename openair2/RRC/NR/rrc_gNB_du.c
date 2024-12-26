@@ -20,17 +20,37 @@
  */
 
 #include "rrc_gNB_du.h"
-#include "rrc_gNB_NGAP.h"
+#include <stdbool.h>
+#include <stdlib.h>
+#include <string.h>
+#include "F1AP_CauseMisc.h"
+#include "F1AP_CauseProtocol.h"
+#include "F1AP_CauseRadioNetwork.h"
+#include "PHY/defs_common.h"
+#include "T.h"
+#include "asn_codecs.h"
+#include "assertions.h"
 #include "common/ran_context.h"
+#include "common/utils/T/T.h"
+#include "common/utils/alg/foreach.h"
+#include "common/utils/ds/seq_arr.h"
+#include "constr_TYPE.h"
+#include "executables/softmodem-common.h"
+#include "f1ap_messages_types.h"
+#include "ngap_messages_types.h"
 #include "nr_rrc_defs.h"
-#include "rrc_gNB_UE_context.h"
 #include "rrc_gNB_mobility.h"
 #include "openair2/F1AP/f1ap_common.h"
 #include "openair2/F1AP/f1ap_ids.h"
-#include "executables/softmodem-common.h"
-#include "common/utils/ds/seq_arr.h"
-#include "common/utils/alg/foreach.h"
 #include "lib/f1ap_interface_management.h"
+#include "rrc_gNB_NGAP.h"
+#include "rrc_gNB_UE_context.h"
+#include "rrc_messages_types.h"
+#include "s1ap_messages_types.h"
+#include "tree.h"
+#include "uper_decoder.h"
+#include "utils.h"
+#include "xer_encoder.h"
 
 int get_dl_band(const struct f1ap_served_cell_info_t *cell_info)
 {
@@ -340,7 +360,7 @@ void rrc_gNB_process_f1_setup_req(f1ap_setup_req_t *req, sctp_assoc_t assoc_id)
   NR_MIB_t *mib = NULL;
   NR_SIB1_t *sib1 = NULL;
 
-  if (sys_info != NULL && sys_info->mib != NULL && !(sys_info->sib1 == NULL && get_softmodem_params()->sa)) {
+  if (sys_info != NULL && sys_info->mib != NULL && !(sys_info->sib1 == NULL && IS_SA_MODE(get_softmodem_params()))) {
     if (!extract_sys_info(sys_info, &mib, &sib1)) {
       LOG_W(RRC, "rejecting DU ID %ld\n", req->gNB_DU_id);
       fail.cause = F1AP_CauseProtocol_semantic_error;
@@ -426,19 +446,9 @@ static void update_cell_info(nr_rrc_du_container_t *du, const f1ap_served_cell_i
 
   AssertFatal(du->setup_req->num_cells_available == 1, "expected 1 cell for DU, but has %d\n", du->setup_req->num_cells_available);
   f1ap_served_cell_info_t *ci = &du->setup_req->cell[0].info;
-
-  ci->nr_cellid = new_ci->nr_cellid;
-  ci->nr_pci = new_ci->nr_pci;
-  if (new_ci->tac != NULL)
-    *ci->tac = *new_ci->tac;
-  ci->num_ssi = new_ci->num_ssi;
-  for (int s = 0; s < new_ci->num_ssi; ++s)
-    ci->nssai[s] = new_ci->nssai[s];
-  ci->mode = new_ci->mode;
-  if (ci->mode == F1AP_MODE_TDD)
-    ci->tdd = new_ci->tdd;
-  else
-    ci->fdd = new_ci->fdd;
+  // make sure no memory is allocated
+  free_f1ap_cell(ci, NULL);
+  *ci = copy_f1ap_served_cell_info(new_ci);
 
   NR_MeasurementTimingConfiguration_t *new_mtc =
       extract_mtc(new_ci->measurement_timing_config, new_ci->measurement_timing_config_len);
@@ -491,12 +501,14 @@ void rrc_gNB_process_f1_du_configuration_update(f1ap_gnb_du_configuration_update
 
     const f1ap_gnb_du_system_info_t *sys_info = conf_up->cell_to_modify[0].sys_info;
 
-    if (sys_info != NULL && sys_info->mib != NULL && !(sys_info->sib1 == NULL && get_softmodem_params()->sa)) {
+    if (sys_info != NULL && sys_info->mib != NULL && !(sys_info->sib1 == NULL && IS_SA_MODE(get_softmodem_params()))) {
       // MIB is mandatory, so will be overwritten. SIB1 is optional, so will
       // only be overwritten if present in sys_info
       ASN_STRUCT_FREE(asn_DEF_NR_MIB, du->mib);
-      if (sys_info->sib1 != NULL)
+      if (sys_info->sib1 != NULL) {
         ASN_STRUCT_FREE(asn_DEF_NR_SIB1, du->sib1);
+        du->sib1 = NULL;
+      }
 
       NR_MIB_t *mib = NULL;
       if (!extract_sys_info(sys_info, &mib, &du->sib1)) {
@@ -521,8 +533,6 @@ void rrc_gNB_process_f1_du_configuration_update(f1ap_gnb_du_configuration_update
   /* Send DU Configuration Acknowledgement */
   f1ap_gnb_du_configuration_update_acknowledge_t ack = {.transaction_id = conf_up->transaction_id};
   rrc->mac_rrc.gnb_du_configuration_update_acknowledge(assoc_id, &ack);
-  /* free F1AP message after use */
-  free_f1ap_du_configuration_update(conf_up);
 }
 
 void rrc_CU_process_f1_lost_connection(gNB_RRC_INST *rrc, f1ap_lost_connection_t *lc, sctp_assoc_t assoc_id)

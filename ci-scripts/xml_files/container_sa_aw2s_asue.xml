@@ -65,7 +65,8 @@
     <class>Pull_Cluster_Image</class>
     <desc>Pull Images from Cluster</desc>
     <oc_project>oaicicd-ran</oc_project>
-    <images_to_pull>oai-gnb-aw2s</images_to_pull>
+    <images>oai-gnb-aw2s</images>
+    <node>avra</node>
   </testCase>
 
   <testCase id="101000">
@@ -277,7 +278,8 @@
     <class>Clean_Test_Server_Images</class>
     <always_exec>true</always_exec>
     <desc>Clean Test Images on Test Server</desc>
-    <test_svr_id>0</test_svr_id>
+    <svr_id>0</svr_id>
+    <images>oai-gnb-aw2s</images>
   </testCase>
 
 </testCaseList>

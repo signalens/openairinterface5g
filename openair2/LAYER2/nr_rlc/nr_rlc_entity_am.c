@@ -55,7 +55,7 @@ static int modulus_rx(nr_rlc_entity_am_t *entity, int a)
   return r;
 }
 
-static int modulus_tx(nr_rlc_entity_am_t *entity, int a)
+static inline int modulus_tx(nr_rlc_entity_am_t *entity, int a)
 {
   int r = a - entity->tx_next_ack;
   if (r < 0) r += entity->sn_modulus;
@@ -76,10 +76,36 @@ static int sn_compare_rx(void *_entity, int a, int b)
   return modulus_rx(entity, a) - modulus_rx(entity, b);
 }
 
-static int sn_compare_tx(void *_entity, int a, int b)
+static inline int sn_compare_tx(void *_entity, int a, int b)
 {
   nr_rlc_entity_am_t *entity = _entity;
   return modulus_tx(entity, a) - modulus_tx(entity, b);
+}
+
+nr_rlc_sdu_segment_t *nr_rlc_tx_sdu_segment_list_add(nr_rlc_entity_am_t *entity,
+    nr_rlc_sdu_segment_t *list, nr_rlc_sdu_segment_t *sdu_segment)
+{
+  nr_rlc_sdu_segment_t head;
+  nr_rlc_sdu_segment_t *cur;
+  nr_rlc_sdu_segment_t *prev;
+
+  head.next = list;
+  cur = list;
+  prev = &head;
+
+  /* order is by 'sn', if 'sn' is the same then order is by 'so' */
+  while (cur != NULL) {
+    /* check if 'sdu_segment' is before 'cur' in the list */
+    if (sn_compare_tx(entity, cur->sdu->sn, sdu_segment->sdu->sn) > 0 ||
+        (cur->sdu->sn == sdu_segment->sdu->sn && cur->so > sdu_segment->so)) {
+      break;
+    }
+    prev = cur;
+    cur = cur->next;
+  }
+  prev->next = sdu_segment;
+  sdu_segment->next = cur;
+  return head.next;
 }
 
 static int segment_already_received(nr_rlc_entity_am_t *entity,
@@ -1580,7 +1606,7 @@ static int generate_retx_pdu(nr_rlc_entity_am_t *entity, char *buffer,
           && sdu->so > entity->wait_end->so))
     nr_rlc_sdu_segment_list_append(&entity->wait_list, &entity->wait_end, sdu);
   else {
-    entity->wait_list = nr_rlc_sdu_segment_list_add(sn_compare_tx, entity,
+    entity->wait_list = nr_rlc_tx_sdu_segment_list_add(entity,
                             entity->wait_list, sdu);
     if (entity->wait_list->next == NULL)
       entity->wait_end = entity->wait_list;
@@ -1672,7 +1698,7 @@ static int generate_tx_pdu(nr_rlc_entity_am_t *entity, char *buffer, int size)
           && sdu->so > entity->wait_end->so))
     nr_rlc_sdu_segment_list_append(&entity->wait_list, &entity->wait_end, sdu);
   else {
-    entity->wait_list = nr_rlc_sdu_segment_list_add(sn_compare_tx, entity,
+    entity->wait_list = nr_rlc_tx_sdu_segment_list_add(entity,
                             entity->wait_list, sdu);
     if (entity->wait_list->next == NULL)
       entity->wait_end = entity->wait_list;
@@ -1881,7 +1907,7 @@ static void check_t_poll_retransmit(nr_rlc_entity_am_t *entity)
           cur->sdu->sn, cur->so, cur->size, cur->sdu->retx_count);
 
     /* put in retransmit list */
-    entity->retransmit_list = nr_rlc_sdu_segment_list_add(sn_compare_tx, entity,
+    entity->retransmit_list = nr_rlc_tx_sdu_segment_list_add(entity,
                                   entity->retransmit_list, cur);
 
     cur = entity->wait_list;
@@ -2064,3 +2090,4 @@ int nr_rlc_entity_am_available_tx_space(nr_rlc_entity_t *_entity)
   nr_rlc_entity_am_t *entity = (nr_rlc_entity_am_t *)_entity;
   return entity->tx_maxsize - entity->tx_size;
 }
+

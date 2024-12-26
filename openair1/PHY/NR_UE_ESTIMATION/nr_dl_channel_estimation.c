@@ -33,6 +33,7 @@
 #include "T.h"
 #include <openair1/PHY/TOOLS/phy_scope_interface.h>
 #include "nfapi/open-nFAPI/nfapi/public_inc/nfapi_nr_interface.h"
+#include "instrumentation.h"
 
 
 extern openair0_config_t openair0_cfg[];
@@ -658,6 +659,7 @@ int nr_pbch_channel_estimation(const NR_DL_FRAME_PARMS *fp,
                                bool sidelink,
                                uint Nid)
 {
+  TracyCZone(ctx, true);
   int Ns = proc->nr_slot_rx;
   c16_t pilot[200] __attribute__((aligned(16)));
   //int slot_pbch;
@@ -830,6 +832,7 @@ int nr_pbch_channel_estimation(const NR_DL_FRAME_PARMS *fp,
     }
   }
 
+  TracyCZoneEnd(ctx);
   return(0);
 }
 

@@ -42,7 +42,7 @@
 #include "common/utils/ocp_itti/intertask_interface.h"
 
 NR_UE_RRC_INST_t *nr_rrc_init_ue(char* uecap_file, int nb_inst, int num_ant_tx);
-
+NR_UE_RRC_INST_t* get_NR_UE_rrc_inst(int instance);
 void init_nsa_message (NR_UE_RRC_INST_t *rrc, char* reconfig_file, char* rbconfig_file);
 
 void process_nsa_message(NR_UE_RRC_INST_t *rrc, nsa_message_t nsa_message_type, void *message, int msg_len);
@@ -55,7 +55,7 @@ void nr_rrc_going_to_IDLE(NR_UE_RRC_INST_t *rrc,
 
 void handle_RRCRelease(NR_UE_RRC_INST_t *rrc);
 
-void set_rlf_sib1_timers_and_constants(NR_UE_Timers_Constants_t *tac, NR_SIB1_t *sib1);
+void set_rlf_sib1_timers_and_constants(NR_UE_Timers_Constants_t *tac, NR_UE_TimersAndConstants_t *ue_TimersAndConstants);
 
 /**\brief RRC UE task.
    \param void *args_p Pointer on arguments to start the task. */
@@ -63,6 +63,7 @@ void *rrc_nrue_task(void *args_p);
 void *rrc_nrue(void *args_p);
 
 void nr_rrc_handle_timers(NR_UE_RRC_INST_t *rrc);
+void handle_rlf_detection(NR_UE_RRC_INST_t *rrc);
 
 /**\brief RRC NSA UE task.
    \param void *args_p Pointer on arguments to start the task. */

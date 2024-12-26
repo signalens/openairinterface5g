@@ -33,7 +33,7 @@ int nr_phy_init_RU(RU_t *ru)
 {
   NR_DL_FRAME_PARMS *fp = ru->nr_frame_parms;
 
-  LOG_I(PHY,"Initializing RU signal buffers (if_south %s) nb_tx %d, nb_rx %d\n",ru_if_types[ru->if_south],ru->nb_tx, ru->nb_rx);
+  LOG_D(PHY, "Initializing RU signal buffers (if_south %s) nb_tx %d, nb_rx %d\n", ru_if_types[ru->if_south], ru->nb_tx, ru->nb_rx);
 
   nfapi_nr_config_request_scf_t *cfg = &ru->config;
   ru->nb_log_antennas = 0;
@@ -60,29 +60,30 @@ int nr_phy_init_RU(RU_t *ru)
     for (int i = 0; i < ru->nb_tx; i++) {
       // Allocate 10 subframes of I/Q TX signal data (time) if not
       ru->common.txdata[i]  = (int32_t*)malloc16_clear((ru->sf_extension + fp->samples_per_frame)*sizeof(int32_t));
-      LOG_I(PHY,"[INIT] common.txdata[%d] = %p (%lu bytes,sf_extension %d)\n",i,ru->common.txdata[i],
-	     (ru->sf_extension + fp->samples_per_frame)*sizeof(int32_t),ru->sf_extension);
+      LOG_D(PHY,
+            "[INIT] common.txdata[%d] = %p (%lu bytes,sf_extension %d)\n",
+            i,
+            ru->common.txdata[i],
+            (ru->sf_extension + fp->samples_per_frame) * sizeof(int32_t),
+            ru->sf_extension);
       ru->common.txdata[i] =  &ru->common.txdata[i][ru->sf_extension];
 
-      LOG_I(PHY,"[INIT] common.txdata[%d] = %p \n",i,ru->common.txdata[i]);
-
+      LOG_D(PHY, "[INIT] common.txdata[%d] = %p \n", i, ru->common.txdata[i]);
     }
     for (int i = 0; i < ru->nb_rx; i++) {
       ru->common.rxdata[i] = (int32_t*)malloc16_clear( fp->samples_per_frame*sizeof(int32_t) );
     }
   } // IF5 or local RF
   else {
-    //    LOG_I(PHY,"No rxdata/txdata for RU\n");
     ru->common.txdata        = (int32_t**)NULL;
     ru->common.rxdata        = (int32_t**)NULL;
-
   }
   if (ru->function != NGFI_RRU_IF5) { // we need to do RX/TX RU processing
-    LOG_I(PHY,"nb_tx %d\n",ru->nb_tx);
+    LOG_D(PHY, "nb_tx %d\n", ru->nb_tx);
     ru->common.rxdata_7_5kHz = (int32_t**)malloc16(ru->nb_rx*sizeof(int32_t*) );
     for (int i = 0; i < ru->nb_rx; i++) {
       ru->common.rxdata_7_5kHz[i] = (int32_t*)malloc16_clear( 2*fp->samples_per_subframe*2*sizeof(int32_t) );
-      LOG_I(PHY,"rxdata_7_5kHz[%d] %p for RU %d\n",i,ru->common.rxdata_7_5kHz[i],ru->idx);
+      LOG_D(PHY, "rxdata_7_5kHz[%d] %p for RU %d\n", i, ru->common.rxdata_7_5kHz[i], ru->idx);
     }
   
 
@@ -94,10 +95,10 @@ int nr_phy_init_RU(RU_t *ru)
 
     // allocate IFFT input buffers (TX)
     ru->common.txdataF_BF = (int32_t **)malloc16(ru->nb_tx*sizeof(int32_t*));
-    LOG_I(PHY,"[INIT] common.txdata_BF= %p (%lu bytes)\n", ru->common.txdataF_BF, ru->nb_tx*sizeof(int32_t*));
+    LOG_D(PHY, "[INIT] common.txdata_BF= %p (%lu bytes)\n", ru->common.txdataF_BF, ru->nb_tx * sizeof(int32_t *));
     for (int i = 0; i < ru->nb_tx; i++) {
       ru->common.txdataF_BF[i] = (int32_t*)malloc16_clear(fp->samples_per_subframe_wCP*sizeof(int32_t) );
-      LOG_I(PHY,"txdataF_BF[%d] %p for RU %d\n",i,ru->common.txdataF_BF[i],ru->idx);
+      LOG_D(PHY, "txdataF_BF[%d] %p for RU %d\n", i, ru->common.txdataF_BF[i], ru->idx);
     }
     // allocate FFT output buffers (RX)
     ru->common.rxdataF     = (int32_t**)malloc16(ru->nb_rx*sizeof(int32_t*) );
@@ -105,7 +106,7 @@ int nr_phy_init_RU(RU_t *ru)
       // allocate 4 slots of I/Q signal data (frequency)
       int size = RU_RX_SLOT_DEPTH * fp->symbols_per_slot * fp->ofdm_symbol_size;
       ru->common.rxdataF[i] = (int32_t*)malloc16_clear(sizeof(**ru->common.rxdataF) * size);
-      LOG_I(PHY,"rxdataF[%d] %p for RU %d\n",i,ru->common.rxdataF[i],ru->idx);
+      LOG_D(PHY, "rxdataF[%d] %p for RU %d\n", i, ru->common.rxdataF[i], ru->idx);
     }
 
     /* number of elements of an array X is computed as sizeof(X) / sizeof(X[0]) */
@@ -124,7 +125,7 @@ int nr_phy_init_RU(RU_t *ru)
     AssertFatal(ru->num_gNB <= NUMBER_OF_gNB_MAX,"gNB instances %d > %d\n",
 		ru->num_gNB,NUMBER_OF_gNB_MAX);
 
-    LOG_I(PHY,"[INIT] %s() ru->num_gNB:%d \n", __FUNCTION__, ru->num_gNB);
+    LOG_D(PHY, "[INIT] %s() ru->num_gNB:%d \n", __FUNCTION__, ru->num_gNB);
 
   } // !=IF5
 
@@ -135,7 +136,7 @@ int nr_phy_init_RU(RU_t *ru)
 
 void nr_phy_free_RU(RU_t *ru)
 {
-  LOG_I(PHY, "Freeing RU signal buffers (if_south %s) nb_tx %d\n", ru_if_types[ru->if_south], ru->nb_tx);
+  LOG_D(PHY, "Freeing RU signal buffers (if_south %s) nb_tx %d\n", ru_if_types[ru->if_south], ru->nb_tx);
 
   if (ru->if_south <= REMOTE_IF5) { // this means REMOTE_IF5 or LOCAL_RF, so free memory for time-domain signals
     // Hack: undo what is done at allocation
@@ -179,4 +180,8 @@ void nr_phy_free_RU(RU_t *ru)
       free_and_zero(ru->common.beam_id[i]);
     free_and_zero(ru->common.beam_id);
   }
+
+  PHY_VARS_gNB *gNB0 = ru->gNB_list[0];
+  gNB0->num_RU--;
+  DevAssert(gNB0->num_RU >= 0);
 }

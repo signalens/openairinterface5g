@@ -147,13 +147,6 @@ static nr_dci_format_t nr_extract_dci_info(NR_UE_MAC_INST_t *mac,
                                            const uint8_t *dci_pdu,
                                            const int slot);
 
-static int get_NTN_UE_Koffset(NR_NTN_Config_r17_t *ntn_Config_r17, int scs)
-{
-  if (ntn_Config_r17 && ntn_Config_r17->cellSpecificKoffset_r17)
-    return *ntn_Config_r17->cellSpecificKoffset_r17 << scs;
-  return 0;
-}
-
 int get_rnti_type(const NR_UE_MAC_INST_t *mac, const uint16_t rnti)
 {
   const RA_config_t *ra = &mac->ra;
@@ -301,6 +294,12 @@ int8_t nr_ue_decode_BCCH_DL_SCH(NR_UE_MAC_INST_t *mac,
     nr_mac_rrc_data_ind_ue(mac->ue_id, cc_id, gNB_index, 0, 0, 0, mac->physCellId, 0, NR_BCCH_DL_SCH, (uint8_t *) pduP, pdu_len);
     mac->get_sib1 = false;
     mac->get_otherSI = false;
+    T(T_NRUE_MAC_DL_PDU_WITH_DATA,
+      T_INT(SI_RNTI),
+      T_INT(-1 /* frame, unavailable here */),
+      T_INT(-1 /* slot, unavailable here */),
+      T_INT(0 /* harq_pid */),
+      T_BUFFER(pduP, pdu_len));
   }
   else
     LOG_E(NR_MAC, "Got NACK on NR-BCCH-DL-SCH-Message (%s)\n", mac->get_sib1 ? "SIB1" : "other SI");
@@ -500,7 +499,7 @@ static int nr_ue_process_dci_ul_00(NR_UE_MAC_INST_t *mac,
 
   frame_t frame_tx;
   int slot_tx;
-  const int ntn_ue_koffset = get_NTN_UE_Koffset(mac->sc_info.ntn_Config_r17, mac->current_UL_BWP->scs);
+  const int ntn_ue_koffset = GET_NTN_UE_K_OFFSET(&mac->ntn_ta, mac->current_UL_BWP->scs);
   if (-1 == nr_ue_pusch_scheduler(mac, 0, frame, slot, &frame_tx, &slot_tx, tda_info.k2 + ntn_ue_koffset)) {
     LOG_E(MAC, "Cannot schedule PUSCH\n");
     return -1;
@@ -598,7 +597,7 @@ static int nr_ue_process_dci_ul_01(NR_UE_MAC_INST_t *mac,
     tda_info.k2 = csi_K2;
   }
 
-  const int ntn_ue_koffset = get_NTN_UE_Koffset(mac->sc_info.ntn_Config_r17, mac->current_UL_BWP->scs);
+  const int ntn_ue_koffset = GET_NTN_UE_K_OFFSET(&mac->ntn_ta, mac->current_UL_BWP->scs);
   if (-1 == nr_ue_pusch_scheduler(mac, 0, frame, slot, &frame_tx, &slot_tx, tda_info.k2 + ntn_ue_koffset)) {
     LOG_E(MAC, "Cannot schedule PUSCH\n");
     return -1;
@@ -806,7 +805,7 @@ static int nr_ue_process_dci_dl_10(NR_UE_MAC_INST_t *mac,
   /* MCS */
   dlsch_pdu->mcs = dci->mcs;
 
-  NR_UE_HARQ_STATUS_t *current_harq = &mac->dl_harq_info[dci->harq_pid.val];
+  NR_UE_DL_HARQ_STATUS_t *current_harq = &mac->dl_harq_info[dci->harq_pid.val];
   /* NDI (only if CRC scrambled by C-RNTI or CS-RNTI or new-RNTI or TC-RNTI)*/
   if (dl_conf_req->pdu_type == FAPI_NR_DL_CONFIG_TYPE_SI_DLSCH ||
       dl_conf_req->pdu_type == FAPI_NR_DL_CONFIG_TYPE_RA_DLSCH ||
@@ -815,9 +814,9 @@ static int nr_ue_process_dci_dl_10(NR_UE_MAC_INST_t *mac,
     dlsch_pdu->new_data_indicator = true;
     current_harq->R = 0;
     current_harq->TBS = 0;
-  }
-  else
+  } else {
     dlsch_pdu->new_data_indicator = false;
+  }
 
   if (dl_conf_req->pdu_type != FAPI_NR_DL_CONFIG_TYPE_SI_DLSCH &&
       dl_conf_req->pdu_type != FAPI_NR_DL_CONFIG_TYPE_RA_DLSCH) {
@@ -915,14 +914,14 @@ static int nr_ue_process_dci_dl_10(NR_UE_MAC_INST_t *mac,
 
   /* PDSCH_TO_HARQ_FEEDBACK_TIME_IND */
   // according to TS 38.213 9.2.3
-  const int ntn_ue_koffset = get_NTN_UE_Koffset(mac->sc_info.ntn_Config_r17, dlsch_pdu->SubcarrierSpacing);
+  const int ntn_ue_koffset = GET_NTN_UE_K_OFFSET(&mac->ntn_ta, dlsch_pdu->SubcarrierSpacing);
   const uint16_t feedback_ti = 1 + dci->pdsch_to_harq_feedback_timing_indicator.val + ntn_ue_koffset;
 
   if (rnti_type != TYPE_RA_RNTI_ && rnti_type != TYPE_SI_RNTI_) {
-    AssertFatal(feedback_ti > DURATION_RX_TO_TX,
-                "PDSCH to HARQ feedback time (%d) needs to be higher than DURATION_RX_TO_TX (%d).\n",
+    AssertFatal(feedback_ti > GET_DURATION_RX_TO_TX(&mac->ntn_ta),
+                "PDSCH to HARQ feedback time (%d) needs to be higher than DURATION_RX_TO_TX (%ld).\n",
                 feedback_ti,
-                DURATION_RX_TO_TX);
+                GET_DURATION_RX_TO_TX(&mac->ntn_ta));
     // set the harq status at MAC for feedback
     const int tpc[] = {-1, 0, 1, 3};
     set_harq_status(mac,
@@ -935,6 +934,12 @@ static int nr_ue_process_dci_dl_10(NR_UE_MAC_INST_t *mac,
                     dci_ind->N_CCE,
                     frame,
                     slot);
+    if (dlsch_pdu->new_data_indicator)
+      current_harq->round = 0;
+    else
+      current_harq->round++;
+    if (current_harq->round < sizeofArray(mac->stats.dl.rounds))
+      mac->stats.dl.rounds[current_harq->round]++;
   }
 
   LOG_D(MAC,
@@ -1126,7 +1131,7 @@ static int nr_ue_process_dci_dl_11(NR_UE_MAC_INST_t *mac,
   /* MCS (for transport block 1)*/
   dlsch_pdu->mcs = dci->mcs;
   /* NDI (for transport block 1)*/
-  NR_UE_HARQ_STATUS_t *current_harq = &mac->dl_harq_info[dci->harq_pid.val];
+  NR_UE_DL_HARQ_STATUS_t *current_harq = &mac->dl_harq_info[dci->harq_pid.val];
   if (dci->ndi != current_harq->last_ndi) {
     // new data
     dlsch_pdu->new_data_indicator = true;
@@ -1254,14 +1259,14 @@ static int nr_ue_process_dci_dl_11(NR_UE_MAC_INST_t *mac,
 
   /* PDSCH_TO_HARQ_FEEDBACK_TIME_IND */
   // according to TS 38.213 Table 9.2.3-1
-  const int ntn_ue_koffset = get_NTN_UE_Koffset(mac->sc_info.ntn_Config_r17, dlsch_pdu->SubcarrierSpacing);
+  const int ntn_ue_koffset = GET_NTN_UE_K_OFFSET(&mac->ntn_ta, dlsch_pdu->SubcarrierSpacing);
   const uint16_t feedback_ti = pucch_Config->dl_DataToUL_ACK->list.array[dci->pdsch_to_harq_feedback_timing_indicator.val][0] + ntn_ue_koffset;
 
-  AssertFatal(feedback_ti > DURATION_RX_TO_TX,
-              "PDSCH to HARQ feedback time (%d) needs to be higher than DURATION_RX_TO_TX (%d). Min feedback time set in config "
+  AssertFatal(feedback_ti > GET_DURATION_RX_TO_TX(&mac->ntn_ta),
+              "PDSCH to HARQ feedback time (%d) needs to be higher than DURATION_RX_TO_TX (%ld). Min feedback time set in config "
               "file (min_rxtxtime).\n",
               feedback_ti,
-              DURATION_RX_TO_TX);
+              GET_DURATION_RX_TO_TX(&mac->ntn_ta));
 
   // set the harq status at MAC for feedback
   const int tpc[] = {-1, 0, 1, 3};
@@ -1275,6 +1280,12 @@ static int nr_ue_process_dci_dl_11(NR_UE_MAC_INST_t *mac,
                   dci_ind->N_CCE,
                   frame,
                   slot);
+  if (dlsch_pdu->new_data_indicator)
+    current_harq->round = 0;
+  else
+    current_harq->round++;
+  if (current_harq->round < sizeofArray(mac->stats.dl.rounds))
+    mac->stats.dl.rounds[current_harq->round]++;
   // send the ack/nack slot number to phy to indicate tx thread to wait for DLSCH decoding
   dlsch_pdu->k1_feedback = feedback_ti;
 
@@ -1432,10 +1443,11 @@ nr_dci_format_t nr_ue_process_dci_indication_pdu(NR_UE_MAC_INST_t *mac, frame_t 
       nr_extract_dci_info(mac, dci->dci_format, dci->payloadSize, dci->rnti, dci->ss_type, dci->payloadBits, slot);
   if (format == NR_DCI_NONE)
     return NR_DCI_NONE;
-  dci_pdu_rel15_t *def_dci_pdu_rel15 = &mac->def_dci_pdu_rel15[slot][format];
-  int ret = nr_ue_process_dci(mac, frame, slot, def_dci_pdu_rel15, dci, format);
-  if (ret < 0)
+  int ret = nr_ue_process_dci(mac, frame, slot, mac->def_dci_pdu_rel15[slot] + format, dci, format);
+  if (ret < 0) {
+    mac->stats.bad_dci++;
     return NR_DCI_NONE;
+  }
   return format;
 }
 
@@ -1459,7 +1471,7 @@ void set_harq_status(NR_UE_MAC_INST_t *mac,
                      frame_t frame,
                      int slot)
 {
-  NR_UE_HARQ_STATUS_t *current_harq = &mac->dl_harq_info[harq_id];
+  NR_UE_DL_HARQ_STATUS_t *current_harq = &mac->dl_harq_info[harq_id];
   current_harq->active = true;
   current_harq->ack_received = false;
   current_harq->pucch_resource_indicator = pucch_id;
@@ -1486,7 +1498,7 @@ void set_harq_status(NR_UE_MAC_INST_t *mac,
     // looking for other active HARQ processes with feedback in the same frame/slot
     if (i == harq_id)
       continue;
-    NR_UE_HARQ_STATUS_t *harq = &mac->dl_harq_info[i];
+    NR_UE_DL_HARQ_STATUS_t *harq = &mac->dl_harq_info[i];
     if (harq->active &&
         harq->ul_frame == current_harq->ul_frame &&
         harq->ul_slot == current_harq->ul_slot) {
@@ -1514,6 +1526,11 @@ void set_harq_status(NR_UE_MAC_INST_t *mac,
         current_harq->dai_cumul);
 }
 
+initial_pucch_resource_t get_initial_pucch_resource(const int idx)
+{
+  return initial_pucch_resource[idx];
+}
+
 int nr_ue_configure_pucch(NR_UE_MAC_INST_t *mac,
                            int slot,
                            frame_t frame,
@@ -1534,10 +1551,9 @@ int nr_ue_configure_pucch(NR_UE_MAC_INST_t *mac,
   LOG_D(NR_MAC, "initial_pucch_id %d, pucch_resource %p\n", pucch->initial_pucch_id, pucch->pucch_resource);
   // configure pucch from Table 9.2.1-1
   // only for ack/nack
-  if (pucch->initial_pucch_id > -1 &&
-      pucch->pucch_resource == NULL) {
+  if (pucch->initial_pucch_id > -1 && pucch->pucch_resource == NULL) {
     const int idx = *current_UL_BWP->pucch_ConfigCommon->pucch_ResourceCommon;
-    const initial_pucch_resource_t pucch_resourcecommon = initial_pucch_resource[idx];
+    const initial_pucch_resource_t pucch_resourcecommon = get_initial_pucch_resource(idx);
     pucch_pdu->format_type = pucch_resourcecommon.format;
     pucch_pdu->start_symbol_index = pucch_resourcecommon.startingSymbolIndex;
     pucch_pdu->nr_of_symbols = pucch_resourcecommon.nrofSymbols;
@@ -2327,7 +2343,7 @@ bool get_downlink_ack(NR_UE_MAC_INST_t *mac, frame_t frame, int slot, PUCCH_sche
 
     for (int dl_harq_pid = 0; dl_harq_pid < num_dl_harq; dl_harq_pid++) {
 
-      NR_UE_HARQ_STATUS_t *current_harq = &mac->dl_harq_info[dl_harq_pid];
+      NR_UE_DL_HARQ_STATUS_t *current_harq = &mac->dl_harq_info[dl_harq_pid];
 
       if (current_harq->active) {
         LOG_D(PHY, "HARQ pid %d is active for %d.%d\n",
@@ -2524,7 +2540,7 @@ bool trigger_periodic_scheduling_request(NR_UE_MAC_INST_t *mac, PUCCH_sched_t *p
       AssertFatal(sr_count < 2, "Cannot handle more than 1 SR per slot yet\n");
     }
   }
-  return sr_count > 0 ? true : false;
+  return sr_count > 0;
 }
 
 int8_t nr_ue_get_SR(NR_UE_MAC_INST_t *mac, frame_t frame, slot_t slot, NR_SchedulingRequestId_t sr_id)
@@ -2537,12 +2553,14 @@ int8_t nr_ue_get_SR(NR_UE_MAC_INST_t *mac, frame_t frame, slot_t slot, NR_Schedu
     return 0;
   }
 
-  LOG_D(NR_MAC, "[UE %d] Frame %d slot %d SR %s for ID %ld\n",
+  LOG_D(NR_MAC,
+        "[UE %d] Frame %d slot %d SR %s for ID %ld, timer %d\n",
         mac->ue_id,
         frame,
         slot,
         sr_info->pending ? "pending" : "not pending",
-        sr_id); // todo
+        sr_id, // todo
+        nr_timer_is_active(&sr_info->prohibitTimer));
 
   // TODO check if the PUCCH resource for the SR transmission occasion does not overlap with a UL-SCH resource
   if (!sr_info->pending || nr_timer_is_active(&sr_info->prohibitTimer))
@@ -3428,7 +3446,7 @@ static void set_time_alignment(NR_UE_MAC_INST_t *mac, int ta, ta_type_t type, in
   ul_time_alignment->ta_command = ta;
   ul_time_alignment->ta_apply = type;
 
-  const int ntn_ue_koffset = get_NTN_UE_Koffset(mac->sc_info.ntn_Config_r17, mac->current_UL_BWP->scs);
+  const int ntn_ue_koffset = GET_NTN_UE_K_OFFSET(&mac->ntn_ta, mac->current_UL_BWP->scs);
   const int n_slots_frame = nr_slots_per_frame[mac->current_UL_BWP->scs];
   ul_time_alignment->frame = (frame + (slot + ntn_ue_koffset) / n_slots_frame) % MAX_FRAME_NUMBER;
   ul_time_alignment->slot = (slot + ntn_ue_koffset) % n_slots_frame;
@@ -3569,8 +3587,9 @@ void nr_ue_process_mac_pdu(NR_UE_MAC_INST_t *mac, nr_downlink_indication_t *dl_i
 {
   frame_t frameP = dl_info->frame;
   int slot = dl_info->slot;
-  uint8_t *pduP = (dl_info->rx_ind->rx_indication_body + pdu_id)->pdsch_pdu.pdu;
-  int32_t pdu_len = (int32_t)(dl_info->rx_ind->rx_indication_body + pdu_id)->pdsch_pdu.pdu_length;
+  fapi_nr_pdsch_pdu_t *pdsch_pdu = &(dl_info->rx_ind->rx_indication_body + pdu_id)->pdsch_pdu;
+  uint8_t *pduP = pdsch_pdu->pdu;
+  int32_t pdu_len = (int32_t)pdsch_pdu->pdu_length;
   uint8_t gNB_index = dl_info->gNB_index;
   uint8_t CC_id = dl_info->cc_id;
   uint8_t done = 0;
@@ -3579,6 +3598,8 @@ void nr_ue_process_mac_pdu(NR_UE_MAC_INST_t *mac, nr_downlink_indication_t *dl_i
   if (!pduP) {
     return;
   }
+
+  T(T_NRUE_MAC_DL_PDU_WITH_DATA, T_INT(mac->crnti), T_INT(frameP), T_INT(slot), T_INT(pdsch_pdu->harq_pid), T_BUFFER(pduP, pdu_len));
 
   LOG_D(MAC,
         "[%d.%d]: processing PDU %d (with length %d) of %d total number of PDUs...\n",
@@ -3772,9 +3793,23 @@ void nr_ue_process_mac_pdu(NR_UE_MAC_INST_t *mac, nr_downlink_indication_t *dl_i
   }
 }
 
+int nr_write_ce_msg3_pdu(uint8_t *mac_ce, NR_UE_MAC_INST_t *mac, rnti_t crnti, uint8_t *mac_ce_end)
+{
+  uint8_t *pdu = mac_ce;
+  if (IS_SA_MODE(get_softmodem_params()) && mac->ra.ra_state != nrRA_SUCCEEDED) {
+    LOG_D(NR_MAC, "Generating C-RNTI MAC CE with C-RNTI %x\n", crnti);
+    *(NR_MAC_SUBHEADER_FIXED *)mac_ce = (NR_MAC_SUBHEADER_FIXED){.R = 0, .LCID = UL_SCH_LCID_C_RNTI};
+    mac_ce += sizeof(NR_MAC_SUBHEADER_FIXED);
+    // C-RNTI MAC CE (2 octets)
+    memcpy(mac_ce, &crnti, sizeof(crnti));
+    // update pointer and length
+    mac_ce += sizeof(crnti);
+  }
+  return mac_ce - pdu;
+}
+
 /**
  * Function:      generating MAC CEs (MAC CE and subheader) for the ULSCH PDU
- * Notes:         TODO: PHR and BSR reporting
  * Parameters:
  * @mac_ce        pointer to the MAC sub-PDUs including the MAC CEs
  * @mac           pointer to the MAC instance
@@ -3783,157 +3818,97 @@ void nr_ue_process_mac_pdu(NR_UE_MAC_INST_t *mac, nr_downlink_indication_t *dl_i
 int nr_write_ce_ulsch_pdu(uint8_t *mac_ce,
                           NR_UE_MAC_INST_t *mac,
                           NR_SINGLE_ENTRY_PHR_MAC_CE *power_headroom,
-                          uint16_t *crnti,
-                          NR_BSR_SHORT *truncated_bsr,
-                          NR_BSR_SHORT *short_bsr,
-                          NR_BSR_LONG  *long_bsr)
+                          const type_bsr_t *bsr,
+                          uint8_t *mac_ce_end)
 {
-  int      mac_ce_len = 0;
   uint8_t *pdu = mac_ce;
   if (power_headroom) {
     // MAC CE fixed subheader
-    ((NR_MAC_SUBHEADER_FIXED *) mac_ce)->R = 0;
-    ((NR_MAC_SUBHEADER_FIXED *) mac_ce)->LCID = UL_SCH_LCID_SINGLE_ENTRY_PHR;
-    mac_ce++;
-
-    // PHR MAC CE (1 octet)
-    ((NR_SINGLE_ENTRY_PHR_MAC_CE *) mac_ce)->PH = power_headroom->PH;
-    ((NR_SINGLE_ENTRY_PHR_MAC_CE *) mac_ce)->R1 = 0;
-    ((NR_SINGLE_ENTRY_PHR_MAC_CE *) mac_ce)->PCMAX = power_headroom->PCMAX;
-    ((NR_SINGLE_ENTRY_PHR_MAC_CE *) mac_ce)->R2 = 0;
-
-    // update pointer and length
-    int mac_ce_size = sizeof(NR_SINGLE_ENTRY_PHR_MAC_CE);
-    mac_ce += mac_ce_size;
-    mac_ce_len += mac_ce_size + sizeof(NR_MAC_SUBHEADER_FIXED);
+    *(NR_MAC_SUBHEADER_FIXED *)mac_ce = (NR_MAC_SUBHEADER_FIXED){.R = 0, .LCID = UL_SCH_LCID_SINGLE_ENTRY_PHR};
+    mac_ce += sizeof(NR_MAC_SUBHEADER_FIXED);
+    *(NR_SINGLE_ENTRY_PHR_MAC_CE *)mac_ce = *power_headroom;
+    mac_ce += sizeof(NR_SINGLE_ENTRY_PHR_MAC_CE);
     LOG_D(NR_MAC, "[UE] Generating ULSCH PDU : power_headroom pdu %p mac_ce %p b\n",
           pdu, mac_ce);
   }
 
-  if (crnti && (!get_softmodem_params()->sa && get_softmodem_params()->do_ra && mac->ra.ra_state != nrRA_SUCCEEDED)) {
-    LOG_D(NR_MAC, "In %s: generating C-RNTI MAC CE with C-RNTI %x\n", __FUNCTION__, (*crnti));
-
-    // MAC CE fixed subheader
-    ((NR_MAC_SUBHEADER_FIXED *) mac_ce)->R = 0;
-    ((NR_MAC_SUBHEADER_FIXED *) mac_ce)->LCID = UL_SCH_LCID_C_RNTI;
-    mac_ce++;
-
-    // C-RNTI MAC CE (2 octets)
-    memcpy(mac_ce, crnti, sizeof(*crnti));
-
-    // update pointer and length
-    int mac_ce_size = sizeof(uint16_t);
-    mac_ce += mac_ce_size;
-    mac_ce_len += mac_ce_size + sizeof(NR_MAC_SUBHEADER_FIXED);
+  switch (bsr->type_bsr) {
+    case b_short:
+    case b_short_trunc: {
+      *(NR_MAC_SUBHEADER_FIXED *)mac_ce =
+          (NR_MAC_SUBHEADER_FIXED){.R = 0, .LCID = bsr->type_bsr == b_short ? UL_SCH_LCID_S_BSR : UL_SCH_LCID_S_TRUNCATED_BSR};
+      mac_ce += sizeof(NR_MAC_SUBHEADER_FIXED);
+      *(NR_BSR_SHORT *)mac_ce = bsr->bsr.s;
+      mac_ce += sizeof(NR_BSR_SHORT);
+      LOG_D(NR_MAC, "[UE] Generating ULSCH PDU : bsr Buffer_size %d LcgID %d \n", bsr->bsr.s.Buffer_size, bsr->bsr.s.LcgID);
+    } break;
+    case b_long:
+    case b_long_trunc: {
+      // ch 6.1.3.1. TS 38.321
+      NR_MAC_SUBHEADER_SHORT *mac_pdu_subheader_ptr = (NR_MAC_SUBHEADER_SHORT *)mac_ce;
+      mac_ce += sizeof(NR_MAC_SUBHEADER_SHORT);
+      uint8_t *mark = mac_ce;
+      // Could move to nr_get_sdu()
+      NR_BSR_LONG *ceLong = (NR_BSR_LONG *)mac_ce;
+      *ceLong = (NR_BSR_LONG){0};
+      mac_ce += sizeof(NR_BSR_LONG);
+      // int NR_BSR_LONG_SIZE = 1;
+      if (bsr->bsr.lcg_bsr[0] && mac_ce < mac_ce_end) {
+        ceLong->LcgID0 = 1;
+        *mac_ce++ = bsr->bsr.lcg_bsr[0];
+      }
+      if (bsr->bsr.lcg_bsr[1] && mac_ce < mac_ce_end) {
+        ceLong->LcgID1 = 1;
+        *mac_ce++ = bsr->bsr.lcg_bsr[1];
+      }
+      if (bsr->bsr.lcg_bsr[2] && mac_ce < mac_ce_end) {
+        ceLong->LcgID2 = 1;
+        *mac_ce++ = bsr->bsr.lcg_bsr[2];
+      }
+      if (bsr->bsr.lcg_bsr[3] && mac_ce < mac_ce_end) {
+        ceLong->LcgID3 = 1;
+        *mac_ce++ = bsr->bsr.lcg_bsr[3];
+      }
+      if (bsr->bsr.lcg_bsr[4] && mac_ce < mac_ce_end) {
+        ceLong->LcgID4 = 1;
+        *mac_ce++ = bsr->bsr.lcg_bsr[4];
+      }
+      if (bsr->bsr.lcg_bsr[5] && mac_ce < mac_ce_end) {
+        ceLong->LcgID5 = 1;
+        *mac_ce++ = bsr->bsr.lcg_bsr[5];
+      }
+      if (bsr->bsr.lcg_bsr[6] && mac_ce < mac_ce_end) {
+        ceLong->LcgID6 = 1;
+        *mac_ce++ = bsr->bsr.lcg_bsr[6];
+      }
+      if (bsr->bsr.lcg_bsr[7] && mac_ce < mac_ce_end) {
+        ceLong->LcgID7 = 1;
+        *mac_ce++ = bsr->bsr.lcg_bsr[7];
+      }
+      *mac_pdu_subheader_ptr =
+          (NR_MAC_SUBHEADER_SHORT){.LCID = bsr->type_bsr == b_long ? UL_SCH_LCID_L_BSR : UL_SCH_LCID_L_TRUNCATED_BSR,
+                                   .L = mac_ce - mark};
+      LOG_D(NR_MAC,
+            "[UE] Generating ULSCH PDU : long_bsr size %d Lcgbit 0x%02x Buffer_size %d %d %d %d %d %d %d %d\n",
+            ((NR_MAC_SUBHEADER_SHORT *)mac_pdu_subheader_ptr)->L,
+            *mac_ce,
+            bsr->bsr.lcg_bsr[0],
+            bsr->bsr.lcg_bsr[1],
+            bsr->bsr.lcg_bsr[2],
+            bsr->bsr.lcg_bsr[3],
+            bsr->bsr.lcg_bsr[4],
+            bsr->bsr.lcg_bsr[5],
+            bsr->bsr.lcg_bsr[6],
+            bsr->bsr.lcg_bsr[7]);
+    } break;
+    case b_none:
+      break;
+    default:
+      DevAssert(false);
   }
 
-  if (truncated_bsr) {
-
-	// MAC CE fixed subheader
-    ((NR_MAC_SUBHEADER_FIXED *) mac_ce)->R = 0;
-    ((NR_MAC_SUBHEADER_FIXED *) mac_ce)->LCID = UL_SCH_LCID_S_TRUNCATED_BSR;
-    mac_ce++;
-
-    // Short truncated BSR MAC CE (1 octet)
-    ((NR_BSR_SHORT_TRUNCATED *) mac_ce)-> Buffer_size = truncated_bsr->Buffer_size;
-    ((NR_BSR_SHORT_TRUNCATED *) mac_ce)-> LcgID = truncated_bsr->LcgID;;
-
-    // update pointer and length
-    int mac_ce_size = sizeof(NR_BSR_SHORT_TRUNCATED);
-    mac_ce += mac_ce_size;
-    mac_ce_len += mac_ce_size + sizeof(NR_MAC_SUBHEADER_FIXED);
-    LOG_D(NR_MAC, "[UE] Generating ULSCH PDU : truncated_bsr Buffer_size %d LcgID %d pdu %p mac_ce %p\n",
-          truncated_bsr->Buffer_size, truncated_bsr->LcgID, pdu, mac_ce);
-
-  } else if (short_bsr) {
-
-	// MAC CE fixed subheader
-    ((NR_MAC_SUBHEADER_FIXED *) mac_ce)->R = 0;
-    ((NR_MAC_SUBHEADER_FIXED *) mac_ce)->LCID = UL_SCH_LCID_S_BSR;
-    mac_ce++;
-
-    // Short truncated BSR MAC CE (1 octet)
-    ((NR_BSR_SHORT *) mac_ce)->Buffer_size = short_bsr->Buffer_size;
-    ((NR_BSR_SHORT *) mac_ce)->LcgID = short_bsr->LcgID;
-
-    // update pointer and length
-    int mac_ce_size = sizeof(NR_BSR_SHORT);
-    mac_ce += mac_ce_size;
-    mac_ce_len += mac_ce_size + sizeof(NR_MAC_SUBHEADER_FIXED);
-    LOG_D(NR_MAC, "[UE] Generating ULSCH PDU : short_bsr Buffer_size %d LcgID %d pdu %p mac_ce %p\n",
-          short_bsr->Buffer_size, short_bsr->LcgID, pdu, mac_ce);
-  } else if (long_bsr) {
-
-	// MAC CE variable subheader
-    // ch 6.1.3.1. TS 38.321
-    ((NR_MAC_SUBHEADER_SHORT *) mac_ce)->R = 0;
-    ((NR_MAC_SUBHEADER_SHORT *) mac_ce)->F = 0;
-    ((NR_MAC_SUBHEADER_SHORT *) mac_ce)->LCID = UL_SCH_LCID_L_BSR;
-
-    NR_MAC_SUBHEADER_SHORT *mac_pdu_subheader_ptr = (NR_MAC_SUBHEADER_SHORT *) mac_ce;
-    mac_ce += 2;
-
-    // Could move to nr_get_sdu()
-    uint8_t *Buffer_size_ptr= (uint8_t*) mac_ce + 1;
-    //int NR_BSR_LONG_SIZE = 1;
-    if (long_bsr->Buffer_size0 == 0) {
-      ((NR_BSR_LONG *) mac_ce)->LcgID0 = 0;
-    } else {
-      ((NR_BSR_LONG *) mac_ce)->LcgID0 = 1;
-      *Buffer_size_ptr++ = long_bsr->Buffer_size0;
-    }
-    if (long_bsr->Buffer_size1 == 0) {
-      ((NR_BSR_LONG *) mac_ce)->LcgID1 = 0;
-    } else {
-      ((NR_BSR_LONG *) mac_ce)->LcgID1 = 1;
-      *Buffer_size_ptr++ = long_bsr->Buffer_size1;
-    }
-    if (long_bsr->Buffer_size2 == 0) {
-      ((NR_BSR_LONG *) mac_ce)->LcgID2 = 0;
-    } else {
-      ((NR_BSR_LONG *) mac_ce)->LcgID2 = 1;
-      *Buffer_size_ptr++ = long_bsr->Buffer_size2;
-    }
-    if (long_bsr->Buffer_size3 == 0) {
-      ((NR_BSR_LONG *) mac_ce)->LcgID3 = 0;
-    } else {
-      ((NR_BSR_LONG *) mac_ce)->LcgID3 = 1;
-      *Buffer_size_ptr++ = long_bsr->Buffer_size3;
-    }
-    if (long_bsr->Buffer_size4 == 0) {
-      ((NR_BSR_LONG *) mac_ce)->LcgID4 = 0;
-    } else {
-      ((NR_BSR_LONG *) mac_ce)->LcgID4 = 1;
-      *Buffer_size_ptr++ = long_bsr->Buffer_size4;
-    }
-    if (long_bsr->Buffer_size5 == 0) {
-      ((NR_BSR_LONG *) mac_ce)->LcgID5 = 0;
-    } else {
-      ((NR_BSR_LONG *) mac_ce)->LcgID5 = 1;
-      *Buffer_size_ptr++ = long_bsr->Buffer_size5;
-    }
-    if (long_bsr->Buffer_size6 == 0) {
-      ((NR_BSR_LONG *) mac_ce)->LcgID6 = 0;
-    } else {
-      ((NR_BSR_LONG *) mac_ce)->LcgID6 = 1;
-      *Buffer_size_ptr++ = long_bsr->Buffer_size6;
-    }
-    if (long_bsr->Buffer_size7 == 0) {
-      ((NR_BSR_LONG *) mac_ce)->LcgID7 = 0;
-    } else {
-      ((NR_BSR_LONG *) mac_ce)->LcgID7 = 1;
-      *Buffer_size_ptr++ = long_bsr->Buffer_size7;
-    }
-    int mac_ce_size = ((NR_MAC_SUBHEADER_SHORT *) mac_pdu_subheader_ptr)->L = (uint8_t*) Buffer_size_ptr - (uint8_t*) mac_ce;
-    LOG_D(NR_MAC, "[UE] Generating ULSCH PDU : long_bsr size %d Lcgbit 0x%02x Buffer_size %d %d %d %d %d %d %d %d\n", mac_ce_size, *((uint8_t*) mac_ce),
-          ((NR_BSR_LONG *) mac_ce)->Buffer_size0, ((NR_BSR_LONG *) mac_ce)->Buffer_size1, ((NR_BSR_LONG *) mac_ce)->Buffer_size2, ((NR_BSR_LONG *) mac_ce)->Buffer_size3,
-          ((NR_BSR_LONG *) mac_ce)->Buffer_size4, ((NR_BSR_LONG *) mac_ce)->Buffer_size5, ((NR_BSR_LONG *) mac_ce)->Buffer_size6, ((NR_BSR_LONG *) mac_ce)->Buffer_size7);
-    mac_ce_len += mac_ce_size + sizeof(NR_MAC_SUBHEADER_SHORT);
-  }
-
-  return mac_ce_len;
+  return mac_ce - pdu;
 }
-
 
 /////////////////////////////////////
 //    Random Access Response PDU   //
@@ -3990,6 +3965,9 @@ static void nr_ue_process_rar(NR_UE_MAC_INST_t *mac, nr_downlink_indication_t *d
   NR_MAC_RAR *rar = (NR_MAC_RAR *) (dlsch_buffer + 1);   // RAR subPDU pointer
   uint8_t preamble_index = ra->ra_PreambleIndex;
   uint16_t rnti = mac->ra.ra_rnti;
+
+  T(T_NRUE_MAC_DL_RAR_PDU_WITH_DATA, T_INT(rnti), T_INT(frame), T_INT(slot),
+    T_BUFFER(dlsch_buffer, dl_info->rx_ind->rx_indication_body[pdu_id].pdsch_pdu.pdu_length));
 
   LOG_D(NR_MAC, "[%d.%d]: [UE %d][RAPROC] invoking MAC for received RAR (current preamble %d)\n", frame, slot, mac->ue_id, preamble_index);
 
@@ -4123,7 +4101,7 @@ static void nr_ue_process_rar(NR_UE_MAC_INST_t *mac, nr_downlink_indication_t *d
       LOG_E(MAC, "Cannot schedule Msg3. Something wrong in TDA information\n");
       return;
     }
-    const int ntn_ue_koffset = get_NTN_UE_Koffset(mac->sc_info.ntn_Config_r17, mac->current_UL_BWP->scs);
+    const int ntn_ue_koffset = GET_NTN_UE_K_OFFSET(&mac->ntn_ta, mac->current_UL_BWP->scs);
     ret = nr_ue_pusch_scheduler(mac, is_Msg3, frame, slot, &frame_tx, &slot_tx, tda_info.k2 + ntn_ue_koffset);
 
     // TA command

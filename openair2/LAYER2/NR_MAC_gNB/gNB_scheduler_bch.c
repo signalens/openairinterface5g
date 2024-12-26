@@ -190,7 +190,7 @@ void schedule_nr_mib(module_id_t module_idP, frame_t frameP, sub_frame_t slotP, 
                 const int prb_offset = offset_pointa >> scs;
                 schedule_ssb(frameP, slotP, scc, dl_req, i_ssb, beam_index, ssbSubcarrierOffset, offset_pointa, mib_pdu);
                 fill_ssb_vrb_map(cc, prb_offset, ssbSubcarrierOffset, ssb_start_symbol, CC_id, beam.idx);
-                if (get_softmodem_params()->sa == 1) {
+                if (IS_SA_MODE(get_softmodem_params())) {
                   get_type0_PDCCH_CSS_config_parameters(&gNB->type0_PDCCH_CSS_config[i_ssb],
                                                         frameP,
                                                         mib,
@@ -222,7 +222,7 @@ void schedule_nr_mib(module_id_t module_idP, frame_t frameP, sub_frame_t slotP, 
                 const int prb_offset = offset_pointa >> scs;
                 schedule_ssb(frameP, slotP, scc, dl_req, i_ssb, beam_index, ssbSubcarrierOffset, offset_pointa, mib_pdu);
                 fill_ssb_vrb_map(cc, prb_offset, ssbSubcarrierOffset, ssb_start_symbol, CC_id, beam.idx);
-                if (get_softmodem_params()->sa == 1) {
+                if (IS_SA_MODE(get_softmodem_params())) {
                   get_type0_PDCCH_CSS_config_parameters(&gNB->type0_PDCCH_CSS_config[i_ssb],
                                                         frameP,
                                                         mib,
@@ -254,7 +254,7 @@ void schedule_nr_mib(module_id_t module_idP, frame_t frameP, sub_frame_t slotP, 
                 const int prb_offset = offset_pointa >> (scs-2); // reference 60kHz
                 schedule_ssb(frameP, slotP, scc, dl_req, i_ssb, beam_index, ssbSubcarrierOffset, offset_pointa, mib_pdu);
                 fill_ssb_vrb_map(cc, prb_offset, ssbSubcarrierOffset >> (scs - 2), ssb_start_symbol, CC_id, beam.idx);
-                if (get_softmodem_params()->sa == 1) {
+                if (IS_SA_MODE(get_softmodem_params())) {
                   get_type0_PDCCH_CSS_config_parameters(&gNB->type0_PDCCH_CSS_config[i_ssb],
                                                         frameP,
                                                         mib,

@@ -147,7 +147,7 @@ class HTMLManagement():
 				self.htmlFile.write('       <td bgcolor = "lightcyan" > <span class="glyphicon glyphicon-tag"></span> Commit ID </td>\n')
 			self.htmlFile.write('       <td>' + self.ranCommitID + '</td>\n')
 			self.htmlFile.write('     </tr>\n')
-			if self.ranAllowMerge != '':
+			if self.ranAllowMerge != '' and self.ranCommitID != 'develop':
 				commit_message = subprocess.check_output("git log -n1 --pretty=format:\"%s\" " + self.ranCommitID, shell=True, universal_newlines=True)
 				commit_message = commit_message.strip()
 				self.htmlFile.write('     <tr>\n')

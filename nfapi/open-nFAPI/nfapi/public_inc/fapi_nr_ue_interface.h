@@ -556,6 +556,19 @@ typedef struct {
 } fapi_nr_ta_command_pdu;
 
 typedef struct {
+  // N_common_ta_adj represents common propagation delay received in SIB19 (ms)
+  double N_common_ta_adj;
+  // N_UE_TA_adj calculated propagation delay from UE and SAT (ms)
+  double N_UE_TA_adj;
+  // drift rate of common ta in µs/s
+  double ntn_ta_commondrift;
+  // cell scheduling offset expressed in terms of 15kHz SCS
+  long cell_specific_k_offset;
+
+  double ntn_total_time_advance_ms;
+} fapi_nr_dl_ntn_config_command_pdu;
+
+typedef struct {
   uint8_t pdu_type;
   union {
     fapi_nr_dl_config_dci_pdu dci_config_pdu;
@@ -563,6 +576,7 @@ typedef struct {
     fapi_nr_dl_config_csirs_pdu csirs_config_pdu;
     fapi_nr_dl_config_csiim_pdu csiim_config_pdu;
     fapi_nr_ta_command_pdu ta_command_pdu;
+    fapi_nr_dl_ntn_config_command_pdu ntn_config_command_pdu;
   };
 } fapi_nr_dl_config_request_pdu_t;
 

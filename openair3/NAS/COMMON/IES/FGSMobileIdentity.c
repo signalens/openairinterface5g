@@ -31,17 +31,70 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
-
+#include <stdbool.h>
 
 #include "TLVEncoder.h"
 #include "TLVDecoder.h"
 #include "FGSMobileIdentity.h"
+
+#define MIN_LEN_FGS_MOBILE_ID_IE 3 // type of identity "No identity"
+#define LEN_5G_FGS_TMSI_IE 9
 
 static int decode_guti_5gs_mobile_identity(Guti5GSMobileIdentity_t *guti, const uint8_t *buffer);
 
 static int encode_guti_5gs_mobile_identity(Guti5GSMobileIdentity_t *guti, uint8_t *buffer);
 static int encode_suci_5gs_mobile_identity(Suci5GSMobileIdentity_t *suci, uint8_t *buffer);
 static int encode_imeisv_5gs_mobile_identity(Imeisv5GSMobileIdentity_t *imeisv, uint8_t *buffer);
+
+int encode_stmsi_5gs_mobile_identity(uint8_t *buffer, Stmsi5GSMobileIdentity_t *stmsi, uint32_t len)
+{
+  // Return if buffer is shorter than min length
+  if (len < LEN_5G_FGS_TMSI_IE)
+    return -1;
+
+  uint32_t encoded = 0;
+  // octet 4
+  *(buffer + encoded) = (DIGIT1 << 4) | ((stmsi->spare & 0x1) << 3) | (stmsi->typeofidentity & 0x7);
+  encoded++;
+  // octet 5-6
+  uint16_t temp = 0x00 | ((stmsi->amfsetid) << 6) | (stmsi->amfpointer & 0x3f);
+  IES_ENCODE_U16(buffer, encoded, temp);
+  // octet 7
+  IES_ENCODE_U32(buffer, encoded, stmsi->tmsi);
+  return encoded;
+}
+
+int decode_stmsi_5gs_mobile_identity(Stmsi5GSMobileIdentity_t *stmsi, const uint8_t *buffer, uint32_t len)
+{
+  int decoded = 0;
+  uint16_t temp;
+
+  // Return if buffer is shorter than min length
+  if (len < LEN_5G_FGS_TMSI_IE)
+    return -1;
+
+  // Octet 4: spare (bit 3) and type of identity (bits 0-2)
+  stmsi->digit1 = DIGIT1;
+  stmsi->spare = (*(buffer + decoded) >> 3) & 0x1;
+  stmsi->typeofidentity = *(buffer + decoded) & 0x7;
+
+  // Validate type of identity
+  if (stmsi->typeofidentity != FGS_MOBILE_IDENTITY_5GS_TMSI) {
+    return -1;
+  }
+
+  decoded++;
+
+  // Octet 5-6: AMF Set ID (bits 6-15) and AMF Pointer (bits 0-5)
+  IES_DECODE_U16(buffer, decoded, temp);
+  stmsi->amfsetid = (temp >> 6) & 0x03ff;
+  stmsi->amfpointer = temp & 0x3f;
+
+  // Octet 7-10: 32-bit TMSI
+  IES_DECODE_U32(buffer, decoded, stmsi->tmsi);
+
+  return decoded;
+}
 
 int decode_5gs_mobile_identity(FGSMobileIdentity *fgsmobileidentity, uint8_t iei, const uint8_t *buffer, uint32_t len)
 {
@@ -77,6 +130,10 @@ int decode_5gs_mobile_identity(FGSMobileIdentity *fgsmobileidentity, uint8_t iei
 
 int encode_5gs_mobile_identity(FGSMobileIdentity *fgsmobileidentity, uint8_t iei, uint8_t *buffer, uint32_t len)
 {
+  // Return if buffer is shorter than min length
+  if (len < MIN_LEN_FGS_MOBILE_ID_IE)
+    return -1;
+
   int encoded_rc = TLV_ENCODE_VALUE_DOESNT_MATCH;
   uint32_t encoded = 0;
 
@@ -86,6 +143,7 @@ int encode_5gs_mobile_identity(FGSMobileIdentity *fgsmobileidentity, uint8_t iei
   }
 
   encoded = encoded + 2;
+  len -= encoded;
 
   if (fgsmobileidentity->guti.typeofidentity == FGS_MOBILE_IDENTITY_5G_GUTI) {
     encoded_rc = encode_guti_5gs_mobile_identity(&fgsmobileidentity->guti,
@@ -100,6 +158,10 @@ int encode_5gs_mobile_identity(FGSMobileIdentity *fgsmobileidentity, uint8_t iei
   if (fgsmobileidentity->imeisv.typeofidentity == FGS_MOBILE_IDENTITY_IMEISV) {
     encoded_rc = encode_imeisv_5gs_mobile_identity(&fgsmobileidentity->imeisv,
                  buffer + encoded);
+  }
+
+  if (fgsmobileidentity->stmsi.typeofidentity == FGS_MOBILE_IDENTITY_5GS_TMSI) {
+    encoded_rc = encode_stmsi_5gs_mobile_identity(buffer + encoded, &fgsmobileidentity->stmsi, len);
   }
 
   if (encoded_rc < 0) {

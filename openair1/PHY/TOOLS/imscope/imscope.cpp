@@ -107,7 +107,7 @@ typedef struct IQData {
   float max_power;
   float timestamp;
   int nonzero_count;
-  int len;
+  int len = 0;
   metadata meta;
 
   bool TryCollect(ImScopeData *imscope_data, float time, float epsilon)
@@ -213,11 +213,13 @@ class IQHist {
   float epsilon = 0.0;
   bool auto_adjust_range = true;
   int plot_type = 0;
+  bool disable_scatterplot;
 
  public:
-  IQHist(const char *label_)
+  IQHist(const char *label_, bool _disable_scatterplot = false)
   {
     label = label_;
+    disable_scatterplot = _disable_scatterplot;
   };
   bool ShouldReadData(void)
   {
@@ -264,10 +266,11 @@ class IQHist {
       ImGui::DragFloat("%% nonzero elements", &min_nonzero_percentage, 1, 0.0, 100);
       ImGui::DragFloat("epsilon", &epsilon, 1, 0.0, 3000);
     }
-    const char *items[] = {"Histogram", "Scatter", "RMS"};
-    ImGui::Combo("Select plot type", &plot_type, items, sizeof(items) / sizeof(items[0]));
+    const char *items[] = {"Histogram", "RMS", "Scatter"};
+    ImGui::Combo("Select plot type", &plot_type, items, disable_scatterplot ? 2 : 3);
     if (plot_type == 0) {
-      if (ImPlot::BeginPlot(label.c_str(), {(float)ImGui::GetWindowWidth() * 0.3f, (float)ImGui::GetWindowWidth() * 0.3f})) {
+      float x = ImGui::CalcItemWidth();
+      if (ImPlot::BeginPlot(label.c_str(), {x, x})) {
         ImPlot::PlotHistogram2D(label.c_str(),
                                 iq_data->real.data(),
                                 iq_data->imag.data(),
@@ -277,8 +280,9 @@ class IQHist {
                                 ImPlotRect(-range, range, -range, range));
         ImPlot::EndPlot();
       }
-    } else if (plot_type == 1) {
-      if (ImPlot::BeginPlot(label.c_str(), {(float)ImGui::GetWindowWidth() * 0.3f, (float)ImGui::GetWindowWidth() * 0.3f})) {
+    } else if (plot_type == 2) {
+      float x = ImGui::CalcItemWidth();
+      if (ImPlot::BeginPlot(label.c_str(), {x, x})) {
         int points_drawn = 0;
         while (points_drawn < iq_data->len) {
           // Limit the amount of data plotted with PlotScatter call (issue with vertices/draw call)
@@ -292,7 +296,7 @@ class IQHist {
         }
         ImPlot::EndPlot();
       }
-    } else if (plot_type == 2) {
+    } else if (plot_type == 1) {
       if (ImPlot::BeginPlot(label.c_str())) {
         ImPlot::PlotLine(label.c_str(), iq_data->power.data(), iq_data->len);
         ImPlot::EndPlot();
@@ -457,6 +461,7 @@ struct ScrollingBuffer {
 
 void ShowUeScope(PHY_VARS_NR_UE *ue, float t)
 {
+  ImGui::Begin("UE KPI");
   if (ImPlot::BeginPlot("##Scrolling", ImVec2(-1, 150))) {
     static float history = 10.0f;
     ImGui::SliderFloat("History", &history, 1, 30, "%.1f s");
@@ -479,7 +484,9 @@ void ShowUeScope(PHY_VARS_NR_UE *ue, float t)
     ImPlot::PlotLine("mcs", &mcs.Data[0].x, &mcs.Data[0].y, mcs.Data.size(), 0, 0, 2 * sizeof(float));
     ImPlot::EndPlot();
   }
-  if (ImGui::TreeNode("PDSCH IQ")) {
+  ImGui::End();
+
+  if (ImGui::Begin("UE PDSCH IQ")) {
     static auto iq_data = new IQData();
     static auto pdsch_iq_hist = new IQHist("PDSCH IQ");
     bool new_data = false;
@@ -487,29 +494,36 @@ void ShowUeScope(PHY_VARS_NR_UE *ue, float t)
       new_data = iq_data->TryCollect(&scope_array[pdschRxdataF_comp], t, pdsch_iq_hist->GetEpsilon());
     }
     pdsch_iq_hist->Draw(iq_data, t, new_data);
-    ImGui::TreePop();
   }
-  if (ImGui::TreeNode("Time domain samples")) {
+  ImGui::End();
+
+  if (ImGui::Begin("Time domain samples")) {
     static auto iq_data = new IQData();
-    static auto time_domain_iq = new IQHist("Time domain samples");
+    // Issue with imgui deferring draw calls until the end of the frame - cases segfault if scatterplot has too many points
+    bool disable_scatterplot = true;
+    static auto time_domain_iq = new IQHist("Time domain samples", disable_scatterplot);
     bool new_data = false;
     if (time_domain_iq->ShouldReadData()) {
       new_data = iq_data->TryCollect(&scope_array[ueTimeDomainSamples], t, time_domain_iq->GetEpsilon());
     }
     time_domain_iq->Draw(iq_data, t, new_data);
-    ImGui::TreePop();
   }
-  if (ImGui::TreeNode("Time domain samples - before sync")) {
+  ImGui::End();
+
+  if (ImGui::Begin("Time domain samples - before sync")) {
     static auto iq_data = new IQData();
-    static auto time_domain_iq = new IQHist("Time domain samples - before sync");
+    // Issue with imgui deferring draw calls until the end of the frame - cases segfault if scatterplot has too many points
+    bool disable_scatterplot = true;
+    static auto time_domain_iq = new IQHist("Time domain samples - before sync", disable_scatterplot);
     bool new_data = false;
     if (time_domain_iq->ShouldReadData()) {
       new_data = iq_data->TryCollect(&scope_array[ueTimeDomainSamplesBeforeSync], t, time_domain_iq->GetEpsilon());
     }
     time_domain_iq->Draw(iq_data, t, new_data);
-    ImGui::TreePop();
   }
-  if (ImGui::TreeNode("Broadcast channel")) {
+  ImGui::End();
+
+  if (ImGui::Begin("Broadcast channel")) {
     ImGui::Text("RSRP %d", ue->measurements.ssb_rsrp_dBm[ue->frame_parms.ssb_index]);
     if (ImGui::TreeNode("IQ")) {
       static auto iq_data = new IQData();
@@ -541,32 +555,33 @@ void ShowUeScope(PHY_VARS_NR_UE *ue, float t)
       llr_plot->Draw(t, ue->sl_mode ? psbchLlr : pbchLlr, "Broadcast LLR");
       ImGui::TreePop();
     }
-    ImGui::TreePop();
   }
-  if (ImGui::TreeNode("RX IQ")) {
-    static auto common_rx_iq_heatmap = new IQSlotHeatmap(&scope_array[commonRxdataF], "common RX IQ");
-    common_rx_iq_heatmap->Draw(t,
-                               ue->frame_parms.ofdm_symbol_size,
-                               ue->frame_parms.symbols_per_slot,
-                               ue->frame_parms.first_carrier_offset,
-                               ue->frame_parms.N_RB_DL);
-    ImGui::TreePop();
-  }
+  ImGui::End();
+
+  // if (ImGui::Begin("RX IQ")) {
+  //   static auto common_rx_iq_heatmap = new IQSlotHeatmap(&scope_array[commonRxdataF], "common RX IQ");
+  //   common_rx_iq_heatmap->Draw(t,
+  //                              ue->frame_parms.ofdm_symbol_size,
+  //                              ue->frame_parms.symbols_per_slot,
+  //                              ue->frame_parms.first_carrier_offset,
+  //                              ue->frame_parms.N_RB_DL);
+  // }
+  // ImGui::End();
 }
 
 void ShowGnbScope(PHY_VARS_gNB *gNB, float t)
 {
-  if (ImGui::TreeNode("RX IQ")) {
-    static auto gnb_heatmap = new IQSlotHeatmap(&scope_array[gNBRxdataF], "common RX IQ");
+  // if (ImGui::TreeNode("RX IQ")) {
+  //   static auto gnb_heatmap = new IQSlotHeatmap(&scope_array[gNBRxdataF], "common RX IQ");
 
-    gnb_heatmap->Draw(t,
-                      gNB->frame_parms.ofdm_symbol_size,
-                      gNB->frame_parms.symbols_per_slot,
-                      gNB->frame_parms.first_carrier_offset,
-                      gNB->frame_parms.N_RB_UL);
-    ImGui::TreePop();
-  }
-  if (ImGui::TreeNode("PUSCH SLOT IQ")) {
+  //   gnb_heatmap->Draw(t,
+  //                     gNB->frame_parms.ofdm_symbol_size,
+  //                     gNB->frame_parms.symbols_per_slot,
+  //                     gNB->frame_parms.first_carrier_offset,
+  //                     gNB->frame_parms.N_RB_UL);
+  //   ImGui::TreePop();
+  // }
+  if (ImGui::Begin("PUSCH SLOT IQ")) {
     static auto pusch_iq = new IQData();
     static auto pusch_iq_display = new IQHist("PUSCH compensated IQ");
     bool new_data = false;
@@ -574,23 +589,27 @@ void ShowGnbScope(PHY_VARS_gNB *gNB, float t)
       new_data = pusch_iq->TryCollect(&scope_array[gNBPuschRxIq], t, pusch_iq_display->GetEpsilon());
     }
     pusch_iq_display->Draw(pusch_iq, t, new_data);
-    ImGui::TreePop();
   }
-  if (ImGui::TreeNode("PUSCH LLRs")) {
+  ImGui::End();
+
+  if (ImGui::Begin("PUSCH LLRs")) {
     static auto pusch_llr_plot = new LLRPlot();
     pusch_llr_plot->Draw(t, gNBPuschLlr, "PUSCH LLR");
-    ImGui::TreePop();
   }
-  if (ImGui::TreeNode("Time domain samples")) {
+  ImGui::End();
+
+  if (ImGui::Begin("Time domain samples")) {
     static auto iq_data = new IQData();
-    static auto time_domain_iq = new IQHist("Time domain samples");
+    // Issue with imgui deferring draw calls until the end of the frame - cases segfault if scatterplot has too many points
+    bool disable_scatterplot = true;
+    static auto time_domain_iq = new IQHist("Time domain samples", disable_scatterplot);
     bool new_data = false;
     if (time_domain_iq->ShouldReadData()) {
       new_data = iq_data->TryCollect(&scope_array[gNbTimeDomainSamples], t, time_domain_iq->GetEpsilon());
     }
     time_domain_iq->Draw(iq_data, t, new_data);
-    ImGui::TreePop();
   }
+  ImGui::End();
 }
 
 void *imscope_thread(void *data_void_ptr)
@@ -636,6 +655,7 @@ void *imscope_thread(void *data_void_ptr)
   ImGuiIO &io = ImGui::GetIO();
   (void)io;
   io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
+  io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
   // Setup Dear ImGui style
   ImGui::StyleColorsDark();
@@ -659,7 +679,8 @@ void *imscope_thread(void *data_void_ptr)
   static int target_fps = 24;
 
   bool is_ue = (get_softmodem_optmask() & SOFTMODEM_5GUE_BIT) > 0;
-  while (!glfwWindowShouldClose(window)) {
+  bool close_window = false;
+  while (!glfwWindowShouldClose(window) && close_window == false) {
     // Poll and handle events (inputs, window resize, etc.)
     // You can read the io.WantCaptureMouse, io.WantCaptureKeyboard flags to tell if dear imgui wants to use your inputs.
     // - When io.WantCaptureMouse is true, do not dispatch mouse input data to your main application, or clear/overwrite your copy
@@ -672,33 +693,62 @@ void *imscope_thread(void *data_void_ptr)
     // Start the Dear ImGui frame
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplGlfw_NewFrame();
+
+    static bool reset_ini_settings = false;
+    if (reset_ini_settings)
+    {
+      ImGui::LoadIniSettingsFromDisk("imscope-init.ini");
+      reset_ini_settings = false;
+    }
     ImGui::NewFrame();
 
     int display_w, display_h;
     glfwGetFramebufferSize(window, &display_w, &display_h);
 
     static float t = 0;
-
-    t += ImGui::GetIO().DeltaTime;
-    ImGui::SetNextWindowPos({0, 0});
-    ImGui::SetNextWindowSize({(float)display_w, (float)display_h});
-    ImGui::Begin("NR KPI", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
-    if (ImGui::TreeNode("Global settings")) {
-      ImGui::ShowFontSelector("Font");
-      ImGui::ShowStyleSelector("ImGui Style");
-      ImPlot::ShowStyleSelector("ImPlot Style");
-      ImPlot::ShowColormapSelector("ImPlot Colormap");
-      ImGui::SliderInt("FPS target", &target_fps, 12, 60);
-      if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip("Reduces scope flickering in unfrozen mode. Can reduce impact on perfromance of the modem");
+    static bool show_imgui_demo_window = false;
+    static bool show_implot_demo_window = false;
+    ImGui::DockSpaceOverViewport();
+    if (ImGui::BeginMainMenuBar()) {
+      if (ImGui::BeginMenu("File")) {
+        if (ImGui::MenuItem("Close scope")) {
+          close_window = true;
+        }
+        ImGui::EndMenu();
       }
-      ImGui::TreePop();
+      if (ImGui::BeginMenu("Options")) {
+        ImGui::Checkbox("Show imgui demo window", &show_imgui_demo_window);
+        ImGui::Checkbox("Show implot demo window", &show_implot_demo_window);
+        ImGui::EndMenu();
+      }
+      if (ImGui::BeginMenu("Layout")) {
+        if (ImGui::MenuItem("Reset")) {
+           reset_ini_settings = true;
+        }
+        ImGui::EndMenu();
+      }
+      ImGui::EndMainMenuBar();
     }
-    iq_procedure_timer.UpdateAverage(t);
+
+    ImGui::Begin("Status bar");
     ImGui::Text("Total time used by IQ capture procedures per milisecond: %.2f [us]/[ms]", iq_procedure_timer.average / 1000);
     if (ImGui::IsItemHovered()) {
       ImGui::SetTooltip("Total time used in PHY threads for copying out IQ data for the scope, in uS, averaged over 1 ms");
     }
+    ImGui::End();
+
+    ImGui::Begin("Global scope settings");
+    ImGui::ShowStyleSelector("ImGui Style");
+    ImPlot::ShowStyleSelector("ImPlot Style");
+    ImPlot::ShowColormapSelector("ImPlot Colormap");
+    ImGui::SliderInt("FPS target", &target_fps, 12, 60);
+    if (ImGui::IsItemHovered()) {
+      ImGui::SetTooltip("Reduces scope flickering in unfrozen mode. Can reduce impact on perfromance of the modem");
+    }
+    ImGui::End();
+
+    t += ImGui::GetIO().DeltaTime;
+    iq_procedure_timer.UpdateAverage(t);
 
     if (is_ue) {
       PHY_VARS_NR_UE *ue = (PHY_VARS_NR_UE *)data_void_ptr;
@@ -708,11 +758,12 @@ void *imscope_thread(void *data_void_ptr)
       PHY_VARS_gNB *gNB = scope_params->gNB;
       ShowGnbScope(gNB, t);
     }
-    ImGui::End();
 
     // For reference
-    ImPlot::ShowDemoWindow();
-    ImGui::ShowDemoWindow();
+    if (show_implot_demo_window)
+      ImPlot::ShowDemoWindow();
+    if (show_imgui_demo_window)
+      ImGui::ShowDemoWindow();
 
     // Rendering
     ImGui::Render();
@@ -880,7 +931,8 @@ void unlockScopeData(enum scopeDataType type)
     total_size += scope_data.data_copied_per_offset[i];
   }
   if (total_size != (uint64_t)scope_data.scope_graph_data->dataSize) {
-    LOG_E(PHY, "Scope is missing data - not all data that was expected was copied - possibly missed copyDataUnsafeWithOffset call\n");
+    LOG_E(PHY,
+          "Scope is missing data - not all data that was expected was copied - possibly missed copyDataUnsafeWithOffset call\n");
   }
   scope_data.is_data_ready = true;
   scope_data.write_mutex.unlock();

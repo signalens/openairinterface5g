@@ -27,30 +27,24 @@
  * \version 1.0
  * @ingroup _ngap
  */
- 
 
+#include "ngap_gNB_context_management_procedures.h"
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdint.h>
-
+#include "INTEGER.h"
+#include "T.h"
 #include "assertions.h"
-#include "conversions.h"
-
+#include "common/utils/T/T.h"
 #include "intertask_interface.h"
-
+#include "ngap_msg_includes.h"
 #include "ngap_common.h"
 #include "ngap_gNB_defs.h"
-
-#include "ngap_gNB_itti_messaging.h"
-
 #include "ngap_gNB_encoder.h"
-#include "ngap_gNB_nnsf.h"
-#include "ngap_gNB_ue_context.h"
-#include "ngap_gNB_nas_procedures.h"
+#include "ngap_gNB_itti_messaging.h"
 #include "ngap_gNB_management_procedures.h"
-#include "ngap_gNB_context_management_procedures.h"
-#include "NGAP_PDUSessionResourceItemCxtRelReq.h"
-#include "NGAP_PDUSessionResourceItemCxtRelCpl.h"
+#include "ngap_gNB_ue_context.h"
+#include "oai_asn1.h"
 
 int ngap_ue_context_release_complete(instance_t instance,
                                      ngap_ue_release_complete_t *ue_release_complete_p)

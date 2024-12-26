@@ -32,6 +32,7 @@
 #define _GNU_SOURCE
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/sysinfo.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netdb.h>
@@ -222,11 +223,8 @@ char aname[256];
     tdata->numlines = 0;
   }
 
-  unsigned int eax = 11, ebx = 0, ecx = 1, edx = 0;
-
-  asm volatile("cpuid" : "=a"(eax), "=b"(ebx), "=c"(ecx), "=d"(edx) : "0"(eax), "2"(ecx) :);
-
-  prnt("System has %d cores %d threads %d Actual threads", eax, ebx, edx);
+  int nprocs = get_nprocs();
+  prnt("System has %d cores", nprocs);
 
   prnt("\n  id          name            state   USRmod    KRNmod  prio nice   vsize   proc pol \n\n");
   snprintf(aname, sizeof(aname), "/proc/%d/stat", getpid());

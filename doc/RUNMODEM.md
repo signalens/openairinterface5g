@@ -62,6 +62,8 @@ OAI supports different radio heads, the following are tested in the CI:
 ## NSA setup with COTS UE
 
 This setup requires an EPC, an OAI eNB and gNB, and a COTS Phone. A dedicated page describe the setup can be found [here](https://gitlab.eurecom.fr/oai/openairinterface5g/wikis/home/gNB-COTS-UE-testing).
+The `--nsa` flag must be used to run gNB in non-standalone mode.
+
 
 ### Launch eNB
 
@@ -72,29 +74,35 @@ sudo ./lte-softmodem -O ../../../targets/PROJECTS/GENERIC-LTE-EPC/CONF/enb.band7
 ### Launch gNB
 
 ```bash
-sudo ./nr-softmodem -O ../../../targets/PROJECTS/GENERIC-LTE-EPC/CONF/gnb.band78.tm1.106PRB.usrpn300.conf
+sudo ./nr-softmodem -O ../../../targets/PROJECTS/GENERIC-LTE-EPC/CONF/gnb.band78.tm1.106PRB.usrpn300.conf --nsa
 ```
 
 You should see the X2 messages in Wireshark and at the eNB.
 
 ## SA setup with OAI NR-UE
 
-The sa flag is used to run gNB in standalone mode.
+The standalone mode is the default mode. 
 
-In order to run gNB and UE in standalone mode, the `--sa` flag is needed.
+Before tag `2024.w45`, the default mode was NSA. Thus, in the past, to run
+either the gNB or the UE in standalone mode, it was necessary to provide the
+`--sa` flag in the command line. This is not necessary anymore; if in doubt,
+you can provide `--sa` on the command line. The gNB will ignore this option if
+not relevant; the UE might complain that it does not know this option, which
+means that standalone is already active.
 
-At the gNB the `--sa` flag does the following:
-- The RRC encodes SIB1 according to the configuration file and transmits it through NR-BCCH-DL-SCH.
+The default (SA) mode does the following:
+- At the gNB:
+* The RRC encodes SIB1 according to the configuration file and transmits it through NR-BCCH-DL-SCH.
 
-At the UE the --sa flag will:
-- Decode SIB1 and starts the 5G NR Initial Access Procedure for SA:
+- At the UE:
+* Decode SIB1 and starts the 5G NR Initial Access Procedure for SA:
   1) 5G-NR RRC Connection Setup
   2) NAS Authentication and Security
   3) 5G-NR AS Security Procedure
   4) 5G-NR RRC Reconfiguration
   5) Start Downlink and Uplink Data Transfer
 
-Command line parameters for UE in `--sa` mode:
+Command line parameters for UE in standalone mode:
 - `-C` : downlink carrier frequency in Hz (default value 0)
 - `--CO` : uplink frequency offset for FDD in Hz (default value 0)
 - `--numerology` : numerology index (default value 1)
@@ -111,8 +119,8 @@ To simplify the configuration for the user testing OAI UE with OAI gNB, the latt
 You can run this, using USRPs, on two separate machines:
 
 ```shell
-sudo ./nr-softmodem -O ../../../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb.sa.band78.fr1.106PRB.usrpb210.conf --gNBs.[0].min_rxtxtime 6 --sa
-sudo ./nr-uesoftmodem -r 106 --numerology 1 --band 78 -C 3619200000 --ssb 516 --sa
+sudo ./nr-softmodem -O ../../../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb.sa.band78.fr1.106PRB.usrpb210.conf --gNBs.[0].min_rxtxtime 6
+sudo ./nr-uesoftmodem -r 106 --numerology 1 --band 78 -C 3619200000 --ssb 516
 ```
 
 With the **RFsimulator** (on the same machine), just add the option `--rfsim` to both gNB and NR UE command lines.
@@ -159,7 +167,7 @@ This option is available for the following combinations of operation modes and g
 e.g.
 
 ```shell
-sudo ./nr-uesoftmodem --sa -r 106 --numerology 1 --band 78 -C 3319680000 --ue-nb-ant-tx 2 --ue-nb-ant-rx 2 --uecap_file /opt/oai-nr-ue/etc/uecap.xml
+sudo ./nr-uesoftmodem -r 106 --numerology 1 --band 78 -C 3319680000 --ue-nb-ant-tx 2 --ue-nb-ant-rx 2 --uecap_file /opt/oai-nr-ue/etc/uecap.xml
 ```
 
 ## How to run a NTN configuration
@@ -257,7 +265,7 @@ To enable this feature, the `disable_harq` flag has to be added to the gNB conf 
 So with these modifications to the file `targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb.sa.band66.fr1.25PRB.usrpx300.conf` an example gNB command for FDD, 5 MHz BW, 15 kHz SCS, transparent GEO satellite 5G NR NTN is this:
 ```
 cd cmake_targets
-sudo ./ran_build/build/nr-softmodem -O ../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb.sa.band66.fr1.25PRB.usrpx300.conf --sa --rfsim --rfsimulator.prop_delay 238.74
+sudo ./ran_build/build/nr-softmodem -O ../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb.sa.band66.fr1.25PRB.usrpx300.conf --rfsim --rfsimulator.prop_delay 238.74
 ```
 
 To configure NTN gNB with 32 HARQ processes in downlink and uplink, add these settings in conf files under section `gNBs.[0]`
@@ -276,7 +284,7 @@ To simulate a LEO satellite channel model with rfsimulator in UL (DL is simulate
 So with these modifications to the file `targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb.sa.band66.fr1.25PRB.usrpx300.conf` an example gNB command for FDD, 5 MHz BW, 15 kHz SCS, trasparent LEO satellite 5G NR NTN is this:
 ```
 cd cmake_targets
-sudo ./ran_build/build/nr-softmodem -O ../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb.sa.band66.fr1.25PRB.usrpx300.conf --sa --rfsim --rfsimulator.prop_delay 20
+sudo ./ran_build/build/nr-softmodem -O ../targets/PROJECTS/GENERIC-NR-5GC/CONF/gnb.sa.band66.fr1.25PRB.usrpx300.conf --rfsim --rfsimulator.prop_delay 20
 ```
 
 ### NR UE
@@ -288,7 +296,7 @@ At UE side, there are two main parameters to cope with the large NTN propagation
 So an example NR UE command for FDD, 5MHz BW, 15 kHz SCS, transparent GEO satellite 5G NR NTN is this:
 ```
 cd cmake_targets
-sudo ./ran_build/build/nr-uesoftmodem --band 66 -C 2152680000 --CO -400000000 -r 25 --numerology 0 --ssb 48 --sa --rfsim --rfsimulator.prop_delay 238.74 --ntn-koffset 478 --ntn-ta-common 477.48
+sudo ./ran_build/build/nr-uesoftmodem --band 66 -C 2152680000 --CO -400000000 -r 25 --numerology 0 --ssb 48 --rfsim --rfsimulator.prop_delay 238.74 --ntn-koffset 478 --ntn-ta-common 477.48
 ```
 
 For LEO satellites a third parameter specifying the NTN propagation delay drift has ben added, ta-CommonDrift.
@@ -298,7 +306,7 @@ Also, to perform an autonomous TA update based on the DL drift, the boolean para
 So an example NR UE command for FDD, 5MHz BW, 15 kHz SCS, transparent LEO satellite 5G NR NTN is this:
 ```
 cd cmake_targets
-sudo ./ran_build/build/nr-uesoftmodem --band 66 -C 2152680000 --CO -400000000 -r 25 --numerology 0 --ssb 48 --sa --rfsim --rfsimulator.prop_delay 20 --rfsimulator.options chanmod -O ../targets/PROJECTS/GENERIC-NR-5GC/CONF/channelmod_rfsimu_LEO_satellite.conf --time-sync-I 0.2 --ntn-koffset 40 --ntn-ta-common 37.74 --ntn-ta-commondrift -50 --autonomous-ta
+sudo ./ran_build/build/nr-uesoftmodem --band 66 -C 2152680000 --CO -400000000 -r 25 --numerology 0 --ssb 48 --rfsim --rfsimulator.prop_delay 20 --rfsimulator.options chanmod -O ../targets/PROJECTS/GENERIC-NR-5GC/CONF/channelmod_rfsimu_LEO_satellite.conf --time-sync-I 0.2 --ntn-koffset 40 --ntn-ta-common 37.74 --ntn-ta-commondrift -50 --autonomous-ta
 ```
 
 # Specific OAI modes

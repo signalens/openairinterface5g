@@ -33,12 +33,14 @@
 #ifndef __PHY_DEFS_GNB__H__
 #define __PHY_DEFS_GNB__H__
 
+#include "common/platform_constants.h"
 #include "defs_nr_common.h"
 #include "CODING/nrPolar_tools/nr_polar_pbch_defs.h"
 #include "openair2/NR_PHY_INTERFACE/NR_IF_Module.h"
 #include "PHY/NR_TRANSPORT/nr_transport_common_proto.h"
 #include "PHY/impl_defs_top.h"
 #include "PHY/defs_common.h"
+#include "PHY/CODING/nrLDPC_coding/nrLDPC_coding_interface.h"
 #include "PHY/CODING/nrLDPC_extern.h"
 #include "PHY/CODING/nrLDPC_decoder/nrLDPC_types.h"
 #include "executables/rt_profiling.h"
@@ -493,9 +495,10 @@ typedef struct PHY_VARS_gNB_s {
   /// OFDM symbol offset divisor for UL
   uint32_t ofdm_offset_divisor;
 
-  int ldpc_offload_flag;
-
+  /// NR LDPC coding related
+  nrLDPC_coding_interface_t nrLDPC_coding_interface;
   int max_ldpc_iterations;
+
   /// indicate the channel estimation technique in time domain
   int chest_time;
   /// indicate the channel estimation technique in freq domain
@@ -514,7 +517,7 @@ typedef struct PHY_VARS_gNB_s {
   int srs_thres;
   uint64_t bad_pucch;
   int num_ulprbbl;
-  int ulprbbl[275];
+  uint16_t ulprbbl [MAX_BWP_SIZE];
 
   time_stats_t phy_proc_tx;
   time_stats_t phy_proc_rx;
@@ -543,6 +546,7 @@ typedef struct PHY_VARS_gNB_s {
   time_stats_t ulsch_decoding_stats;
   time_stats_t ulsch_deinterleaving_stats;
   time_stats_t ulsch_channel_estimation_stats;
+  time_stats_t pusch_channel_estimation_antenna_processing_stats;
   time_stats_t ulsch_llr_stats;
   time_stats_t rx_srs_stats;
   time_stats_t generate_srs_stats;
@@ -562,7 +566,10 @@ typedef struct PHY_VARS_gNB_s {
   notifiedFIFO_t L1_rx_out;
   notifiedFIFO_t resp_RU_tx;
   tpool_t threadPool;
+  int nbSymb;
+  int nbAarx;
   int num_pusch_symbols_per_thread;
+  int dmrs_num_antennas_per_thread;
   pthread_t L1_rx_thread;
   int L1_rx_thread_core;
   pthread_t L1_tx_thread;
@@ -570,7 +577,7 @@ typedef struct PHY_VARS_gNB_s {
   struct processingData_L1tx *msgDataTx;
   void *scopeData;
   /// structure for analyzing high-level RT measurements
-  rt_L1_profiling_t rt_L1_profiling; 
+  rt_L1_profiling_t rt_L1_profiling;
 } PHY_VARS_gNB;
 
 struct puschSymbolReqId {
@@ -582,6 +589,38 @@ struct puschSymbolReqId {
 
 union puschSymbolReqUnion {
   struct puschSymbolReqId s;
+  uint64_t p;
+};
+
+typedef struct puschAntennaProc_s {
+  unsigned char Ns;
+  int nl;
+  unsigned short p;
+  unsigned char symbol;
+  unsigned short bwp_start_subcarrier;
+  int aarx;
+  int beam_nb;
+  int numAntennas;
+  nfapi_nr_pusch_pdu_t *pusch_pdu;
+  int *max_ch;
+  c16_t *pilot;
+  int *nest_count;
+  uint64_t *noise_amp2;
+  delay_t *delay;
+  int chest_freq;
+  NR_gNB_PUSCH *pusch_vars;
+  NR_DL_FRAME_PARMS *frame_parms;
+  c16_t ***rxdataF;
+  task_ans_t* ans;
+} puschAntennaProc_t;
+
+struct puschAntennaReqId {
+  uint16_t ul_id;
+  uint16_t spare;
+} __attribute__((packed));
+
+union puschAntennaReqUnion {
+  struct puschAntennaReqId s;
   uint64_t p;
 };
 
@@ -605,6 +644,7 @@ typedef struct LDPCDecode_s {
   int offset;
   int decodeIterations;
   uint32_t tbslbrm;
+  task_ans_t *ans;
 } ldpcDecode_t;
 
 struct ldpcReqId {
@@ -625,6 +665,7 @@ typedef struct processingData_L1 {
   int slot_rx;
   openair0_timestamp timestamp_tx;
   PHY_VARS_gNB *gNB;
+  notifiedFIFO_elt_t *elt;
 } processingData_L1_t;
 
 typedef struct processingData_L1tx {

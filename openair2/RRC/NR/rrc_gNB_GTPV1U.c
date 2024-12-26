@@ -27,20 +27,14 @@
  * \email: lionel.gauthier@eurecom.fr, panagiotis.matzakos@eurecom.fr
  */
 
-# include "rrc_defs.h"
-# include "rrc_extern.h"
-# include "RRC/LTE/MESSAGES/asn1_msg.h"
-# include "rrc_eNB_GTPV1U.h"
-# include "rrc_eNB_UE_context.h"
-# include "openair2/RRC/NR/rrc_gNB_UE_context.h"
-
-//# if defined(ENABLE_ITTI)
-#   include "oai_asn1.h"
-#   include "intertask_interface.h"
-//#endif
-
-# include "common/ran_context.h"
 #include "openair2/RRC/NR/rrc_gNB_GTPV1U.h"
+#include "LOG/log.h"
+#include "RRC/NR/nr_rrc_defs.h"
+#include "common/ran_context.h"
+#include "openair2/RRC/NR/rrc_gNB_UE_context.h"
+#include "rrc_defs.h"
+#include "rrc_eNB_GTPV1U.h"
+#include "s1ap_messages_types.h"
 
 extern RAN_CONTEXT_t RC;
 

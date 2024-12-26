@@ -91,19 +91,12 @@ static struct {
 /*
  * The buffer used to receive data from the network sublayer
  */
-#define NETWORK_API_RECV_BUFFER_SIZE  4096
-static char _network_api_recv_buffer[NETWORK_API_RECV_BUFFER_SIZE];
+#define NETWORK_API_RECV_BUFFER_SIZE 4096
 
 /*
  * The buffer used to send data to the network sublayer
  */
-#define NETWORK_API_SEND_BUFFER_SIZE  NETWORK_API_RECV_BUFFER_SIZE
-static char _network_api_send_buffer[NETWORK_API_SEND_BUFFER_SIZE];
-
-/*
- * The decoded data received from the network sublayer
- */
-static as_message_t _as_data = {};  /* Access Stratum message     */
+#define NETWORK_API_SEND_BUFFER_SIZE NETWORK_API_RECV_BUFFER_SIZE
 
 /****************************************************************************/
 /******************  E X P O R T E D    F U N C T I O N S  ******************/
@@ -148,6 +141,7 @@ int network_api_initialize(const char* host, const char* port)
               ((errno < 0) ? gai_strerror(errno) : strerror(errno)));
     LOG_FUNC_RETURN (RETURNerror);
   }
+  char _network_api_send_buffer[NETWORK_API_SEND_BUFFER_SIZE];
 
   gethostname(_network_api_send_buffer, NETWORK_API_SEND_BUFFER_SIZE);
   LOG_TRACE(INFO, "NET-API   - Network's UDP socket %d is BOUND to %s/%s",
@@ -179,27 +173,6 @@ int network_api_get_fd(void)
 
 /****************************************************************************
  **                                                                        **
- ** Name:  network_api_get_data()                                    **
- **                                                                        **
- ** Description: Get a generic pointer to the network data structure.      **
- **    Casting to the proper type is necessary before its usage. **
- **                                                                        **
- ** Inputs:  None                                                      **
- **      Others:  _as_data                                   **
- **                                                                        **
- ** Outputs:   Return:  A generic pointer to the network data      **
- **       structure                                  **
- **      Others:  None                                       **
- **                                                                        **
- ***************************************************************************/
-const void* network_api_get_data(void)
-{
-  LOG_FUNC_IN;
-  LOG_FUNC_RETURN ((void*)(&_as_data));
-}
-
-/****************************************************************************
- **                                                                        **
  ** Name:  network_api_read_data()                                   **
  **                                                                        **
  ** Description: Read data received from the network sublayer              **
@@ -213,7 +186,7 @@ const void* network_api_get_data(void)
  **      Others:  _network_api_recv_buffer, _network_api_id  **
  **                                                                        **
  ***************************************************************************/
-int network_api_read_data(int fd)
+int network_api_read_data(int fd, char* _network_api_recv_buffer)
 {
   LOG_FUNC_IN;
 
@@ -263,7 +236,7 @@ int network_api_read_data(int fd)
  **      Others:  None                                       **
  **                                                                        **
  ***************************************************************************/
-int network_api_send_data(int fd, int length)
+static int network_api_send_data(int fd, int length, char* _network_api_send_buffer)
 {
   LOG_FUNC_IN;
 
@@ -346,12 +319,12 @@ void network_api_close(int fd)
  **      Others:  _as_data                                   **
  **                                                                        **
  ***************************************************************************/
-int network_api_decode_data(int length)
+int network_api_decode_data(char* _network_api_recv_buffer, int length, as_message_t* _as_data)
 {
   LOG_FUNC_IN;
 
   /* Decode the Access Stratum message received from the network */
-  int as_id = as_message_decode(_network_api_recv_buffer, &_as_data, length);
+  int as_id = as_message_decode(_network_api_recv_buffer, _as_data, length);
 
   if (as_id != RETURNerror) {
     LOG_TRACE(INFO, "NET-API   - AS message id=0x%x successfully decoded",
@@ -376,7 +349,7 @@ int network_api_decode_data(int length)
  **      Others:  _network_api_send_buffer                   **
  **                                                                        **
  ***************************************************************************/
-int network_api_encode_data(void* data)
+static int network_api_encode_data(void* data, char* _network_api_send_buffer)
 {
   LOG_FUNC_IN;
 
@@ -415,9 +388,10 @@ int as_message_send(as_message_t* as_msg)
 
   LOG_TRACE(INFO, "NET-API   - Send message 0x%.4x to the Access Stratum "
             "layer", as_msg->msgID);
+  char _network_api_send_buffer[NETWORK_API_SEND_BUFFER_SIZE];
 
   /* Encode the AS message */
-  bytes = network_api_encode_data(as_msg);
+  bytes = network_api_encode_data(as_msg, _network_api_send_buffer);
 
   if (bytes > 0) {
     /* Get the network file descriptor */
@@ -425,7 +399,7 @@ int as_message_send(as_message_t* as_msg)
 
     if (fd != RETURNerror) {
       /* Send the AS message to the network */
-      bytes = network_api_send_data(fd, bytes);
+      bytes = network_api_send_data(fd, bytes, _network_api_send_buffer);
     }
   }
 

@@ -139,7 +139,7 @@ Note: A 5G core must be running at this point. Steps to start the OAI 5G core ca
 
 1. Start the CUCP first by running the following command
 ```
-sudo ./nr-softmodem -O ../../../ci-scripts/conf_files/gnb-cucp.sa.f1.conf --gNBs.[0].min_rxtxtime 6 --sa
+sudo ./nr-softmodem -O ../../../ci-scripts/conf_files/gnb-cucp.sa.f1.conf --gNBs.[0].min_rxtxtime 6
 ```
 
 Note that `min_rxtxtime` should be set to `6` only when you are connecting an OAI UE to the gNB.
@@ -148,12 +148,12 @@ Note that `min_rxtxtime` should be set to `6` only when you are connecting an OA
 
 CUUP (has its own executable):
 ```
-sudo ./nr-cuup -O ../../../ci-scripts/conf_files/gnb-cuup.sa.f1.conf --sa
+sudo ./nr-cuup -O ../../../ci-scripts/conf_files/gnb-cuup.sa.f1.conf
 ```
 
 DU:
 ```
-sudo ./nr-softmodem -O ../../../ci-scripts/conf_files/gNB_SA_DU.conf --rfsim --sa
+sudo ./nr-softmodem -O ../../../ci-scripts/conf_files/gNB_SA_DU.conf --rfsim
 ```
 
 You need to use  `--rfsim` if you are running the test with rfsimulator.
@@ -162,7 +162,7 @@ You need to use  `--rfsim` if you are running the test with rfsimulator.
 
 OAI UE:
 ```
-sudo ./nr-uesoftmodem -r 106 --numerology 1 --band 78 -C 3619200000 --rfsim --sa --rfsimulator.serveraddr 127.0.0.1
+sudo ./nr-uesoftmodem -r 106 --numerology 1 --band 78 -C 3619200000 --rfsim --rfsimulator.serveraddr 127.0.0.1
 ```
 
 # 3. Configuration file IP addresses of network functions

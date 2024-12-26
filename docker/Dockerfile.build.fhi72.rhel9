@@ -43,10 +43,10 @@ RUN wget http://fast.dpdk.org/rel/dpdk-20.11.9.tar.xz && \
 ## Build Fronthaul library
 RUN git clone https://gerrit.o-ran-sc.org/r/o-du/phy.git /opt/phy && \
     cd /opt/phy && \
-    git checkout oran_e_maintenance_release_v1.0 &&\
-    git apply /oai-ran/cmake_targets/tools/oran_fhi_integration_patches/E/oaioran_E.patch && \
+    git checkout oran_f_release_v1.0 &&\
+    git apply /oai-ran/cmake_targets/tools/oran_fhi_integration_patches/F/oaioran_F.patch && \
     cd /opt/phy/fhi_lib/lib && \
-    RTE_SDK=/oai-ran/dpdk-stable-20.11.9/ XRAN_DIR=/opt/phy/fhi_lib make XRAN_LIB_SO=1 
+    WIRELESS_SDK_TOOLCHAIN=gcc RTE_SDK=/oai-ran/dpdk-stable-20.11.9/ XRAN_DIR=/opt/phy/fhi_lib make XRAN_LIB_SO=1 
 
 FROM ran-base AS ran-build-fhi72
 ARG E2AP_VERSION=E2AP_V3

@@ -73,7 +73,7 @@ def OC_deploy_CN(cmd, ocUserName, ocPassword, ocNamespace, path):
 	if not succeeded:
 		return False, CONST.OC_LOGIN_FAIL
 	cmd.run('helm uninstall oai5gcn --wait --timeout 60s')
-	ret = cmd.run(f'helm install --wait --timeout 60s oai5gcn {path}/ci-scripts/charts/oai-5g-basic/.')
+	ret = cmd.run(f'helm install --wait --timeout 120s oai5gcn {path}/ci-scripts/charts/oai-5g-basic/.')
 	if ret.returncode != 0:
 		logging.error('OC OAI CN5G: Deployment failed')
 		OC_logout(cmd)
@@ -126,8 +126,6 @@ class Cluster:
 		self.ranAllowMerge = False
 		self.ranTargetBranch = ""
 		self.cmd = None
-		self.imageToPull = ''
-		self.testSvrId = None
 
 	def _recreate_entitlements(self):
 		# recreating entitlements, don't care if deletion fails
@@ -240,44 +238,30 @@ class Cluster:
 	def _undeploy_pod(self, filename):
 		self.cmd.run(f'oc delete -f {filename}')
 
-	def PullClusterImage(self, HTML, RAN):
-		if self.testSvrId == None: self.testSvrId = self.eNBIPAddress
-		if self.imageToPull == '':
-			HELP.GenericHelp(CONST.Version)
-			raise ValueError('Insufficient Parameter')
-		logging.debug(f'Pull OC image {self.imageToPull} to server {self.testSvrId}')
+	def PullClusterImage(self, HTML, node, images):
+		logging.debug(f'Pull OC image {images} to server {node}')
 		self.testCase_id = HTML.testCase_id
-		cmd = cls_cmd.getConnection(self.testSvrId)
-		logging.info(cmd.run('docker --version'))
-		succeeded = OC_login(cmd, self.OCUserName, self.OCPassword, CI_OC_RAN_NAMESPACE)
-		if not succeeded:
-			logging.error('\u001B[1m OC Cluster Login Failed\u001B[0m')
-			HTML.CreateHtmlTestRow('N/A', 'KO', CONST.OC_LOGIN_FAIL)
-			return False
-		ret = cmd.run(f'oc whoami -t | docker login -u oaicicd --password-stdin {self.OCRegistry}')
-		if ret.returncode != 0:
-			logging.error(f'\u001B[1m Unable to access OC project {CI_OC_RAN_NAMESPACE}\u001B[0m')
-			OC_logout(cmd)
-			cmd.close()
-			HTML.CreateHtmlTestRow('N/A', 'KO', CONST.OC_LOGIN_FAIL)
-			return False
-		for image in self.imageToPull:
-			imagePrefix = f'{self.OCRegistry}/{CI_OC_RAN_NAMESPACE}'
-			tag = cls_containerize.CreateTag(self.ranCommitID, self.ranBranch, self.ranAllowMerge)
-			imageTag = f"{image}:{tag}"
-			ret = cmd.run(f'docker pull {imagePrefix}/{imageTag}')
-			if ret.returncode != 0:
-				logging.error(f'Could not pull {image} from local registry : {self.OCRegistry}')
-				OC_logout(cmd)
-				cmd.close()
-				HTML.CreateHtmlTestRow('msg', 'KO', CONST.ALL_PROCESSES_OK)
+		with cls_cmd.getConnection(node) as cmd:
+			succeeded = OC_login(cmd, self.OCUserName, self.OCPassword, CI_OC_RAN_NAMESPACE)
+			if not succeeded:
+				HTML.CreateHtmlTestRow('N/A', 'KO', CONST.OC_LOGIN_FAIL)
 				return False
-			cmd.run(f'docker tag {imagePrefix}/{imageTag} oai-ci/{imageTag}')
-			cmd.run(f'docker rmi {imagePrefix}/{imageTag}')
-		OC_logout(cmd)
-		cmd.close()
-		HTML.CreateHtmlTestRow('N/A', 'OK', CONST.ALL_PROCESSES_OK)
-		return True
+			ret = cmd.run(f'oc whoami -t | docker login -u oaicicd --password-stdin {self.OCRegistry}')
+			if ret.returncode != 0:
+				logging.error(f'cannot authenticate at registry')
+				OC_logout(cmd)
+				HTML.CreateHtmlTestRow('N/A', 'KO', CONST.OC_LOGIN_FAIL)
+				return False
+			tag = cls_containerize.CreateTag(self.ranCommitID, self.ranBranch, self.ranAllowMerge)
+			registry = f'{self.OCRegistry}/{CI_OC_RAN_NAMESPACE}'
+			success, msg = cls_containerize.Containerize.Pull_Image(cmd, images, tag, registry, None, None)
+			OC_logout(cmd)
+		param = f"on node {node}"
+		if success:
+			HTML.CreateHtmlTestRowQueue(param, 'OK', [msg])
+		else:
+			HTML.CreateHtmlTestRowQueue(param, 'KO', [msg])
+		return success
 
 	def BuildClusterImage(self, HTML):
 		if self.ranRepository == '' or self.ranBranch == '' or self.ranCommitID == '':

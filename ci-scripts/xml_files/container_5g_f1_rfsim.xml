@@ -34,6 +34,17 @@
  030020
  030021
  030022
+ 040001
+ 020022
+ 040002
+ 030021
+ 030022
+ 040021
+ 000030
+ 040022
+ 040023
+ 020022
+ 040024
  100021
  222222
         </TestCaseRequestedList>
@@ -42,8 +53,8 @@
         <testCase id="111111">
                 <class>Pull_Local_Registry</class>
                 <desc>Pull Images from Local Registry</desc>
-                <test_svr_id>0</test_svr_id>
-                <images_to_pull>oai-gnb-asan oai-nr-cuup-asan oai-nr-ue-asan</images_to_pull>
+                <svr_id>0</svr_id>
+                <images>oai-gnb-asan oai-nr-cuup-asan oai-nr-ue-asan</images>
         </testCase>
         <testCase id="800813">
                 <class>Create_Workspace</class>
@@ -67,6 +78,12 @@
                 <services>oai-cu oai-du oai-nr-ue</services>
                 <eNB_instance>0</eNB_instance>
                 <eNB_serverId>0</eNB_serverId>
+        </testCase>
+
+        <testCase id="000030">
+                <class>IdleSleep</class>
+                <desc>Sleep</desc>
+                <idle_sleep_time_in_sec>5</idle_sleep_time_in_sec>
         </testCase>
 
         <testCase id="000023">
@@ -117,11 +134,36 @@
                 <iperf_bitrate_threshold>90</iperf_bitrate_threshold>
         </testCase>
 
+        <testCase id="040001">
+                <class>Custom_Command</class>
+                <desc>Trigger Reestablishment</desc>
+                <node>cacofonix</node>
+                <command>echo ci force_reestab | nc 192.168.71.171 9090 | grep -E 'Reset RLC counters of UE RNTI [0-9a-f]{4} to trigger reestablishment'</command>
+                <command_fail>yes</command_fail>
+        </testCase>
+
+        <testCase id="020022">
+                <class>Ping</class>
+                <desc>Ping ext-dn from all NR-UEs</desc>
+                <id>rfsim5g_ue</id>
+                <nodes>cacofonix</nodes>
+                <ping_args> -c 20 192.168.72.135 -i0.5 -w25</ping_args>
+                <ping_packetloss_threshold>80</ping_packetloss_threshold>
+        </testCase>
+
+        <testCase id="040002">
+                <class>Custom_Command</class>
+                <desc>Verify Reestablishment</desc>
+                <node>cacofonix</node>
+                <command>echo ci get_reestab_count | nc 192.168.71.150 9090 | grep -E 'UE RNTI [0-9a-f]{4} reestab 1'</command>
+                <command_fail>yes</command_fail>
+        </testCase>
+
         <testCase id="040021">
                 <class>Custom_Command</class>
-                <desc>Simulate a disruption of DL radio channel (ploss 55)(5 sec)</desc>
+                <desc>Simulate a disruption of DL radio channel (ploss 55)</desc>
                 <node>cacofonix</node>
-                <command>echo channelmod modify 0 ploss 55 | nc -N 192.168.71.181 8091 &amp;&amp; sleep 5</command>
+                <command>echo channelmod modify 0 ploss 55 | nc 192.168.71.181 8091</command>
                 <command_fail>yes</command_fail>
         </testCase>
 
@@ -129,15 +171,15 @@
                 <class>Custom_Command</class>
                 <desc>Get UE sync state (UE ID 0)</desc>
                 <node>cacofonix</node>
-                <command>echo ciUE sync_state 0 | nc -N 192.168.71.181 8091 | grep -E UE_NOT_SYNC</command>
+                <command>echo ciUE sync_state 0 | nc 192.168.71.181 8091 | grep -E UE_NOT_SYNC</command>
                 <command_fail>yes</command_fail>
         </testCase>
 
         <testCase id="040023">
                 <class>Custom_Command</class>
-                <desc>Restoration of the original DL channel conditions (ploss 0)(5 sec)</desc>
+                <desc>Restoration of the original DL channel conditions (ploss 20)</desc>
                 <node>cacofonix</node>
-                <command>echo channelmod modify 0 ploss 0 | nc -N 192.168.71.181 8091 &amp;&amp; sleep 5</command>
+                <command>echo channelmod modify 0 ploss 20 | nc 192.168.71.181 8091</command>
                 <command_fail>yes</command_fail>
         </testCase>
 
@@ -145,7 +187,7 @@
                 <class>Custom_Command</class>
                 <desc>Get UE sync state (UE ID 0)</desc>
                 <node>cacofonix</node>
-                <command>echo ciUE sync_state 0 | nc -N 192.168.71.181 8091 | grep -E UE_CONNECTED &amp;&amp; sleep 10</command>
+                <command>echo ciUE sync_state 0 | nc 192.168.71.181 8091 | grep -E UE_CONNECTED</command>
                 <command_fail>yes</command_fail>
         </testCase>
 
@@ -154,8 +196,8 @@
                 <always_exec>true</always_exec>
                 <desc>Undeploy all OAI 5G stack</desc>
                 <yaml_path>ci-scripts/yaml_files/5g_f1_rfsimulator</yaml_path>
-                <d_retx_th>30,30,100,100</d_retx_th>
-                <u_retx_th>30,30,100,100</u_retx_th>
+                <d_retx_th>30,100,100,100</d_retx_th>
+                <u_retx_th>30,100,100,100</u_retx_th>
                 <eNB_instance>0</eNB_instance>
                 <eNB_serverId>0</eNB_serverId>
         </testCase>
@@ -164,7 +206,8 @@
                 <class>Clean_Test_Server_Images</class>
                 <always_exec>true</always_exec>
                 <desc>Clean Test Images on Test Server</desc>
-                <test_svr_id>0</test_svr_id>
+                <svr_id>0</svr_id>
+                <images>oai-gnb-asan oai-nr-cuup-asan oai-nr-ue-asan</images>
         </testCase>
 
 </testCaseList>

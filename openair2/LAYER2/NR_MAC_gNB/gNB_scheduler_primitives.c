@@ -782,6 +782,7 @@ void config_uldci(const NR_UE_ServingCell_Info_t *sc_info,
                   const nfapi_nr_pusch_pdu_t *pusch_pdu,
                   dci_pdu_rel15_t *dci_pdu_rel15,
                   nr_srs_feedback_t *srs_feedback,
+                  int *tpmi,
                   int time_domain_assignment,
                   uint8_t tpc,
                   uint8_t ndi,
@@ -830,6 +831,7 @@ void config_uldci(const NR_UE_ServingCell_Info_t *sc_info,
                                     dci_pdu_rel15->srs_resource_indicator,
                                     srs_feedback,
                                     &pusch_pdu->nrOfLayers,
+                                    tpmi,
                                     &dci_pdu_rel15->precoding_information.val);
 
       // antenna_ports.val = 0 for transform precoder is disabled, dmrs-Type=1, maxLength=1, Rank=1/2/3/4
@@ -2731,10 +2733,6 @@ void nr_csirs_scheduling(int Mod_idP, frame_t frame, sub_frame_t slot, int n_slo
 
   NR_SCHED_ENSURE_LOCKED(&gNB_mac->sched_lock);
 
-  // TODO implement beam procedures
-  int beam = 0;
-  uint16_t *vrb_map = gNB_mac->common_channels[CC_id].vrb_map[beam];
-
   UE_info->sched_csirs = 0;
 
   UE_iterator(UE_info->list, UE) {
@@ -2766,8 +2764,7 @@ void nr_csirs_scheduling(int Mod_idP, frame_t frame, sub_frame_t slot, int n_slo
       }
     }
 
-    if (csi_measconfig->nzp_CSI_RS_ResourceToAddModList != NULL &&
-        nzp != NULL) {
+    if (csi_measconfig->nzp_CSI_RS_ResourceToAddModList != NULL && nzp != NULL) {
 
       NR_NZP_CSI_RS_Resource_t *nzpcsi;
       int period, offset;
@@ -2781,12 +2778,14 @@ void nr_csirs_scheduling(int Mod_idP, frame_t frame, sub_frame_t slot, int n_slo
           continue;
 
         NR_CSI_RS_ResourceMapping_t  resourceMapping = nzpcsi->resourceMapping;
-        csi_period_offset(NULL,nzpcsi->periodicityAndOffset,&period,&offset);
+        csi_period_offset(NULL, nzpcsi->periodicityAndOffset, &period, &offset);
 
-        if((frame*n_slots_frame+slot-offset)%period == 0) {
+        if((frame * n_slots_frame + slot - offset) % period == 0) {
 
-          LOG_D(NR_MAC,"Scheduling CSI-RS in frame %d slot %d Resource ID %ld\n",
-                frame, slot, nzpcsi->nzp_CSI_RS_ResourceId);
+          LOG_D(NR_MAC,"Scheduling CSI-RS in frame %d slot %d Resource ID %ld\n", frame, slot, nzpcsi->nzp_CSI_RS_ResourceId);
+          NR_beam_alloc_t beam_csi = beam_allocation_procedure(&gNB_mac->beam_info, frame, slot, UE->UE_beam_index, n_slots_frame);
+          AssertFatal(beam_csi.idx >= 0, "Cannot allocate CSI-RS in any available beam\n");
+          uint16_t *vrb_map = gNB_mac->common_channels[CC_id].vrb_map[beam_csi.idx];
           UE_info->sched_csirs |= (1 << dl_bwp->bwp_id);
 
           nfapi_nr_dl_tti_request_pdu_t *dl_tti_csirs_pdu = &dl_req->dl_tti_pdu_list[dl_req->nPDUs];
@@ -2795,6 +2794,11 @@ void nr_csirs_scheduling(int Mod_idP, frame_t frame, sub_frame_t slot, int n_slo
           dl_tti_csirs_pdu->PDUSize = (uint8_t)(2+sizeof(nfapi_nr_dl_tti_csi_rs_pdu));
 
           nfapi_nr_dl_tti_csi_rs_pdu_rel15_t *csirs_pdu_rel15 = &dl_tti_csirs_pdu->csi_rs_pdu.csi_rs_pdu_rel15;
+          csirs_pdu_rel15->precodingAndBeamforming.num_prgs = 1;
+          csirs_pdu_rel15->precodingAndBeamforming.prg_size = resourceMapping.freqBand.nrofRBs; //1 PRG of max size
+          csirs_pdu_rel15->precodingAndBeamforming.dig_bf_interfaces = 1;
+          csirs_pdu_rel15->precodingAndBeamforming.prgs_list[0].pm_idx = 0;
+          csirs_pdu_rel15->precodingAndBeamforming.prgs_list[0].dig_bf_interface_list[0].beam_idx = UE->UE_beam_index;
           csirs_pdu_rel15->bwp_size = dl_bwp->BWPSize;
           csirs_pdu_rel15->bwp_start = dl_bwp->BWPStart;
           csirs_pdu_rel15->subcarrier_spacing = dl_bwp->scs;
@@ -2964,8 +2968,9 @@ void nr_csirs_scheduling(int Mod_idP, frame_t frame, sub_frame_t slot, int n_slo
 
 static void nr_mac_clean_cellgroup(NR_CellGroupConfig_t *cell_group)
 {
+  DevAssert(cell_group != NULL);
   /* remove a reconfigurationWithSync, we don't need it anymore */
-  if (cell_group->spCellConfig->reconfigurationWithSync != NULL) {
+  if (cell_group->spCellConfig && cell_group->spCellConfig->reconfigurationWithSync != NULL) {
     ASN_STRUCT_FREE(asn_DEF_NR_ReconfigurationWithSync, cell_group->spCellConfig->reconfigurationWithSync);
     cell_group->spCellConfig->reconfigurationWithSync = NULL;
   }
@@ -3006,7 +3011,7 @@ static void nr_mac_apply_cellgroup(gNB_MAC_INST *mac, NR_UE_info_t *UE, frame_t 
 
   reset_srs_stats(UE);
 
-  if (get_softmodem_params()->sa) {
+  if (IS_SA_MODE(get_softmodem_params())) {
     // add all available DL,UL HARQ processes for this UE in SA
     create_dl_harq_list(sched_ctrl, &UE->sc_info);
     create_ul_harq_list(sched_ctrl, &UE->sc_info);
@@ -3318,7 +3323,7 @@ bool nr_mac_request_release_ue(const gNB_MAC_INST *nrmac, int rnti)
     .gNB_CU_ue_id = ue_data.secondary_ue,
     .gNB_DU_ue_id = rnti,
     .cause = F1AP_CAUSE_RADIO_NETWORK,
-    .cause_value = F1AP_CauseRadioNetwork_rl_failure_others,
+    .cause_value = F1AP_CauseRadioNetwork_rl_failure_rlc,
   };
   nrmac->mac_rrc.ue_context_release_request(&request);
   return true;

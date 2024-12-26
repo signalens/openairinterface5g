@@ -19,9 +19,13 @@
  *      contact@openairinterface.org
  */
 
-#include "nr_rrc_defs.h"
-
+#include <netinet/in.h>
+#include <netinet/sctp.h>
+#include <stdbool.h>
+#include "assertions.h"
+#include "f1ap_messages_types.h"
 #include "mac_rrc_dl.h"
+#include "nr_rrc_defs.h"
 #include "openair2/LAYER2/NR_MAC_gNB/mac_rrc_dl_handler.h"
 
 static void f1_reset_cu_initiated_direct(sctp_assoc_t assoc_id, const f1ap_reset_t *reset)

@@ -35,14 +35,9 @@
 #define __NR_RRC_PROTO_H__
 
 #include "RRC/NR/nr_rrc_defs.h"
-#include "NR_RRCReconfiguration.h"
-#include "NR_UE-NR-Capability.h"
-#include "NR_UE-CapabilityRAT-ContainerList.h"
-#include "LTE_UE-CapabilityRAT-ContainerList.h"
 #include "NR_CG-Config.h"
 #include "NR_CG-ConfigInfo.h"
-#include "NR_SecurityConfig.h"
-#include "NR_CellGroupConfig.h"
+#include "NR_RRCReconfiguration.h"
 
 #define NR_MAX_SUPPORTED_DL_LAYERS 4
 

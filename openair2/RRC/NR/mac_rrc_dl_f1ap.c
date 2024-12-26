@@ -19,8 +19,15 @@
  *      contact@openairinterface.org
  */
 
+#include <netinet/in.h>
+#include <netinet/sctp.h>
+#include <stdbool.h>
+#include <stdint.h>
 #include <stdlib.h>
-
+#include <string.h>
+#include "assertions.h"
+#include "f1ap_messages_types.h"
+#include "intertask_interface.h"
 #include "mac_rrc_dl.h"
 #include "nr_rrc_defs.h"
 #include "openair2/F1AP/lib/f1ap_rrc_message_transfer.h"

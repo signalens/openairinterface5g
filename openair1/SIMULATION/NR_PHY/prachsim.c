@@ -19,40 +19,54 @@
  *      contact@openairinterface.org
  */
 
-#include <string.h>
+
 #include <math.h>
-#include <unistd.h>
-#include <pthread.h>
-
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include "common/utils/assertions.h"
+#include "executables/softmodem-common.h"
+#include "common/platform_types.h"
+#include "openair2/LAYER2/NR_MAC_COMMON/nr_mac_common.h"
+#include "NR_PHY_INTERFACE/NR_IF_Module.h"
 #include "common/config/config_userapi.h"
-#include "common/utils/load_module_shlib.h"
-#include "common/utils/LOG/log.h"
-#include "common/ran_context.h" 
-
-#include "SIMULATION/TOOLS/sim.h"
-#include "SIMULATION/RF/rf.h"
-#include "PHY/types.h"
-#include "PHY/defs_gNB.h"
 #include "PHY/defs_nr_UE.h"
-#include "SCHED_NR/sched_nr.h"
-#include "SCHED_NR_UE/phy_frame_config_nr.h"
-#include "PHY/phy_vars_nr_ue.h"
-#include "PHY/NR_REFSIG/refsig_defs_ue.h"
-#include "PHY/MODULATION/nr_modulation.h"
-#include "PHY/MODULATION/modulation_eNB.h"
-#include "PHY/MODULATION/modulation_UE.h"
 #include "PHY/INIT/nr_phy_init.h"
-#include "PHY/NR_TRANSPORT/nr_transport_proto.h"
+#include "PHY/MODULATION/nr_modulation.h"
 #include "PHY/NR_TRANSPORT/nr_transport_common_proto.h"
+#include "PHY/NR_TRANSPORT/nr_transport_proto.h"
 #include "PHY/NR_UE_TRANSPORT/nr_transport_proto_ue.h"
 #include "nr_unitary_defs.h"
-#include <openair2/LAYER2/NR_MAC_COMMON/nr_mac_common.h>
-#include <openair2/RRC/LTE/rrc_vars.h>
-#include <executables/softmodem-common.h>
-#include <openair2/RRC/NR_UE/rrc_defs.h>
-#include <openair3/ocp-gtpu/gtp_itf.h>
+#include "openair2/RRC/LTE/rrc_vars.h"
+#include "PHY/NR_UE_TRANSPORT/nr_transport_ue.h"
+#include "PHY/TOOLS/tools_defs.h"
+#include "PHY/defs_RU.h"
+#include "PHY/defs_common.h"
+#include "PHY/defs_gNB.h"
+#include "PHY/defs_nr_UE.h"
+#include "PHY/defs_nr_common.h"
+#include "PHY/impl_defs_nr.h"
+#include "PHY/phy_vars_nr_ue.h"
+#include "SCHED_NR/phy_frame_config_nr.h"
+#include "SCHED_NR/sched_nr.h"
+#include "SIMULATION/TOOLS/sim.h"
+#include "T.h"
+#include "assertions.h"
+#include "common/config/config_load_configmodule.h"
+#include "common/ran_context.h"
+#include "common/utils/LOG/log.h"
+#include "common/utils/T/T.h"
+#include "common/utils/load_module_shlib.h"
+#include "common_lib.h"
+#include "defs.h"
 #include "executables/nr-uesoftmodem.h"
+#include "fapi_nr_ue_interface.h"
 #include "nfapi/oai_integration/vendor_ext.h"
+#include "nfapi_interface.h"
+#include "nfapi_nr_interface_scf.h"
+#include "nr_common.h"
+#include "time_meas.h"
 
 #define NR_PRACH_DEBUG 1
 #define PRACH_WRITE_OUTPUT_DEBUG 1
@@ -453,6 +467,7 @@ int main(int argc, char **argv){
   ru->nb_rx          = n_rx;
   ru->num_gNB        = 1;
   ru->gNB_list[0]    = gNB;
+  gNB->num_RU = 1;
   gNB->gNB_config.carrier_config.num_tx_ant.value = 1;
   gNB->gNB_config.carrier_config.num_rx_ant.value = 1;
   if (mu == 0)
@@ -661,9 +676,6 @@ int main(int argc, char **argv){
   LOG_M("txsig0.m", "txs0", &txdata[0][subframe*frame_parms->samples_per_subframe], frame_parms->samples_per_subframe, 1, 1);
     LOG_M("txsig0_frame.m","txs0", txdata[0],frame_parms->samples_per_frame,1,1);
   #endif
-
-  // multipath channel
-  // dump_nr_prach_config(&gNB->frame_parms,subframe);
 
   for (i = 0; i < frame_parms->samples_per_subframe; i++) {
     for (aa=0; aa<1; aa++) {

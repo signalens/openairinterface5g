@@ -54,8 +54,6 @@
 #include "gnb_config.h"
 #include "openair2/LAYER2/NR_MAC_gNB/mac_proto.h"
 
-extern unsigned char NB_gNB_INST;
-
 extern RAN_CONTEXT_t RC;
 
 #define GNB_REGISTER_RETRY_DELAY 10
@@ -71,23 +69,16 @@ uint32_t gNB_app_register(uint32_t gnb_id_start, uint32_t gnb_id_end)//, const E
 
   for (gnb_id = gnb_id_start; (gnb_id < gnb_id_end) ; gnb_id++) {
     {
-      if(get_softmodem_params()->sa){
-        ngap_register_gnb_req_t *ngap_register_gNB; //Type Temporarily reuse
-          
+      if (IS_SA_MODE(get_softmodem_params())) {
+
         // note:  there is an implicit relationship between the data structure and the message name
         msg_p = itti_alloc_new_message (TASK_GNB_APP, 0, NGAP_REGISTER_GNB_REQ); //Message Temporarily reuse
 
         RCconfig_NR_NG(msg_p, gnb_id);
 
-        ngap_register_gNB = &NGAP_REGISTER_GNB_REQ(msg_p); //Message Temporarily reuse
-
-        LOG_I(GNB_APP,"default drx %d\n",ngap_register_gNB->default_drx);
-
         itti_send_msg_to_task (TASK_NGAP, GNB_MODULE_ID_TO_INSTANCE(gnb_id), msg_p);
       }
     }
-
-    LOG_I(GNB_APP,"[gNB %d] gNB_app_register for instance %d\n", gnb_id, GNB_MODULE_ID_TO_INSTANCE(gnb_id));
 
     register_gnb_pending++;
     }
@@ -105,7 +96,6 @@ uint32_t gNB_app_register_x2(uint32_t gnb_id_start, uint32_t gnb_id_end) {
   for (gnb_id = gnb_id_start; (gnb_id < gnb_id_end) ; gnb_id++) {
     {
       msg_p = itti_alloc_new_message (TASK_GNB_APP, 0, X2AP_REGISTER_ENB_REQ);
-      LOG_I(X2AP, "GNB_ID: %d \n", gnb_id);
       RCconfig_NR_X2(msg_p, gnb_id);
       itti_send_msg_to_task (TASK_X2AP, ENB_MODULE_ID_TO_INSTANCE(gnb_id), msg_p);
       register_gnb_x2_pending++;
@@ -246,10 +236,6 @@ void *gNB_app_task(void *args_p)
       /* Check if at least gNB is registered with one AMF */
       AssertFatal(cell_to_activate == 1,"No cells to activate or cells > 1 %d\n",cell_to_activate);
 
-      break;
-
-    case F1AP_GNB_DU_CONFIGURATION_UPDATE_ACKNOWLEDGE:
-      LOG_E(GNB_APP, "[gNB %ld] Handling of %s message not implemented yet\n", instance, msg_name);
       break;
 
     case NGAP_DEREGISTERED_GNB_IND:

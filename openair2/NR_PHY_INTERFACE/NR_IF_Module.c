@@ -31,14 +31,20 @@
 */
 
 #include "openair2/NR_PHY_INTERFACE/NR_IF_Module.h"
-#include "LAYER2/NR_MAC_COMMON/nr_mac_extern.h"
+#include <stdbool.h>
+#include <stdlib.h>
+#include <string.h>
 #include "LAYER2/NR_MAC_gNB/mac_proto.h"
-#include "common/ran_context.h"
+#include "PHY/defs_common.h"
+#include "common/platform_constants.h"
+#include "common/utils/T/T.h"
 #include "executables/softmodem-common.h"
-#include "nfapi/oai_integration/vendor_ext.h" 
 #include "nfapi/oai_integration/gnb_ind_vars.h"
-#include "openair2/PHY_INTERFACE/queue_t.h"
+#include "nfapi/oai_integration/vendor_ext.h"
+#include "nfapi_interface.h"
 #include "openair2/NR_PHY_INTERFACE/nr_sched_response.h"
+#include "openair2/PHY_INTERFACE/queue_t.h"
+#include "utils.h"
 
 #define MAX_IF_MODULES 100
 
@@ -140,20 +146,17 @@ void handle_nr_uci(NR_UL_IND_t *UL_info)
 
 static bool crc_sfn_slot_matcher(void *wanted, void *candidate)
 {
-  nfapi_p7_message_header_t *msg = candidate;
-  int sfn_sf = *(int*)wanted;
+  nfapi_nr_p7_message_header_t *msg = candidate;
+  int sfn_sf = *(int *)wanted;
 
-  switch (msg->message_id)
-  {
-    case NFAPI_NR_PHY_MSG_TYPE_CRC_INDICATION:
-    {
+  switch (msg->message_id) {
+    case NFAPI_NR_PHY_MSG_TYPE_CRC_INDICATION: {
       nfapi_nr_crc_indication_t *ind = candidate;
       return NFAPI_SFNSLOT2SFN(sfn_sf) == ind->sfn && NFAPI_SFNSLOT2SLOT(sfn_sf) == ind->slot;
     }
 
     default:
       LOG_E(NR_MAC, "sfn_slot_match bad ID: %d\n", msg->message_id);
-
   }
   return false;
 }
@@ -369,8 +372,7 @@ static void match_crc_rx_pdu(nfapi_nr_rx_data_indication_t *rx_ind, nfapi_nr_crc
     rx_ind_unmatched->pdu_list = calloc(rx_ind_unmatched->number_of_pdus, sizeof(nfapi_nr_pdu_t));
     for (int i = 0; i < rx_ind->number_of_pdus; i++) {
       if (!crc_ind_has_rnti(crc_ind, rx_ind->pdu_list[i].rnti)) {
-        LOG_I(NR_MAC, "rx_ind->pdu_list[%d].rnti %d does not match any crc_ind pdu rnti\n",
-              i, rx_ind->pdu_list[i].rnti);
+        LOG_I(NR_MAC, "rx_ind->pdu_list[%d].rnti %x does not match any crc_ind pdu rnti\n", i, rx_ind->pdu_list[i].rnti);
         rx_ind_unmatched->pdu_list[num_unmatched_rxs] = rx_ind->pdu_list[i];
         num_unmatched_rxs++;
         remove_rx_pdu(rx_ind, i);
@@ -497,13 +499,13 @@ void NR_UL_indication(NR_UL_IND_t *UL_info) {
 
 NR_IF_Module_t *NR_IF_Module_init(int Mod_id) {
   AssertFatal(Mod_id<MAX_MODULES,"Asking for Module %d > %d\n",Mod_id,MAX_IF_MODULES);
-  LOG_I(PHY,"Installing callbacks for IF_Module - UL_indication\n");
+  LOG_D(PHY, "Installing callbacks for IF_Module - UL_indication\n");
 
   if (nr_if_inst[Mod_id]==NULL) {
     nr_if_inst[Mod_id] = (NR_IF_Module_t*)malloc(sizeof(NR_IF_Module_t));
     memset((void*)nr_if_inst[Mod_id],0,sizeof(NR_IF_Module_t));
 
-    LOG_I(MAC,"Allocating shared L1/L2 interface structure for instance %d @ %p\n",Mod_id,nr_if_inst[Mod_id]);
+    LOG_D(MAC, "Allocating shared L1/L2 interface structure for instance %d @ %p\n", Mod_id, nr_if_inst[Mod_id]);
 
     nr_if_inst[Mod_id]->CC_mask=0;
     nr_if_inst[Mod_id]->NR_UL_indication = NR_UL_indication;

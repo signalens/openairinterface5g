@@ -35,6 +35,7 @@
 #include "nas_log.h"
 
 #include "RegistrationRequest.h"
+#include "NR_NAS_defs.h"
 
 int decode_registration_request(registration_request_msg *registration_request, uint8_t *buffer, uint32_t len)
 {
@@ -51,7 +52,8 @@ int decode_registration_request(registration_request_msg *registration_request, 
     LOG_FUNC_RETURN(decoded_result);
   }
 
-  if ((decoded_result = decode_u8_nas_key_set_identifier(&registration_request->naskeysetidentifier, 0, *(buffer + decoded) >> 4, len - decoded)) < 0) {
+  if ((decoded_result = decode_nas_key_set_identifier(&registration_request->naskeysetidentifier, IEI_NULL, *(buffer + decoded) >> 4))
+      < 0) {
     //         return decoded_result;
     LOG_FUNC_RETURN(decoded_result);
   }
@@ -75,7 +77,8 @@ int encode_registration_request(registration_request_msg *registration_request, 
   int encoded = 0;
   int encode_result = 0;
 
-  *(buffer + encoded) = ((encode_u8_nas_key_set_identifier(&registration_request->naskeysetidentifier) & 0x0f) << 4) | (encode_5gs_registration_type(&registration_request->fgsregistrationtype) & 0x0f);
+  *(buffer + encoded) = ((encode_nas_key_set_identifier(&registration_request->naskeysetidentifier, IEI_NULL) & 0x0f) << 4)
+                        | (encode_5gs_registration_type(&registration_request->fgsregistrationtype) & 0x0f);
   encoded++;
 
   if ((encode_result =

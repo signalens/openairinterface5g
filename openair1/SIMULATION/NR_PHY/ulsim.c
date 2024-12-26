@@ -19,54 +19,80 @@
 *      contact@openairinterface.org
 */
 
-#include <string.h>
+#include <limits.h>
 #include <math.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <sys/ioctl.h>
-#include <sys/mman.h>
-#include "common/ran_context.h"
-#include "common/config/config_userapi.h"
-#include "common/utils/LOG/log.h"
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <errno.h>
+#include <bits/getopt_core.h>
 #include "common/utils/nr/nr_common.h"
 #include "common/utils/var_array.h"
-#include "PHY/defs_gNB.h"
-#include "PHY/defs_nr_common.h"
-#include "PHY/defs_nr_UE.h"
-#include "PHY/phy_vars_nr_ue.h"
-#include "PHY/types.h"
+#define inMicroS(a) (((double)(a))/(get_cpu_freq_GHz()*1000.0))
+#include "SIMULATION/LTE_PHY/common_sim.h"
+#include "openair2/RRC/LTE/rrc_vars.h"
+#include "common/utils/assertions.h"
+#include "executables/softmodem-common.h"
+#include "NR_BCCH-BCH-Message.h"
+#include "NR_IF_Module.h"
+#include "NR_MAC_COMMON/nr_mac.h"
+#include "NR_MAC_COMMON/nr_mac_common.h"
+#include "NR_MAC_UE/mac_defs.h"
+#include "NR_MAC_gNB/nr_mac_gNB.h"
+#include "NR_PHY_INTERFACE/NR_IF_Module.h"
+#include "NR_ReconfigurationWithSync.h"
+#include "NR_ServingCellConfig.h"
+#include "NR_UE-NR-Capability.h"
+#include "PHY/CODING/nrLDPC_coding/nrLDPC_coding_interface.h"
 #include "PHY/INIT/nr_phy_init.h"
-#include "PHY/MODULATION/modulation_UE.h"
 #include "PHY/MODULATION/nr_modulation.h"
 #include "PHY/NR_REFSIG/dmrs_nr.h"
-#include "PHY/NR_REFSIG/refsig_defs_ue.h"
-#include "PHY/NR_TRANSPORT/nr_dlsch.h"
-#include "PHY/NR_TRANSPORT/nr_sch_dmrs.h"
-#include "PHY/NR_TRANSPORT/nr_transport_proto.h"
+#include "PHY/NR_REFSIG/ptrs_nr.h"
+#include "PHY/NR_REFSIG/ul_ref_seq_nr.h"
+#include "PHY/NR_TRANSPORT/nr_transport_common_proto.h"
 #include "PHY/NR_TRANSPORT/nr_ulsch.h"
-#include "PHY/NR_UE_TRANSPORT/nr_transport_proto_ue.h"
+#include "PHY/NR_UE_TRANSPORT/nr_transport_ue.h"
 #include "PHY/TOOLS/tools_defs.h"
+#include "PHY/defs_RU.h"
+#include "PHY/defs_common.h"
+#include "PHY/defs_gNB.h"
+#include "PHY/defs_nr_UE.h"
+#include "PHY/defs_nr_common.h"
+#include "PHY/impl_defs_nr.h"
+#include "PHY/phy_vars_nr_ue.h"
 #include "SCHED_NR/fapi_nr_l1.h"
 #include "SCHED_NR/sched_nr.h"
 #include "SCHED_NR_UE/defs.h"
 #include "SCHED_NR_UE/fapi_nr_ue_l1.h"
-#include "openair1/SIMULATION/TOOLS/sim.h"
-#include "openair1/SIMULATION/RF/rf.h"
+#include "asn_internal.h"
+#include "assertions.h"
+#include "common/config/config_load_configmodule.h"
+#include "common/ngran_types.h"
+#include "common/openairinterface5g_limits.h"
+#include "common/ran_context.h"
+#include "common/utils/LOG/log.h"
+#include "common/utils/T/T.h"
+#include "common/utils/nr/nr_common.h"
+#include "common/utils/threadPool/thread-pool.h"
+#include "common/utils/var_array.h"
+#include "common_lib.h"
+#include "e1ap_messages_types.h"
+#include "executables/nr-uesoftmodem.h"
+#include "fapi_nr_ue_constants.h"
+#include "fapi_nr_ue_interface.h"
+#include "nfapi_interface.h"
+#include "nfapi_nr_interface_scf.h"
+#include "nr_ue_phy_meas.h"
 #include "openair1/SIMULATION/NR_PHY/nr_unitary_defs.h"
-#include "openair2/RRC/NR/nr_rrc_config.h"
+#include "openair1/SIMULATION/TOOLS/sim.h"
 #include "openair2/LAYER2/NR_MAC_UE/mac_proto.h"
 #include "openair2/LAYER2/NR_MAC_gNB/mac_proto.h"
-#include "common/utils/threadPool/thread-pool.h"
-#include "PHY/NR_REFSIG/ptrs_nr.h"
-#define inMicroS(a) (((double)(a))/(get_cpu_freq_GHz()*1000.0))
-#include "SIMULATION/LTE_PHY/common_sim.h"
+#include "openair2/RRC/NR/nr_rrc_config.h"
+#include "time_meas.h"
+#include "utils.h"
 
-#include <openair2/RRC/LTE/rrc_vars.h>
-
-#include <executables/softmodem-common.h>
-#include "PHY/NR_REFSIG/ul_ref_seq_nr.h"
-#include <openair3/ocp-gtpu/gtp_itf.h>
-#include "executables/nr-uesoftmodem.h"
 //#define DEBUG_ULSIM
 
 const char *__asan_default_options()
@@ -186,7 +212,6 @@ int main(int argc, char *argv[])
   double effRate;
   double effTP;
   float eff_tp_check = 100;
-  int ldpc_offload_flag = 0;
   uint8_t max_rounds = 4;
   int chest_type[2] = {0};
   int enable_ptrs = 0;
@@ -213,6 +238,7 @@ int main(int argc, char *argv[])
   int params_from_file = 0;
   int threadCnt=0;
   int max_ldpc_iterations = 5;
+  int num_antennas_per_thread = 1;
   if ((uniqCfg = load_configmodule(argc, argv, CONFIG_ENABLECMDLINEONLY)) == 0) {
     exit_fun("[NR_ULSIM] Error, configuration module init failed\n");
   }
@@ -224,7 +250,7 @@ int main(int argc, char *argv[])
   InitSinLUT();
 
   int c;
-  while ((c = getopt(argc, argv, "--:O:a:b:c:d:ef:g:h:i:k:m:n:op:q:r:s:t:u:v:w:y:z:C:F:G:H:I:M:N:PR:S:T:U:L:ZW:E:X:")) != -1) {
+  while ((c = getopt(argc, argv, "--:O:a:b:c:d:ef:g:h:i:k:m:n:p:q:r:s:t:u:v:w:y:z:A:C:F:G:H:I:M:N:PR:S:T:U:L:ZW:E:X:")) != -1) {
 
     /* ignore long options starting with '--', option '-O' and their arguments that are handled by configmodule */
     /* with this opstring getopt returns 1 for non-option arguments, refer to 'man 3 getopt' */
@@ -337,10 +363,6 @@ int main(int argc, char *argv[])
       n_trials = atoi(optarg);
       break;
 
-    case 'o':
-      ldpc_offload_flag = 1;
-      break;
-
     case 'p':
       extended_prefix_flag = 1;
       break;
@@ -393,6 +415,10 @@ int main(int argc, char *argv[])
         printf("Unsupported number of rx antennas %d\n", n_rx);
         exit(-1);
       }
+      break;
+
+    case 'A':
+      num_antennas_per_thread = atoi(optarg);
       break;
 
     case 'F':
@@ -500,7 +526,6 @@ int main(int argc, char *argv[])
       printf("-k 3/4 sampling\n");
       printf("-m MCS value\n");
       printf("-n Number of trials to simulate\n");
-      printf("-o ldpc offload flag\n");
       printf("-p Use extended prefix mode\n");
       printf("-q MCS table\n");
       printf("-r Number of allocated resource blocks for PUSCH\n");
@@ -512,6 +537,7 @@ int main(int argc, char *argv[])
       printf("-w Start PRB for PUSCH\n");
       printf("-y Number of TX antennas used at UE\n");
       printf("-z Number of RX antennas used at gNB\n");
+      printf("-A Number of antennas per thread for PUSCH channel estimation\n");
       printf("-C Specify the number of threads for the simulation\n");
       printf("-E {SRS: [0] Disabled, [1] Enabled} e.g. -E 1\n");
       printf("-F Input filename (.txt format) for RX conformance testing\n");
@@ -559,6 +585,7 @@ int main(int argc, char *argv[])
   gNB = RC.gNB[0];
   gNB->ofdm_offset_divisor = UINT_MAX;
   gNB->num_pusch_symbols_per_thread = 1;
+  gNB->dmrs_num_antennas_per_thread = num_antennas_per_thread;
   gNB->RU_list[0] = calloc(1, sizeof(**gNB->RU_list));
   gNB->RU_list[0]->rfdevice.openair0_cfg = openair0_cfg;
 
@@ -649,7 +676,6 @@ int main(int argc, char *argv[])
   cfg->carrier_config.num_rx_ant.value = n_rx;
 
 //  nr_phy_config_request_sim(gNB,N_RB_DL,N_RB_DL,mu,0,0x01);
-  gNB->ldpc_offload_flag = ldpc_offload_flag;
   gNB->chest_freq = chest_type[0];
   gNB->chest_time = chest_type[1];
 
@@ -696,6 +722,7 @@ int main(int argc, char *argv[])
   memcpy(&UE->frame_parms, frame_parms, sizeof(NR_DL_FRAME_PARMS));
   UE->frame_parms.nb_antennas_tx = n_tx;
   UE->frame_parms.nb_antennas_rx = 0;
+  UE->nrLDPC_coding_interface = gNB->nrLDPC_coding_interface;
 
   if (init_nr_ue_signal(UE, 1) != 0) {
     printf("Error at UE NR initialisation\n");
@@ -717,6 +744,8 @@ int main(int argc, char *argv[])
   UE->if_inst->ul_indication = nr_ue_ul_indication;
   
   UE_mac->if_module = nr_ue_if_module_init(0);
+
+  initFloatingCoresTpool(threadCnt, &nrUE_params.Tpool, false, "UE-tpool");
 
   nr_ue_phy_config_request(&UE_mac->phy_config);
 
@@ -952,6 +981,7 @@ int main(int argc, char *argv[])
     reset_meas(&gNB->rx_pusch_symbol_processing_stats);
     reset_meas(&gNB->ulsch_decoding_stats);
     reset_meas(&gNB->ulsch_channel_estimation_stats);
+    reset_meas(&gNB->pusch_channel_estimation_antenna_processing_stats);
     reset_meas(&gNB->rx_srs_stats);
     reset_meas(&gNB->generate_srs_stats);
     reset_meas(&gNB->get_srs_signal_stats);
@@ -1512,6 +1542,7 @@ int main(int argc, char *argv[])
       printDistribution(&gNB->phy_proc_rx,table_rx, "Total PHY proc rx");
       printStatIndent(&gNB->rx_pusch_stats, "RX PUSCH time");
       printStatIndent2(&gNB->ulsch_channel_estimation_stats, "ULSCH channel estimation time");
+      printStatIndent3(&gNB->pusch_channel_estimation_antenna_processing_stats, "Antenna Processing time");
       printStatIndent2(&gNB->rx_pusch_init_stats, "RX PUSCH Initialization time");
       printStatIndent2(&gNB->rx_pusch_symbol_processing_stats, "RX PUSCH Symbol Processing time");
       printStatIndent(&gNB->ulsch_decoding_stats,"ULSCH total decoding time");
@@ -1561,8 +1592,8 @@ int main(int argc, char *argv[])
           num_dmrs_cdm_grps_no_data);
 
   free_MIB_NR(mib);
-  if (gNB->ldpc_offload_flag)
-    free_LDPClib(&ldpc_interface_offload);
+
+  free_nrLDPC_coding_interface(&gNB->nrLDPC_coding_interface);
 
   if (output_fd)
     fclose(output_fd);

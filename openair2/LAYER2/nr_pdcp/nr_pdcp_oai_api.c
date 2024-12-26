@@ -22,27 +22,50 @@
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif
-#include "nr_pdcp_asn1_utils.h"
-#include "nr_pdcp_ue_manager.h"
-#include "nr_pdcp_timer_thread.h"
-#include "NR_RadioBearerConfig.h"
-#include "NR_RLC-BearerConfig.h"
-#include "NR_RLC-Config.h"
-#include "NR_CellGroupConfig.h"
-#include "openair2/RRC/NR/nr_rrc_proto.h"
-#include "common/utils/mem/oai_memory.h"
-#include <stdint.h>
-
-/* from OAI */
-#include "oai_asn1.h"
 #include "nr_pdcp_oai_api.h"
-#include "LAYER2/nr_rlc/nr_rlc_oai_api.h"
-#include "openair2/F1AP/f1ap_ids.h"
+#include <errno.h>
+#include <fcntl.h>
 #include <openair3/ocp-gtpu/gtp_itf.h>
-#include "openair2/SDAP/nr_sdap/nr_sdap.h"
-#include "gnb_config.h"
-#include "executables/softmodem-common.h"
+#include <pthread.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include "LAYER2/MAC/mac_extern.h"
+#include "LTE_DRB-ToAddModList.h"
+#include "LTE_DRB-ToReleaseList.h"
+#include "LTE_PMCH-InfoList-r9.h"
+#include "LTE_SRB-ToAddModList.h"
+#include "NR_DRB-ToAddMod.h"
+#include "NR_QFI.h"
+#include "NR_SDAP-Config.h"
+#include "NR_SRB-ToAddMod.h"
+#include "SDAP/nr_sdap/nr_sdap_entity.h"
+#include "assertions.h"
+#include "common/ngran_types.h"
+#include "common/platform_constants.h"
+#include "common/ran_context.h"
+#include "common/utils/T/T.h"
+#include "common/utils/tun_if.h"
 #include "cuup_cucp_if.h"
+#include "executables/lte-softmodem.h"
+#include "executables/softmodem-common.h"
+#include "f1ap_messages_types.h"
+#include "gnb_config.h"
+#include "gtpv1_u_messages_types.h"
+#include "hashtable.h"
+#include "intertask_interface.h"
+#include "common/utils/LOG/log.h"
+#include "nfapi/oai_integration/vendor_ext.h"
+#include "nr_pdcp_asn1_utils.h"
+#include "nr_pdcp_timer_thread.h"
+#include "nr_pdcp_ue_manager.h"
+#include "openair2/F1AP/f1ap_ids.h"
+#include "openair2/SDAP/nr_sdap/nr_sdap.h"
+#include "pdcp.h"
+#include "pdcp_messages_types.h"
+#include "rlc.h"
+#include "utils.h"
 
 #define TODO do { \
     printf("%s:%d:%s: todo\n", __FILE__, __LINE__, __FUNCTION__); \
@@ -695,23 +718,9 @@ static void deliver_pdu_drb_gnb(void *deliver_pdu_data, ue_id_t ue_id, int rb_id
   protocol_ctxt_t ctxt = { .enb_flag = 1, .rntiMaybeUEid = ue_data.secondary_ue };
 
   if (NODE_IS_CU(node_type)) {
-    MessageDef  *message_p = itti_alloc_new_message_sized(TASK_PDCP_ENB, 0,
-							  GTPV1U_TUNNEL_DATA_REQ,
-							  sizeof(gtpv1u_tunnel_data_req_t)
-							  + size
-							  + GTPU_HEADER_OVERHEAD_MAX);
-    AssertFatal(message_p != NULL, "OUT OF MEMORY");
-    gtpv1u_tunnel_data_req_t *req=&GTPV1U_TUNNEL_DATA_REQ(message_p);
-    uint8_t *gtpu_buffer_p = (uint8_t*)(req+1);
-    memcpy(gtpu_buffer_p + GTPU_HEADER_OVERHEAD_MAX, buf, size);
-    req->buffer        = gtpu_buffer_p;
-    req->length        = size;
-    req->offset        = GTPU_HEADER_OVERHEAD_MAX;
-    req->ue_id = ue_id; // use CU UE ID as GTP will use that to look up TEID
-    req->bearer_id = rb_id;
     LOG_D(PDCP, "%s() (drb %d) sending message to gtp size %d\n", __func__, rb_id, size);
     extern instance_t CUuniqInstance;
-    itti_send_msg_to_task(TASK_GTPV1_U, CUuniqInstance, message_p);
+    gtpv1uSendDirect(CUuniqInstance, ue_id, rb_id, (uint8_t *)buf, size, false, false);
   } else {
     uint8_t *memblock = malloc16(size);
     memcpy(memblock, buf, size);

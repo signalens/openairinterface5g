@@ -1699,12 +1699,13 @@ void write_dummy(PHY_VARS_UE *UE,  openair0_timestamp timestamp) {
   for ( int i=0; i < UE->frame_parms.nb_antennas_tx; i++)
     samplesVoid[i]=(void *)&v;
 
-  AssertFatal( 1 == UE->rfdevice.trx_write_func(&UE->rfdevice,
-               timestamp+2*UE->frame_parms.samples_per_tti,
-               samplesVoid,
-               1,
-               UE->frame_parms.nb_antennas_tx,
-               1),"");
+  int written = UE->rfdevice.trx_write_func(&UE->rfdevice,
+                                            timestamp + 2 * UE->frame_parms.samples_per_tti,
+                                            samplesVoid,
+                                            1,
+                                            UE->frame_parms.nb_antennas_tx,
+                                            TX_BURST_START_AND_END);
+  AssertFatal(1 == written, "write to SDR failed\n");
 }
 
 void *UE_thread(void *arg) {

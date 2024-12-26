@@ -171,8 +171,6 @@ int init_nr_ue_signal(PHY_VARS_NR_UE *ue, int nb_connected_gNB)
   NR_DL_FRAME_PARMS *const fp            = &ue->frame_parms;
   NR_UE_COMMON *const common_vars        = &ue->common_vars;
   NR_UE_PRACH **const prach_vars         = ue->prach_vars;
-  NR_UE_CSI_IM **const csiim_vars        = ue->csiim_vars;
-  NR_UE_CSI_RS **const csirs_vars        = ue->csirs_vars;
   NR_UE_SRS **const srs_vars             = ue->srs_vars;
 
   LOG_I(PHY, "Initializing UE vars for gNB TXant %u, UE RXant %u\n", fp->nb_antennas_tx, fp->nb_antennas_rx);
@@ -259,12 +257,7 @@ int init_nr_ue_signal(PHY_VARS_NR_UE *ue, int nb_connected_gNB)
   // DLSCH
   for (int gNB_id = 0; gNB_id < ue->n_connected_gNB; gNB_id++) {
     prach_vars[gNB_id] = malloc16_clear(sizeof(NR_UE_PRACH));
-    csiim_vars[gNB_id] = malloc16_clear(sizeof(NR_UE_CSI_IM));
-    csirs_vars[gNB_id] = malloc16_clear(sizeof(NR_UE_CSI_RS));
     srs_vars[gNB_id] = malloc16_clear(sizeof(NR_UE_SRS));
-
-    csiim_vars[gNB_id]->active = false;
-    csirs_vars[gNB_id]->active = false;
     srs_vars[gNB_id]->active = false;
 
     // ceil((NB_RB*8(max allocation per RB)*2(QPSK))/32)
@@ -283,7 +276,7 @@ int init_nr_ue_signal(PHY_VARS_NR_UE *ue, int nb_connected_gNB)
   init_timeshift_rotation(fp);
 
   // initialize to false only for SA since in do-ra and phy-test it is already set to true before getting here
-  if (get_softmodem_params()->sa)
+  if (IS_SA_MODE(get_softmodem_params()))
     ue->received_config_request = false;
 
   return 0;
@@ -326,8 +319,6 @@ void term_nr_ue_signal(PHY_VARS_NR_UE *ue, int nb_connected_gNB)
 
     free_and_zero(ue->nr_srs_info);
 
-    free_and_zero(ue->csiim_vars[gNB_id]);
-    free_and_zero(ue->csirs_vars[gNB_id]);
     free_and_zero(ue->srs_vars[gNB_id]);
 
     free_and_zero(ue->prach_vars[gNB_id]);
@@ -347,6 +338,8 @@ void term_nr_ue_signal(PHY_VARS_NR_UE *ue, int nb_connected_gNB)
     free_and_zero(ue->prs_vars[idx]);
   }
 
+  free_and_zero(ue->ntn_config_message);
+  
   sl_ue_free(ue);
 }
 
@@ -365,6 +358,7 @@ void free_nr_ue_dl_harq(NR_DL_UE_HARQ_t harq_list[2][NR_MAX_DLSCH_HARQ_PROCESSES
         free_and_zero(harq_list[j][i].c[r]);
         free_and_zero(harq_list[j][i].d[r]);
       }
+      free_and_zero(harq_list[j][i].b);
       free_and_zero(harq_list[j][i].c);
       free_and_zero(harq_list[j][i].d);
     }
@@ -415,6 +409,7 @@ void nr_init_dl_harq_processes(NR_DL_UE_HARQ_t harq_list[2][NR_MAX_DLSCH_HARQ_PR
       memset(harq_list[j] + i, 0, sizeof(NR_DL_UE_HARQ_t));
       init_downlink_harq_status(harq_list[j] + i);
 
+      harq_list[j][i].b = malloc16_clear(a_segments * 1056);
       harq_list[j][i].c = malloc16(a_segments*sizeof(uint8_t *));
       harq_list[j][i].d = malloc16(a_segments*sizeof(int16_t *));
       const int sz=5*8448*sizeof(int16_t);
@@ -476,10 +471,10 @@ void nr_init_ul_harq_processes(NR_UL_UE_HARQ_t harq_list[NR_MAX_ULSCH_HARQ_PROCE
 void init_nr_ue_transport(PHY_VARS_NR_UE *ue) {
 
   nr_init_dl_harq_processes(ue->dl_harq_processes, NR_MAX_DLSCH_HARQ_PROCESSES, ue->frame_parms.N_RB_DL);
-  nr_init_ul_harq_processes(ue->ul_harq_processes, NR_MAX_ULSCH_HARQ_PROCESSES, ue->frame_parms.N_RB_UL, ue->frame_parms.nb_antennas_tx);
-
-  for(int i=0; i<5; i++)
-    ue->dl_stats[i] = 0;
+  nr_init_ul_harq_processes(ue->ul_harq_processes,
+                            NR_MAX_ULSCH_HARQ_PROCESSES,
+                            ue->frame_parms.N_RB_UL,
+                            ue->frame_parms.nb_antennas_tx);
 }
 
 void clean_UE_harq(PHY_VARS_NR_UE *UE)

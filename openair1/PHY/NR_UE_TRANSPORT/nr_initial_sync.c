@@ -288,6 +288,8 @@ void nr_scan_ssb(void *arg)
       }
     }
   }
+
+  completed_task_ans(ssbInfo->ans);
 }
 
 nr_initial_sync_t nr_initial_sync(UE_nr_rxtx_proc_t *proc,
@@ -299,18 +301,18 @@ nr_initial_sync_t nr_initial_sync(UE_nr_rxtx_proc_t *proc,
 {
   NR_DL_FRAME_PARMS *fp = &ue->frame_parms;
 
-  notifiedFIFO_t nf;
-  initNotifiedFIFO(&nf);
-
   // Perform SSB scanning in parallel. One GSCN per thread.
   LOG_I(NR_PHY,
         "Starting cell search with center freq: %ld, bandwidth: %d. Scanning for %d number of GSCN.\n",
         fp->dl_CarrierFreq,
         fp->N_RB_DL,
         numGscn);
+
+  task_ans_t ans[numGscn];
+  memset(ans, 0, sizeof(ans));
+  nr_ue_ssb_scan_t ssb_info[numGscn];
   for (int s = 0; s < numGscn; s++) {
-    notifiedFIFO_elt_t *req = newNotifiedFIFO_elt(sizeof(nr_ue_ssb_scan_t), gscnInfo[s].gscn, &nf, &nr_scan_ssb);
-    nr_ue_ssb_scan_t *ssbInfo = (nr_ue_ssb_scan_t *)NotifiedFifoData(req);
+    nr_ue_ssb_scan_t *ssbInfo = &ssb_info[s];
     *ssbInfo = (nr_ue_ssb_scan_t){.gscnInfo = gscnInfo[s],
                                   .fp = &ue->frame_parms,
                                   .proc = proc,
@@ -329,32 +331,34 @@ nr_initial_sync_t nr_initial_sync(UE_nr_rxtx_proc_t *proc,
           ssbInfo->gscnInfo.gscn,
           ssbInfo->gscnInfo.ssbFirstSC,
           ssbInfo->gscnInfo.ssRef);
-    pushTpool(&get_nrUE_params()->Tpool, req);
+    ssbInfo->ans = &ans[s];
+    task_t t = {.func = nr_scan_ssb, .args = ssbInfo};
+    pushTpool(&get_nrUE_params()->Tpool, t);
   }
 
   // Collect the scan results
   nr_ue_ssb_scan_t res = {0};
-  while (numGscn) {
-    notifiedFIFO_elt_t *req = pullTpool(&nf, &get_nrUE_params()->Tpool);
-    nr_ue_ssb_scan_t *ssbInfo = (nr_ue_ssb_scan_t *)NotifiedFifoData(req);
-    if (ssbInfo->syncRes.cell_detected) {
-      LOG_A(NR_PHY,
-            "Cell Detected with GSCN: %d, SSB SC offset: %d, SSB Ref: %lf, PSS Corr peak: %d dB, PSS Corr Average: %d\n",
-            ssbInfo->gscnInfo.gscn,
-            ssbInfo->gscnInfo.ssbFirstSC,
-            ssbInfo->gscnInfo.ssRef,
-            ssbInfo->pssCorrPeakPower,
-            ssbInfo->pssCorrAvgPower);
-      if (!res.syncRes.cell_detected) { // take the first cell detected
-        res = *ssbInfo;
+  if (numGscn > 0) {
+    join_task_ans(ans, numGscn);
+    for (int i = 0; i < numGscn; i++) {
+      nr_ue_ssb_scan_t *ssbInfo = &ssb_info[i];
+      if (ssbInfo->syncRes.cell_detected) {
+        LOG_I(NR_PHY,
+              "Cell Detected with GSCN: %d, SSB SC offset: %d, SSB Ref: %lf, PSS Corr peak: %d dB, PSS Corr Average: %d\n",
+              ssbInfo->gscnInfo.gscn,
+              ssbInfo->gscnInfo.ssbFirstSC,
+              ssbInfo->gscnInfo.ssRef,
+              ssbInfo->pssCorrPeakPower,
+              ssbInfo->pssCorrAvgPower);
+        if (!res.syncRes.cell_detected) { // take the first cell detected
+          res = *ssbInfo;
+        }
       }
+      for (int ant = 0; ant < fp->nb_antennas_rx; ant++) {
+        free(ssbInfo->rxdata[ant]);
+      }
+      free(ssbInfo->rxdata);
     }
-    for (int ant = 0; ant < fp->nb_antennas_rx; ant++) {
-      free(ssbInfo->rxdata[ant]);
-    }
-    free(ssbInfo->rxdata);
-    delNotifiedFIFO_elt(req);
-    numGscn--;
   }
 
   // Set globals based on detected cell

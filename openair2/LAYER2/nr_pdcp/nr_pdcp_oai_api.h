@@ -22,8 +22,17 @@
 #ifndef NR_PDCP_OAI_API_H
 #define NR_PDCP_OAI_API_H
 
-#include "pdcp.h"
+#include <assertions.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include "NR_DRB-ToAddModList.h"
+#include "NR_PDCP-Config.h"
+#include "NR_SRB-ToAddModList.h"
+#include "nr_pdcp/nr_pdcp_entity.h"
+#include "nr_pdcp/nr_pdcp_integrity_data.h"
 #include "nr_pdcp_ue_manager.h"
+struct NR_DRB_ToAddMod;
+struct NR_SRB_ToAddMod;
 
 void nr_pdcp_layer_init(void);
 uint64_t nr_pdcp_module_init(uint64_t _pdcp_optmask, int id);

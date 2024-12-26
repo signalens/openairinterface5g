@@ -1,5 +1,5 @@
 
-CPMAddPackage("gh:ocornut/imgui#v1.90.9")
+CPMAddPackage("gh:ocornut/imgui#v1.91.3-docking")
 add_library(imgui
   ${imgui_SOURCE_DIR}/imgui_draw.cpp
   ${imgui_SOURCE_DIR}/imgui.cpp
@@ -32,3 +32,4 @@ target_include_directories(implot PUBLIC ${implot_SOURCE_DIR})
 add_library(imscope MODULE imscope.cpp ../phy_scope_interface.c)
 target_link_libraries(imscope PUBLIC imgui_glfw_backend glfw imgui_opengl_renderer OpenGL::OpenGL implot UTIL)
 set_target_properties(imscope PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
+configure_file(imgui.ini ${CMAKE_BINARY_DIR}/imscope-init.ini COPYONLY)

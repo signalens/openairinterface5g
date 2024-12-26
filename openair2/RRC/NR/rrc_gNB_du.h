@@ -26,7 +26,6 @@
 #include <netinet/sctp.h>
 #include <stdint.h>
 #include <stdio.h>
-
 struct f1ap_setup_req_s;
 struct f1ap_lost_connection_t;
 struct gNB_RRC_INST_s;

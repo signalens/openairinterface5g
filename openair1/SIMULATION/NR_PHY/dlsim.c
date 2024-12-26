@@ -19,59 +19,81 @@
  *      contact@openairinterface.org
  */
 
-#include <fcntl.h>
+#include <errno.h>
+#include <limits.h>
 #include <math.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
-#include <sys/ioctl.h>
-#include <sys/mman.h>
-#include <unistd.h>
-#include "common/ran_context.h"
-#include "common/config/config_userapi.h"
+#include "common/utils/assertions.h"
 #include "common/utils/nr/nr_common.h"
 #include "common/utils/var_array.h"
-#include "common/utils/LOG/log.h"
-#include "LAYER2/NR_MAC_gNB/nr_mac_gNB.h"
+#include "executables/nr-uesoftmodem.h"
+#include "executables/softmodem-common.h"
 #include "LAYER2/NR_MAC_UE/mac_defs.h"
-#include "LAYER2/NR_MAC_UE/mac_extern.h"
-#include "PHY/defs_gNB.h"
-#include "PHY/defs_nr_common.h"
-#include "PHY/defs_nr_UE.h"
-#include "PHY/phy_vars_nr_ue.h"
-#include "PHY/types.h"
+#include "LAYER2/NR_MAC_UE/mac_proto.h"
+#include "LAYER2/NR_MAC_gNB/mac_proto.h"
+#include "LAYER2/NR_MAC_gNB/mac_rrc_dl_handler.h"
+#include "LAYER2/NR_MAC_gNB/nr_mac_gNB.h"
+#include "NR_BCCH-BCH-Message.h"
+#include "NR_BWP-Downlink.h"
+#include "NR_CellGroupConfig.h"
+#include "NR_MAC_COMMON/nr_mac.h"
+#include "NR_MAC_COMMON/nr_mac_common.h"
+#include "NR_PHY_INTERFACE/NR_IF_Module.h"
+#include "NR_ReconfigurationWithSync.h"
+#include "NR_ServingCellConfig.h"
+#include "NR_SetupRelease.h"
+#include "NR_UE_PHY_INTERFACE/NR_IF_Module.h"
+#include "PHY/CODING/nrLDPC_coding/nrLDPC_coding_interface.h"
 #include "PHY/INIT/nr_phy_init.h"
-#include "PHY/MODULATION/modulation_eNB.h"
-#include "PHY/MODULATION/nr_modulation.h"
-#include "PHY/MODULATION/modulation_UE.h"
-#include "PHY/NR_REFSIG/refsig_defs_ue.h"
+#include "PHY/MODULATION/modulation_common.h"
+#include "PHY/NR_REFSIG/ptrs_nr.h"
 #include "PHY/NR_TRANSPORT/nr_dlsch.h"
-#include "PHY/NR_TRANSPORT/nr_transport_proto.h"
-#include "PHY/NR_UE_TRANSPORT/nr_transport_proto_ue.h"
+#include "PHY/NR_TRANSPORT/nr_transport_common_proto.h"
+#include "PHY/NR_UE_TRANSPORT/nr_transport_ue.h"
+#include "PHY/TOOLS/tools_defs.h"
+#include "PHY/defs_RU.h"
+#include "PHY/defs_common.h"
+#include "PHY/defs_gNB.h"
+#include "PHY/defs_nr_UE.h"
+#include "PHY/defs_nr_common.h"
+#include "PHY/impl_defs_nr.h"
+#include "PHY/phy_vars_nr_ue.h"
+#include "RRC/NR/nr_rrc_config.h"
+#include "RRC/NR/nr_rrc_proto.h"
 #include "SCHED_NR/fapi_nr_l1.h"
 #include "SCHED_NR/sched_nr.h"
 #include "SCHED_NR_UE/defs.h"
 #include "SCHED_NR_UE/fapi_nr_ue_l1.h"
-#include "NR_PHY_INTERFACE/NR_IF_Module.h"
-#include "NR_UE_PHY_INTERFACE/NR_IF_Module.h"
-
-#include "LAYER2/NR_MAC_UE/mac_proto.h"
-#include "LAYER2/NR_MAC_gNB/mac_rrc_dl_handler.h"
-#include "LAYER2/NR_MAC_gNB/mac_proto.h"
-#include "NR_asn_constant.h"
-#include "RRC/NR/nr_rrc_config.h"
-#include "openair1/SIMULATION/RF/rf.h"
-#include "openair1/SIMULATION/TOOLS/sim.h"
+#include "T.h"
+#include "asn_internal.h"
+#include "assertions.h"
+#include "common/config/config_load_configmodule.h"
+#include "common/ngran_types.h"
+#include "common/ran_context.h"
+#include "common/utils/T/T.h"
+#include "common/utils/nr/nr_common.h"
+#include "common/utils/var_array.h"
+#include "common_lib.h"
+#include "e1ap_messages_types.h"
+#include "fapi_nr_ue_interface.h"
+#include "nfapi_interface.h"
+#include "nfapi_nr_interface.h"
+#include "nfapi_nr_interface_scf.h"
+#include "nr_ue_phy_meas.h"
+#include "oai_asn1.h"
 #include "openair1/SIMULATION/NR_PHY/nr_unitary_defs.h"
-#include "PHY/NR_REFSIG/ptrs_nr.h"
-#include "NR_RRCReconfiguration.h"
+#include "openair1/SIMULATION/TOOLS/sim.h"
+#include "openair2/RRC/LTE/rrc_vars.h"
+#include "softmodem-bits.h"
+#include "thread-pool.h"
+#include "time_meas.h"
+#include "utils.h"
 #define inMicroS(a) (((double)(a))/(get_cpu_freq_GHz()*1000.0))
 #include "SIMULATION/LTE_PHY/common_sim.h"
-#include "PHY/NR_REFSIG/dmrs_nr.h"
-
-#include <openair2/RRC/LTE/rrc_vars.h>
-
-#include <executables/softmodem-common.h>
-#include <openair3/ocp-gtpu/gtp_itf.h>
-#include <executables/nr-uesoftmodem.h>
 
 const char *__asan_default_options()
 {
@@ -275,7 +297,6 @@ int main(int argc, char **argv)
   uint8_t n_tx=1,n_rx=1;
   uint8_t round;
   uint8_t num_rounds = 4;
-  int ldpc_offload_flag = 0;
   char gNBthreads[128]="n";
 
   channel_desc_t *gNB2UE;
@@ -338,7 +359,7 @@ int main(int argc, char **argv)
 
   FILE *scg_fd=NULL;
 
-  while ((c = getopt(argc, argv, "--:O:f:hA:p:f:g:i:n:s:S:t:v:x:y:z:o:M:N:F:GR:d:PI:L:a:b:e:m:w:T:U:q:X:Y:Z:c")) != -1) {
+  while ((c = getopt(argc, argv, "--:O:f:hA:p:f:g:i:n:s:S:t:v:x:y:z:o:M:N:F:GR:d:PI:L:a:b:e:m:w:T:U:q:X:Y:Z:")) != -1) {
 
     /* ignore long options starting with '--', option '-O' and their arguments that are handled by configmodule */
     /* with this opstring getopt returns 1 for non-option arguments, refer to 'man 3 getopt' */
@@ -388,10 +409,6 @@ int main(int argc, char **argv)
 
     case 'n':
       n_trials = atoi(optarg);
-      break;
-
-    case 'c':
-      ldpc_offload_flag = 1;
       break;
 
     case 's':
@@ -558,7 +575,6 @@ int main(int argc, char **argv)
       //printf("-j Relative strength of second intefering gNB (in dB) - cell_id mod 3 = 2\n");
       printf("-R N_RB_DL\n");
       printf("-O oversampling factor (1,2,4,8,16)\n");
-      printf("-c ldpc offload flag\n");
       printf("-A Interpolation_filname Run with Abstraction to generate Scatter plot using interpolation polynomial in file\n");
       //printf("-C Generate Calibration information for Abstraction (effective SNR adjustment to remove Pe bias w.r.t. AWGN)\n");
       printf("-f raw file containing RRC configuration (generated by gNB)\n");
@@ -618,7 +634,6 @@ int main(int argc, char **argv)
 
   gNB = RC.gNB[0];
   gNB->ofdm_offset_divisor = UINT_MAX;
-  gNB->ldpc_offload_flag = ldpc_offload_flag;
   gNB->phase_comp = true; // we need to perform phase compensation, otherwise everything will fail
   frame_parms = &gNB->frame_parms; //to be initialized I suppose (maybe not necessary for PBCH)
   frame_parms->nb_antennas_tx = n_tx;
@@ -827,6 +842,7 @@ int main(int argc, char **argv)
   memcpy(&UE->frame_parms,frame_parms,sizeof(NR_DL_FRAME_PARMS));
   UE->frame_parms.nb_antennas_rx = n_rx;
   UE->frame_parms.nb_antenna_ports_gNB = n_tx;
+  UE->nrLDPC_coding_interface = gNB->nrLDPC_coding_interface;
   UE->max_ldpc_iterations = max_ldpc_iterations;
   init_nr_ue_phy_cpu_stats(&UE->phy_cpu_stats);
 
@@ -858,15 +874,12 @@ int main(int argc, char **argv)
   UE_mac->if_module = nr_ue_if_module_init(0);
 
   unsigned int available_bits=0;
-  unsigned char *estimated_output_bit;
-  unsigned char *test_input_bit;
+  unsigned char *estimated_output_bit=NULL;
+  unsigned char *test_input_bit=NULL;
   unsigned int errors_bit = 0;
 
   initFloatingCoresTpool(dlsch_threads, &nrUE_params.Tpool, false, "UE-tpool");
 
-  test_input_bit = (unsigned char *) malloc16(sizeof(unsigned char) * 16 * 68 * 384);
-  estimated_output_bit = (unsigned char *) malloc16(sizeof(unsigned char) * 16 * 68 * 384);
-  
   // generate signal
   AssertFatal(input_fd==NULL,"Not ready for input signal file\n");
 
@@ -905,13 +918,14 @@ int main(int argc, char **argv)
   gNB->msgDataTx = msgDataTx;
 
   // Buffers to store internal memory of slot process
-  int rx_size = (((14 * frame_parms->N_RB_DL * 12 * sizeof(int32_t)) + 15) >> 4) << 4;
-  UE->phy_sim_rxdataF = calloc(sizeof(int32_t *) * frame_parms->nb_antennas_rx * g_nrOfLayers, frame_parms->samples_per_slot_wCP * sizeof(int32_t));
+  int rx_size = (((14 * UE->frame_parms.N_RB_DL * 12 * sizeof(int32_t)) + 15) >> 4) << 4;
+  UE->phy_sim_rxdataF = calloc(sizeof(int32_t *) * UE->frame_parms.nb_antennas_rx * g_nrOfLayers,
+                               UE->frame_parms.samples_per_slot_wCP * sizeof(int32_t));
   UE->phy_sim_pdsch_llr = calloc(1, (8 * (3 * 8 * 8448)) * sizeof(int16_t)); // Max length
-  UE->phy_sim_pdsch_rxdataF_ext = calloc(sizeof(int32_t *) * frame_parms->nb_antennas_rx * g_nrOfLayers, rx_size);
-  UE->phy_sim_pdsch_rxdataF_comp = calloc(sizeof(int32_t *) * frame_parms->nb_antennas_rx * g_nrOfLayers, rx_size);
-  UE->phy_sim_pdsch_dl_ch_estimates = calloc(sizeof(int32_t *) * frame_parms->nb_antennas_rx * g_nrOfLayers, rx_size);
-  UE->phy_sim_pdsch_dl_ch_estimates_ext = calloc(sizeof(int32_t *) * frame_parms->nb_antennas_rx * g_nrOfLayers, rx_size);
+  UE->phy_sim_pdsch_rxdataF_ext = calloc(sizeof(int32_t *) * UE->frame_parms.nb_antennas_rx * g_nrOfLayers, rx_size);
+  UE->phy_sim_pdsch_rxdataF_comp = calloc(sizeof(int32_t *) * UE->frame_parms.nb_antennas_rx * g_nrOfLayers, rx_size);
+  UE->phy_sim_pdsch_dl_ch_estimates = calloc(sizeof(int32_t *) * UE->frame_parms.nb_antennas_rx * g_nrOfLayers, rx_size);
+  UE->phy_sim_pdsch_dl_ch_estimates_ext = calloc(sizeof(int32_t *) * UE->frame_parms.nb_antennas_rx * g_nrOfLayers, rx_size);
   int a_segments = MAX_NUM_NR_DLSCH_SEGMENTS_PER_LAYER*NR_MAX_NB_LAYERS;  //number of segments to be allocated
   if (g_rbSize != 273) {
     a_segments = a_segments*g_rbSize;
@@ -942,6 +956,7 @@ int main(int argc, char **argv)
   for (SNR = snr0; SNR < snr1; SNR += .2) {
 
     varArray_t *table_tx=initVarArray(1000,sizeof(double));
+    reset_meas(&gNB->phy_proc_tx);
     reset_meas(&gNB->dlsch_scrambling_stats);
     reset_meas(&gNB->dlsch_interleaving_stats);
     reset_meas(&gNB->dlsch_rate_matching_stats);
@@ -1035,11 +1050,13 @@ int main(int argc, char **argv)
         msgDataTx->ssb[0].ssb_pdu.ssb_pdu_rel15.bchPayload=0x001234;
         msgDataTx->ssb[0].ssb_pdu.ssb_pdu_rel15.SsbBlockIndex = 0;
         msgDataTx->gNB = gNB;
-        if (run_initial_sync)
+        if (run_initial_sync) {
           nr_common_signal_procedures(gNB,frame,slot,msgDataTx->ssb[0].ssb_pdu);
-        else
+        } else {
+          start_meas(&gNB->phy_proc_tx);
           phy_procedures_gNB_TX(msgDataTx,frame,slot,1);
-            
+          stop_meas(&gNB->phy_proc_tx);
+        }
         int txdataF_offset = slot * frame_parms->samples_per_slot_wCP;
         
         if (n_trials==1) {
@@ -1118,7 +1135,17 @@ int main(int argc, char **argv)
 
         // Apply MIMO Channel
         multipath_channel(gNB2UE, s_re, s_im, r_re, r_im, slot_length, 0, (n_trials == 1) ? 1 : 0);
-        add_noise(UE->common_vars.rxdata, (const double **) r_re, (const double **) r_im, sigma2, slot_length, slot_offset, ts, delay, pdu_bit_map, 0x1, frame_parms->nb_antennas_rx);
+        add_noise(UE->common_vars.rxdata,
+                  (const double **)r_re,
+                  (const double **)r_im,
+                  sigma2,
+                  slot_length,
+                  slot_offset,
+                  ts,
+                  delay,
+                  pdu_bit_map,
+                  0x1,
+                  UE->frame_parms.nb_antennas_rx);
         dl_config.sfn = frame;
         dl_config.slot = slot;
         ue_dci_configuration(UE_mac, &dl_config, frame, slot);
@@ -1168,6 +1195,10 @@ int main(int argc, char **argv)
         round++;
       } // round
 
+      if (test_input_bit == NULL) {
+        test_input_bit = (unsigned char *)malloc16(sizeof(unsigned char) * TBS);
+        estimated_output_bit = (unsigned char *)malloc16(sizeof(unsigned char) * TBS);
+      }
       for (i = 0; i < TBS; i++) {
 
 	estimated_output_bit[i] = (UE->phy_sim_dlsch_b[i/8] & (1 << (i & 7))) >> (i & 7);
@@ -1226,10 +1257,11 @@ int main(int argc, char **argv)
       fprintf(csv_file,"%.2f,%.4f,%.2f,%u\n", roundStats, effRate, effRate / TBS * 100, TBS);
     }
     if (print_perf==1) {
-      printf("\ngNB TX function statistics (per %d us slot, NPRB %d, mcs %d, block %d)\n",
+      printf("\ngNB TX function statistics (per %d us slot, NPRB %d, mcs %d, C %d, block %d)\n",
              1000 >> *scc->ssbSubcarrierSpacing,
              g_rbSize,
              g_mcsIndex,
+             UE->dl_harq_processes[0][slot].C,
              msgDataTx->dlsch[0][0].harq_process.pdsch_pdu.pdsch_pdu_rel15.TBSize[0] << 3);
       printDistribution(&gNB->phy_proc_tx,table_tx,"PHY proc tx");
       printStatIndent2(&gNB->dlsch_encoding_stats,"DLSCH encoding time");
@@ -1299,8 +1331,7 @@ int main(int argc, char **argv)
   free(UE->phy_sim_pdsch_dl_ch_estimates_ext);
   free(UE->phy_sim_dlsch_b);
 
-  if (gNB->ldpc_offload_flag)
-    free_LDPClib(&ldpc_interface_offload);
+  free_nrLDPC_coding_interface(&gNB->nrLDPC_coding_interface);
 
   if (output_fd)
     fclose(output_fd);

@@ -143,7 +143,6 @@ int CU_handle_gNB_DU_CONFIGURATION_UPDATE(instance_t instance, sctp_assoc_t asso
   message_p->ittiMsgHeader.originInstance = assoc_id;
   f1ap_gnb_du_configuration_update_t *req = &F1AP_GNB_DU_CONFIGURATION_UPDATE(message_p); // RRC thread will free it
   *req = msg; // copy F1 message to ITTI
-  free_f1ap_du_configuration_update(&msg);
   LOG_D(F1AP, "Sending F1AP_GNB_DU_CONFIGURATION_UPDATE ITTI message \n");
   itti_send_msg_to_task(TASK_RRC_GNB, GNB_MODULE_ID_TO_INSTANCE(instance), message_p);
   return 0;

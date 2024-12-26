@@ -1,10 +1,7 @@
   - Build_Proxy
   - Build_Cluster_Image
   - Pull_Cluster_Image
-  - Build_PhySim
-  - Run_CUDATest
-  - Run_T2Test
-  - Run_NRulsimTest
+  - Run_Physim
   - Build_eNB
   - Initialize_eNB
   - Terminate_eNB

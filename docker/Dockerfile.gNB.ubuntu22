@@ -95,6 +95,10 @@ COPY --from=gnb-build \
     /oai-ran/cmake_targets/ran_build/build/libtelnetsrv.so \
     /oai-ran/cmake_targets/ran_build/build/libtelnetsrv_ci.so \
     /oai-ran/cmake_targets/ran_build/build/libparams_yaml.so \
+    /oai-ran/cmake_targets/ran_build/build/libtelnetsrv_bearer.so \
+    /oai-ran/cmake_targets/ran_build/build/libtelnetsrv_5Gue.so \
+    /oai-ran/cmake_targets/ran_build/build/libtelnetsrv_rrc.so \
+    /oai-ran/cmake_targets/ran_build/build/libtelnetsrv_o1.so \
     /usr/local/lib/
 
 # Now we are copying from builder-image the UHD files.

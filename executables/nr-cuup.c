@@ -145,6 +145,9 @@ f1ap_cudu_inst_t *getCxt(instance_t instanceP)
   return &fake;
 }
 configmodule_interface_t *uniqCfg = NULL;
+
+void rrc_gNB_send_NGAP_UE_CONTEXT_RELEASE_COMPLETE(instance_t instance, uint32_t gNB_ue_ngap_id) { };
+
 int main(int argc, char **argv)
 {
   /// static configuration for NR at the moment

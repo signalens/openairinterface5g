@@ -79,6 +79,7 @@ uint8_t compute_precoding_information(NR_PUSCH_Config_t *pusch_Config,
                                       dci_field_t srs_resource_indicator,
                                       nr_srs_feedback_t *srs_feedback,
                                       const uint8_t *nrOfLayers,
+                                      int *tpmi,
                                       uint32_t *val);
 
 NR_PDSCH_TimeDomainResourceAllocationList_t *get_dl_tdalist(const NR_UE_DL_BWP_t *DL_BWP,

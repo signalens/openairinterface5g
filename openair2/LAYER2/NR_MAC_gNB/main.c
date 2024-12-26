@@ -30,17 +30,47 @@
 
  */
 
+#include <errno.h>
+#include <inttypes.h>
+#include <pthread.h>
+#include <sched.h>
+#include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+#include <unistd.h>
+#include "NR_DRB-ToAddMod.h"
+#include "NR_DRB-ToAddModList.h"
+#include "NR_MAC_COMMON/nr_mac.h"
+#include "NR_MAC_COMMON/nr_mac_common.h"
 #include "NR_MAC_gNB/mac_proto.h"
-#include "NR_MAC_COMMON/nr_mac_extern.h"
+#include "NR_MAC_gNB/mac_rrc_ul.h"
+#include "NR_MAC_gNB/nr_mac_gNB.h"
+#include "NR_PHY_INTERFACE/NR_IF_Module.h"
+#include "NR_RLC-BearerConfig.h"
+#include "NR_RadioBearerConfig.h"
+#include "NR_ServingCellConfig.h"
+#include "NR_ServingCellConfigCommon.h"
+#include "NR_TAG.h"
+#include "PHY/defs_common.h"
+#include "RRC/NR/MESSAGES/asn1_msg.h"
+#include "RRC/NR/nr_rrc_config.h"
 #include "assertions.h"
+#include "common/ngran_types.h"
+#include "common/ran_context.h"
+#include "common/utils/T/T.h"
+#include "executables/softmodem-common.h"
+#include "linear_alloc.h"
+#include "nr_pdcp/nr_pdcp_entity.h"
 #include "nr_pdcp/nr_pdcp_oai_api.h"
-
-#include "common/utils/LOG/log.h"
 #include "nr_rlc/nr_rlc_oai_api.h"
 #include "openair2/F1AP/f1ap_ids.h"
-
-#include "common/ran_context.h"
-#include "executables/softmodem-common.h"
+#include "rlc.h"
+#include "seq_arr.h"
+#include "system.h"
+#include "time_meas.h"
+#include "utils.h"
 
 extern RAN_CONTEXT_t RC;
 
@@ -216,8 +246,6 @@ void mac_top_init_gNB(ngran_node_t node_type,
   gNB_MAC_INST    *nrmac;
 
   AssertFatal(RC.nb_nr_macrlc_inst == 1, "what is the point of calling %s() if you don't need exactly one MAC?\n", __func__);
-
-  LOG_I(MAC, "[MAIN] Init function start:nb_nr_macrlc_inst=%d\n",RC.nb_nr_macrlc_inst);
 
   if (RC.nb_nr_macrlc_inst > 0) {
 

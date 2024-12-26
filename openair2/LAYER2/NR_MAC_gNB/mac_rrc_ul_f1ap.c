@@ -82,10 +82,8 @@ static void gnb_du_configuration_update_f1ap(const f1ap_gnb_du_configuration_upd
   f1ap_gnb_du_configuration_update_t cp = cp_f1ap_du_configuration_update(upd);
   /* transfer to ITTI message */
   F1AP_GNB_DU_CONFIGURATION_UPDATE(msg) = cp;
-  /* free after copy */
-  free_f1ap_du_configuration_update(upd);
   /* send to RRC task */
-  itti_send_msg_to_task(TASK_RRC_GNB, 0, msg);
+  itti_send_msg_to_task(TASK_DU_F1, 0, msg);
 }
 
 static void ue_context_setup_response_f1ap(const f1ap_ue_context_setup_t *req, const f1ap_ue_context_setup_t *resp)

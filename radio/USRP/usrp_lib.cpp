@@ -49,6 +49,7 @@
 #include "common/utils/LOG/log.h"
 #include "common_lib.h"
 #include "assertions.h"
+#include "system.h"
 
 #include "common/utils/LOG/vcd_signal_dumper.h"
 

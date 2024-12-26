@@ -136,7 +136,6 @@ These modes of operation are supported:
   - evalution of RSRP report
   - evaluation of CQI report
 - MAC scheduling of SR reception
-- Support of up to 16 UEs (can be increased to 32)
 - Intra-frequency handover
 
 ## gNB RLC
@@ -246,6 +245,11 @@ These modes of operation are supported:
   - Interfaces with RRC, F1AP for tunnel creation
   - Interfaces with PDCP and RLC for data send/receive at the CU and DU respectively (F1-U interface)
   - Interface with SDAP for data send/receive, capture of GTP-U Optional Header, GTP-U Extension Header and PDU Session Container.
+
+## Number of supported UEs
+
+* 16 by default (as defined in `MAX_MOBILES_PER_GNB`)
+* up to 64 if the configured bandwidth is sufficient (at leat 40 MHz)
 
 # OpenAirInterface 5G-NR UE Feature Set #
 

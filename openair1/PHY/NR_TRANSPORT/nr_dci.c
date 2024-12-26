@@ -80,12 +80,12 @@ static void nr_generate_dci(PHY_VARS_gNB *gNB,
     uint32_t cset_nsymb = pdcch_pdu_rel15->DurationSymbols;
     int dci_idx = 0;
     // multi-beam number (for concurrent beams)
+    int bitmap = SL_to_bitmap(cset_start_symb, pdcch_pdu_rel15->DurationSymbols);
     int beam_nb = beam_index_allocation(dci_pdu->precodingAndBeamforming.prgs_list[0].dig_bf_interface_list[0].beam_idx,
                                         &gNB->common_vars,
                                         slot,
                                         frame_parms->symbols_per_slot,
-                                        cset_start_symb,
-                                        pdcch_pdu_rel15->DurationSymbols);
+                                        bitmap);
 
     LOG_D(NR_PHY_DCI, "pdcch: Coreset rb_offset %d, nb_rb %d BWP Start %d\n", rb_offset, n_rb, pdcch_pdu_rel15->BWPStart);
     LOG_D(NR_PHY_DCI,

@@ -729,7 +729,7 @@ void nr_initiate_ra_proc(module_id_t module_idP,
   }
 
   int index = ra - cc->ra;
-  LOG_I(NR_MAC, "%d.%d UE RA-RNTI %04x TC-RNTI %04x: Activating RA process index %d\n", frameP, slotP, ra->RA_rnti, ra->rnti, index);
+  LOG_A(NR_MAC, "%d.%d UE RA-RNTI %04x TC-RNTI %04x: Activating RA process index %d\n", frameP, slotP, ra->RA_rnti, ra->rnti, index);
 
   // Configure RA BWP
   configure_UE_BWP(nr_mac, scc, NULL, ra, NULL, -1, -1);
@@ -779,11 +779,7 @@ static void nr_generate_Msg3_retransmission(module_id_t module_idP,
 
   if (is_xlsch_in_slot(nr_mac->ulsch_slot_bitmap[sched_slot / 64], sched_slot)) {
     const int n_slots_frame = nr_slots_per_frame[mu];
-    NR_beam_alloc_t beam_ul = beam_allocation_procedure(&nr_mac->beam_info,
-                                                              sched_frame,
-                                                              sched_slot,
-                                                              ra->beam_id,
-                                                              n_slots_frame);
+    NR_beam_alloc_t beam_ul = beam_allocation_procedure(&nr_mac->beam_info, sched_frame, sched_slot, ra->beam_id, n_slots_frame);
     if (beam_ul.idx < 0)
       return;
     NR_beam_alloc_t beam_dci = beam_allocation_procedure(&nr_mac->beam_info, frame, slot, ra->beam_id, n_slots_frame);
@@ -899,6 +895,7 @@ static void nr_generate_Msg3_retransmission(module_id_t module_idP,
                  pusch_pdu,
                  &uldci_payload,
                  NULL,
+                 NULL,
                  ra->Msg3_tda_id,
                  ra->msg3_TPC,
                  1, // Not toggling NDI in msg3 retransmissions
@@ -1011,18 +1008,11 @@ static bool get_feasible_msg3_tda(frame_type_t frame_type,
   return false;
 }
 
-static void nr_get_Msg3alloc(module_id_t module_id,
-                             int CC_id,
-                             NR_ServingCellConfigCommon_t *scc,
-                             sub_frame_t current_slot,
-                             frame_t current_frame,
-                             NR_RA_t *ra)
+static bool nr_get_Msg3alloc(gNB_MAC_INST *mac, int CC_id, int current_slot, frame_t current_frame, NR_RA_t *ra)
 {
-  // msg3 is scheduled in mixed slot in the following TDD period
   DevAssert(ra->Msg3_tda_id >= 0 && ra->Msg3_tda_id < 16);
 
   uint16_t msg3_nb_rb = 8; // sdu has 6 or 8 bytes
-  gNB_MAC_INST *mac = RC.nrmac[module_id];
 
   NR_UE_UL_BWP_t *ul_bwp = &ra->UL_BWP;
   NR_UE_ServingCell_Info_t *sc_info = &ra->sc_info;
@@ -1061,7 +1051,10 @@ static void nr_get_Msg3alloc(module_id_t module_id,
     rbSize = 0;
     while (rbStart < bwpSize && (vrb_map_UL[rbStart + bwpStart] & SL_to_bitmap(ra->msg3_startsymb, ra->msg3_nbSymb)))
       rbStart++;
-    AssertFatal(rbStart < bwpSize - msg3_nb_rb, "no space to allocate Msg 3 for RA!\n");
+    if (rbStart + msg3_nb_rb > bwpSize) {
+      LOG_D(NR_MAC, "No space to allocate Msg 3\n");
+      return false;
+    }
     while (rbStart + rbSize < bwpSize
            && !(vrb_map_UL[rbStart + bwpStart + rbSize] & SL_to_bitmap(ra->msg3_startsymb, ra->msg3_nbSymb)) && rbSize < msg3_nb_rb)
       rbSize++;
@@ -1069,6 +1062,7 @@ static void nr_get_Msg3alloc(module_id_t module_id,
   ra->msg3_nb_rb = msg3_nb_rb;
   ra->msg3_first_rb = rbStart;
   ra->msg3_bwp_start = bwpStart;
+  return true;
 }
 
 static void fill_msg3_pusch_pdu(nfapi_nr_pusch_pdu_t *pusch_pdu,
@@ -1781,6 +1775,13 @@ static void nr_generate_Msg2(module_id_t module_idP,
     return;
   }
 
+  bool msg3_ret = nr_get_Msg3alloc(nr_mac, CC_id, slotP, frameP, ra);
+  if (!msg3_ret) {
+    reset_beam_status(&nr_mac->beam_info, ra->Msg3_frame, ra->Msg3_slot, ra->beam_id, n_slots_frame, ra->Msg3_beam.new_beam);
+    reset_beam_status(&nr_mac->beam_info, frameP, slotP, ra->beam_id, n_slots_frame, beam.new_beam);
+    return;
+  }
+
   LOG_D(NR_MAC, "Msg2 startSymbolIndex.nrOfSymbols %d.%d\n", tda_info.startSymbolIndex, tda_info.nrOfSymbols);
 
   // look up the PDCCH PDU for this CC, BWP, and CORESET. If it does not exist, create it. This is especially
@@ -1947,7 +1948,6 @@ static void nr_generate_Msg2(module_id_t module_idP,
   nfapi_nr_pdu_t *tx_req = &TX_req->pdu_list[TX_req->Number_of_PDUs];
 
   // Program UL processing for Msg3
-  nr_get_Msg3alloc(module_idP, CC_id, scc, slotP, frameP, ra);
   nr_add_msg3(module_idP, CC_id, frameP, slotP, ra, (uint8_t *)&tx_req->TLVs[0].value.direct[0]);
 
   // Start RA contention resolution timer in Msg3 transmission slot (current slot + K2)
@@ -1976,14 +1976,7 @@ static void nr_generate_Msg2(module_id_t module_idP,
         ra->Msg3_frame,
         ra->Msg3_slot);
 
-  T(T_GNB_MAC_DL_RAR_PDU_WITH_DATA,
-    T_INT(module_idP),
-    T_INT(CC_id),
-    T_INT(ra->RA_rnti),
-    T_INT(frameP),
-    T_INT(slotP),
-    T_INT(0),
-    T_BUFFER(&tx_req->TLVs[0].value.direct[0], tx_req->TLVs[0].length));
+  LOG_A(NR_MAC, "%d.%d Send RAR to RA-RNTI %04x\n", frameP, slotP, ra->RA_rnti);
 
   tx_req->PDU_index = pduindex;
   tx_req->num_TLV = 1;
@@ -1992,6 +1985,15 @@ static void nr_generate_Msg2(module_id_t module_idP,
   TX_req->SFN = frameP;
   TX_req->Number_of_PDUs++;
   TX_req->Slot = slotP;
+
+  T(T_GNB_MAC_DL_RAR_PDU_WITH_DATA,
+    T_INT(module_idP),
+    T_INT(CC_id),
+    T_INT(ra->RA_rnti),
+    T_INT(frameP),
+    T_INT(slotP),
+    T_INT(0),
+    T_BUFFER(&tx_req->TLVs[0].value.direct[0], tx_req->TLVs[0].length));
 
   // Mark the corresponding symbols RBs as used
   fill_pdcch_vrb_map(nr_mac, CC_id, &ra->sched_pdcch, CCEIndex, aggregation_level, beam.idx);
@@ -2224,7 +2226,8 @@ static void nr_generate_Msg4_MsgB(module_id_t module_idP,
 
     NR_UE_info_t *UE = find_nr_UE(&nr_mac->UE_info, ra->rnti);
     if (!UE) {
-      LOG_E(NR_MAC, "want to generate %s, but rnti %04x not in the table\n", ra_type_str, ra->rnti);
+      LOG_E(NR_MAC, "want to generate %s, but rnti %04x not in the table. Abort RA\n", ra_type_str, ra->rnti);
+      nr_clear_ra_proc(ra);
       return;
     }
 
@@ -2580,7 +2583,7 @@ void nr_clear_ra_proc(NR_RA_t *ra)
   NR_SCHED_ENSURE_LOCKED(&RC.nrmac[0]->sched_lock);
   memset(ra, 0, sizeof(*ra));
   ra->ra_state = nrRA_gNB_IDLE;
-  if (get_softmodem_params()->sa) { // in SA, prefill with allowed preambles
+  if (IS_SA_MODE(get_softmodem_params())) { // in SA, prefill with allowed preambles
     ra->preambles.num_preambles = MAX_NUM_NR_PRACH_PREAMBLES;
     for (int i = 0; i < MAX_NUM_NR_PRACH_PREAMBLES; i++)
       ra->preambles.preamble_list[i] = i;
@@ -2719,7 +2722,8 @@ void nr_schedule_RA(module_id_t module_idP,
     NR_COMMON_channels_t *cc = &mac->common_channels[CC_id];
     for (int i = 0; i < NR_NB_RA_PROC_MAX; i++) {
       NR_RA_t *ra = &cc->ra[i];
-      LOG_D(NR_MAC, "RA[state:%d]\n", ra->ra_state);
+      if (ra->ra_state != nrRA_gNB_IDLE)
+        LOG_D(NR_MAC, "RA[%d] frame.slot %d.%d state: %d\n", i, frameP, slotP, ra->ra_state);
 
       // Check RA Contention Resolution timer
       if (ra->ra_type == RA_4_STEP && ra->ra_state >= nrRA_WAIT_Msg3) {

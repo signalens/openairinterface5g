@@ -28,7 +28,6 @@
 #undef MALLOC
 #include "assertions.h"
 #include "PHY/types.h"
-#include <threadPool/thread-pool.h>
 
 /* help strings definition for command line options, used in CMDLINE_XXX_DESC macros and printed when -h option is used */
 #define CONFIG_HLP_RFCFGF        "Configuration file for front-end (e.g. LMS7002M)\n"

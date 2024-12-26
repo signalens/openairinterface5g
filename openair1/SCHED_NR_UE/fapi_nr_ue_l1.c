@@ -326,6 +326,19 @@ static void configure_dlsch(NR_UE_DLSCH_t *dlsch0,
   }
 }
 
+static void configure_ntn_params(PHY_VARS_NR_UE *ue, fapi_nr_dl_ntn_config_command_pdu* ntn_params_message)
+{
+  if (!ue->ntn_config_message) {
+    ue->ntn_config_message = CALLOC(1, sizeof(*ue->ntn_config_message));
+  }
+
+  ue->ntn_config_message->ntn_config_params.cell_specific_k_offset = ntn_params_message->cell_specific_k_offset;
+  ue->ntn_config_message->ntn_config_params.N_common_ta_adj = ntn_params_message->N_common_ta_adj;
+  ue->ntn_config_message->ntn_config_params.ntn_ta_commondrift = ntn_params_message->ntn_ta_commondrift;
+  ue->ntn_config_message->ntn_config_params.ntn_total_time_advance_ms = ntn_params_message->ntn_total_time_advance_ms;
+  ue->ntn_config_message->update = true;
+}
+
 static void configure_ta_command(PHY_VARS_NR_UE *ue, fapi_nr_ta_command_pdu *ta_command_pdu)
 {
   /* Time Alignment procedure
@@ -420,12 +433,12 @@ static void nr_ue_scheduled_response_dl(NR_UE_MAC_INST_t *mac,
         LOG_D(PHY, "Number of DCI SearchSpaces %d\n", phy_data->phy_pdcch_config.nb_search_space);
         break;
       case FAPI_NR_DL_CONFIG_TYPE_CSI_IM:
-        phy->csiim_vars[0]->csiim_config_pdu = pdu->csiim_config_pdu.csiim_config_rel15;
-        phy->csiim_vars[0]->active = true;
+        phy_data->csiim_vars.csiim_config_pdu = pdu->csiim_config_pdu.csiim_config_rel15;
+        phy_data->csiim_vars.active = true;
         break;
       case FAPI_NR_DL_CONFIG_TYPE_CSI_RS:
-        phy->csirs_vars[0]->csirs_config_pdu = pdu->csirs_config_pdu.csirs_config_rel15;
-        phy->csirs_vars[0]->active = true;
+        phy_data->csirs_vars.csirs_config_pdu = pdu->csirs_config_pdu.csirs_config_rel15;
+        phy_data->csirs_vars.active = true;
         break;
       case FAPI_NR_DL_CONFIG_TYPE_RA_DLSCH: {
         fapi_nr_dl_config_dlsch_pdu_rel15_t *dlsch_config_pdu = &pdu->dlsch_config_pdu.dlsch_config_rel15;
@@ -450,6 +463,9 @@ static void nr_ue_scheduled_response_dl(NR_UE_MAC_INST_t *mac,
       } break;
       case FAPI_NR_CONFIG_TA_COMMAND:
         configure_ta_command(phy, &pdu->ta_command_pdu);
+        break;
+      case FAPI_NR_DL_NTN_CONFIG_PARAMS:
+        configure_ntn_params(phy, &pdu->ntn_config_command_pdu);
         break;
       default:
         LOG_W(PHY, "unhandled dl pdu type %d \n", pdu->pdu_type);

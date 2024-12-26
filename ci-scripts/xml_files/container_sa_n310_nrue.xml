@@ -44,15 +44,15 @@
   <testCase id="010000">
     <class>Pull_Cluster_Image</class>
     <desc>Pull Images from Cluster</desc>
-    <images_to_pull>oai-gnb</images_to_pull>
-    <test_svr_id>avra</test_svr_id>
+    <images>oai-gnb</images>
+    <node>avra</node>
   </testCase>
 
   <testCase id="010001">
     <class>Pull_Cluster_Image</class>
     <desc>Pull Images from Cluster</desc>
-    <images_to_pull>oai-nr-ue</images_to_pull>
-    <test_svr_id>caracal</test_svr_id>
+    <images>oai-nr-ue</images>
+    <node>caracal</node>
   </testCase>
 
   <testCase id = "030000">
@@ -80,6 +80,7 @@
     <yaml_path>ci-scripts/yaml_files/5g_sa_n310_gnb</yaml_path>
     <eNB_instance>0</eNB_instance>
     <eNB_serverId>0</eNB_serverId>
+    <num_attempts>3</num_attempts>
   </testCase>
   <testCase id="800814">
     <class>Create_Workspace</class>
@@ -93,6 +94,7 @@
     <yaml_path>ci-scripts/yaml_files/5g_sa_n310_nrue</yaml_path>
     <eNB_instance>1</eNB_instance>
     <eNB_serverId>1</eNB_serverId>
+    <num_attempts>3</num_attempts>
   </testCase>
  
   <testCase id="000001">
@@ -163,14 +165,16 @@
     <class>Clean_Test_Server_Images</class>
     <always_exec>true</always_exec>
     <desc>Clean Test Images on Test Server</desc>
-    <test_svr_id>0</test_svr_id>
+    <svr_id>0</svr_id>
+    <images>oai-gnb</images>
   </testCase>
 
   <testCase id="444444">
     <class>Clean_Test_Server_Images</class>
     <always_exec>true</always_exec>
     <desc>Clean Test Images on Test Server</desc>
-    <test_svr_id>1</test_svr_id>
+    <svr_id>1</svr_id>
+    <images>oai-nr-ue</images>
   </testCase>
 
 </testCaseList>

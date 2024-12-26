@@ -28,14 +28,6 @@
  */
 
 #include <stdint.h>
-
 #include "ngap_common.h"
-#include "NGAP_NGAP-PDU.h"
-
 
 int asn1_xer_print = 0;
-
-
-void ngap_handle_criticality(NGAP_Criticality_t criticality)
-{
-}

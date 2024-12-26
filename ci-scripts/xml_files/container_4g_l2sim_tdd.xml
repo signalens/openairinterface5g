@@ -44,8 +44,8 @@
         <testCase id="111111">
                 <class>Pull_Local_Registry</class>
                 <desc>Pull Images from Local Registry</desc>
-                <test_svr_id>0</test_svr_id>
-                <images_to_pull>oai-enb oai-lte-ue</images_to_pull>
+                <svr_id>0</svr_id>
+                <images>oai-enb oai-lte-ue</images>
         </testCase>
         <testCase id="800813">
                 <class>Create_Workspace</class>
@@ -149,7 +149,8 @@
                 <class>Clean_Test_Server_Images</class>
                 <always_exec>true</always_exec>
                 <desc>Clean Test Images on Test Server</desc>
-                <test_svr_id>0</test_svr_id>
+                <svr_id>0</svr_id>
+                <images>oai-enb oai-lte-ue</images>
         </testCase>
 
 </testCaseList>

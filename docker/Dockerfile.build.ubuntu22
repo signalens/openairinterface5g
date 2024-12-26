@@ -45,6 +45,7 @@ RUN /bin/sh oaienv && \
       -w USRP -t Ethernet \
       --build-e2 --cmake-opt -DXAPP_MULTILANGUAGE=OFF --cmake-opt -DKPM_VERSION=$KPM_VERSION --cmake-opt -DE2AP_VERSION=$E2AP_VERSION \
       --noavx512 \
+      --build-tool-opt -k10 \
       --cmake-opt -DCMAKE_C_FLAGS="-Werror" --cmake-opt -DCMAKE_CXX_FLAGS="-Werror" $BUILD_OPTION && \
     # Mainly to see if the sanitize option was perfectly executed
     echo "---- ldd on executables ----" && \

@@ -99,7 +99,8 @@ static bool check_plmn_identity(const f1ap_plmn_t *check_plmn, const f1ap_plmn_t
   return plmn->mcc == check_plmn->mcc && plmn->mnc_digit_length == check_plmn->mnc_digit_length && plmn->mnc == check_plmn->mnc;
 }
 
-static void du_clear_all_ue_states()
+/* not static, so we can call it from the outside (in telnet) */
+void du_clear_all_ue_states()
 {
   gNB_MAC_INST *mac = RC.nrmac[0];
   NR_SCHED_LOCK(&mac->sched_lock);
@@ -823,7 +824,7 @@ void dl_rrc_message_transfer(const f1ap_dl_rrc_message_t *dl_rrc)
   pthread_mutex_unlock(&mac->sched_lock);
 
   if (!du_exists_f1_ue_data(dl_rrc->gNB_DU_ue_id)) {
-    LOG_I(NR_MAC, "No CU UE ID stored for UE RNTI %04x, adding CU UE ID %d\n", dl_rrc->gNB_DU_ue_id, dl_rrc->gNB_CU_ue_id);
+    LOG_D(NR_MAC, "No CU UE ID stored for UE RNTI %04x, adding CU UE ID %d\n", dl_rrc->gNB_DU_ue_id, dl_rrc->gNB_CU_ue_id);
     f1_ue_data_t new_ue_data = {.secondary_ue = dl_rrc->gNB_CU_ue_id};
     du_add_f1_ue_data(dl_rrc->gNB_DU_ue_id, &new_ue_data);
   }

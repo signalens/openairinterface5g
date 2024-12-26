@@ -19,12 +19,13 @@
  *      contact@openairinterface.org
  */
 
+#include <netinet/in.h>
+#include <netinet/sctp.h>
+#include "assertions.h"
 #include "cucp_cuup_if.h"
+#include "e1ap_messages_types.h"
+#include "intertask_interface.h"
 #include "nr_rrc_defs.h"
-
-#include "nr_rrc_proto.h"
-#include "nr_rrc_extern.h"
-#include "cucp_cuup_if.h"
 
 static void cucp_cuup_bearer_context_setup_e1ap(sctp_assoc_t assoc_id, const e1ap_bearer_setup_req_t *req)
 {

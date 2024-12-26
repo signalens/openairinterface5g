@@ -42,42 +42,6 @@ c16_t nr_ru[839]; // quantized roots of unity
 static uint32_t nr_ZC_inv[839]; // multiplicative inverse for roots u
 uint16_t nr_du[838];
 
-/*void dump_nr_prach_config(NR_DL_FRAME_PARMS *frame_parms,uint8_t subframe) {
-
-  FILE *fd;
-
-  fd = fopen("prach_config.txt","w");
-  fprintf(fd,"prach_config: subframe          = %d\n",subframe);
-  fprintf(fd,"prach_config: N_RB_UL           = %d\n",frame_parms->N_RB_UL);
-  fprintf(fd,"prach_config: frame_type        = %s\n",(frame_parms->frame_type==1) ? "TDD":"FDD");
-
-  if (frame_parms->frame_type==TDD) {
-    fprintf(fd,"prach_config: p_tdd_UL_DL_Configuration.referenceSCS                  = %d\n",frame_parms->p_tdd_UL_DL_Configuration->referenceSubcarrierSpacing);
-    fprintf(fd,"prach_config: p_tdd_UL_DL_Configuration.dl_UL_TransmissionPeriodicity = %d\n",frame_parms->p_tdd_UL_DL_Configuration->dl_UL_TransmissionPeriodicity);
-    fprintf(fd,"prach_config: p_tdd_UL_DL_Configuration.nrofDownlinkSlots             = %d\n",frame_parms->p_tdd_UL_DL_Configuration->nrofDownlinkSlots);
-    fprintf(fd,"prach_config: p_tdd_UL_DL_Configuration.nrofDownlinkSymbols           = %d\n",frame_parms->p_tdd_UL_DL_Configuration->nrofDownlinkSymbols);
-    fprintf(fd,"prach_config: p_tdd_UL_DL_Configuration.nrofUownlinkSlots             = %d\n",frame_parms->p_tdd_UL_DL_Configuration->nrofDownlinkSlots);
-    fprintf(fd,"prach_config: p_tdd_UL_DL_Configuration.nrofUownlinkSymbols           = %d\n",frame_parms->p_tdd_UL_DL_Configuration->nrofDownlinkSymbols);
-    if (frame_parms->p_tdd_UL_DL_Configuration->p_next) {
-      fprintf(fd,"prach_config: p_tdd_UL_DL_Configuration.referenceSCS2                  = %d\n",frame_parms->p_tdd_UL_DL_Configuration->p_next->referenceSubcarrierSpacing);
-      fprintf(fd,"prach_config: p_tdd_UL_DL_Configuration.dl_UL_TransmissionPeriodicity2 = %d\n",frame_parms->p_tdd_UL_DL_Configuration->p_next->dl_UL_TransmissionPeriodicity);
-      fprintf(fd,"prach_config: p_tdd_UL_DL_Configuration.nrofDownlinkSlots2             = %d\n",frame_parms->p_tdd_UL_DL_Configuration->p_next->nrofDownlinkSlots);
-      fprintf(fd,"prach_config: p_tdd_UL_DL_Configuration.nrofDownlinkSymbols2           = %d\n",frame_parms->p_tdd_UL_DL_Configuration->p_next->nrofDownlinkSymbols);
-      fprintf(fd,"prach_config: p_tdd_UL_DL_Configuration.nrofUownlinkSlots2             = %d\n",frame_parms->p_tdd_UL_DL_Configuration->p_next->nrofDownlinkSlots);
-      fprintf(fd,"prach_config: p_tdd_UL_DL_Configuration.nrofUownlinkSymbols2           = %d\n",frame_parms->p_tdd_UL_DL_Configuration->p_next->nrofDownlinkSymbols);
-
-    }
-  }
-
-  fprintf(fd,"prach_config: rootSequenceIndex = %d\n",frame_parms->prach_config_common.rootSequenceIndex);
-  fprintf(fd,"prach_config: prach_ConfigIndex = %d\n",frame_parms->prach_config_common.prach_ConfigInfo.prach_ConfigIndex);
-  fprintf(fd,"prach_config: Ncs_config        = %d\n",frame_parms->prach_config_common.prach_ConfigInfo.zeroCorrelationZoneConfig);
-  fprintf(fd,"prach_config: highSpeedFlag     = %d\n",frame_parms->prach_config_common.prach_ConfigInfo.highSpeedFlag);
-  fprintf(fd,"prach_config: n_ra_prboffset    = %d\n",frame_parms->prach_config_common.prach_ConfigInfo.msg1_frequencystart);
-  fclose(fd);
-
-}*/
-
 // This function computes the du
 void nr_fill_du(uint16_t N_ZC, const uint16_t *prach_root_sequence_map)
 {

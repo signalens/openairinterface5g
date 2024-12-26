@@ -19,6 +19,7 @@
  *      contact@openairinterface.org
  */
 
+#include <netinet/in.h>
 #include "PduSessionEstablishmentAccept.h"
 #include "common/utils/LOG/log.h"
 #include "nr_nas_msg.h"
