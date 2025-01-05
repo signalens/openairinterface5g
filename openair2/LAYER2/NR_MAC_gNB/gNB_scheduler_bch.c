@@ -38,9 +38,6 @@
 #include "common/utils/LOG/vcd_signal_dumper.h"
 #include "UTIL/OPT/opt.h"
 #include "common/utils/nr/nr_common.h"
-#include "shm_interface/wd_shm_nr_utils.h"
-#include "openair1/PHY/defs_nr_common.h"
-
 
 #define ENABLE_MAC_PAYLOAD_DEBUG
 
@@ -751,14 +748,6 @@ void schedule_nr_sib1(module_id_t module_idP,
       // Data to be transmitted
       memcpy(tx_req->TLVs[0].value.direct, cc->sib1_bcch_pdu, TBS);
 
-      // Send data to fuzzer (SIB)
-      // send_pdu_data_nr(W_GNB_MAC_UE_DL_SIB,
-      //                   NR_DIRECTION_DOWNLINK,
-      //                   NR_SI_RNTI, 0xffff, 
-      //                   frameP, slotP, 0,
-      //                   sib1_payload, sib1_sdu_length);
-
-      tx_req->PDU_length = TBS;
       tx_req->PDU_index  = pdu_index;
       tx_req->num_TLV = 1;
       tx_req->TLVs[0].length = TBS;

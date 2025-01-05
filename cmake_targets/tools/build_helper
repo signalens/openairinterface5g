@@ -30,12 +30,6 @@ if [ ! -f /etc/os-release ]; then
 fi
 OS_DISTRO=$(grep "^ID=" /etc/os-release | sed "s/ID=//" | sed "s/\"//g")
 OS_RELEASE=$(grep "^VERSION_ID=" /etc/os-release | sed "s/VERSION_ID=//" | sed "s/\"//g")
-
-# Identify neon as ubuntu
-if [[ "$OS_DISTRO" == "neon" ]]; then
-    OS_DISTRO=ubuntu
-fi
-
 case "$OS_DISTRO" in
   fedora) OS_BASEDISTRO="fedora"; INSTALLER="dnf"; CMAKE="cmake" ;;
   rhel)   OS_BASEDISTRO="fedora"; INSTALLER="dnf"; CMAKE="cmake3" ;;
@@ -230,14 +224,10 @@ compilations() {
   {
     eval ${cmd}
     ret=$?
-  } | tee $dlog/$2.txt 2>&1
-  set -e
-  if [ "$VERBOSE_CI" == "1" ]; then
-     echo_info "====== Start of log for $2.txt ======"
-     cat $dlog/$2.txt
-     echo_info "====== End of log for $2.txt ======"
-  fi
-  check_warnings "$dlog/$2.txt"
+  } > $dlog/$logfile 2>&1
+  # Print the errors and warnings for CI purposes
+  grep -E -A3 "warning:|error:" $dlog/$logfile || true
+  check_warnings "$dlog/$logfile"
   if [[ $ret -eq 0 ]]; then
      echo_success "$targets compiled"
   else
@@ -258,11 +248,11 @@ install_usrp_uhd_driver_from_source(){
     pushd /tmp
     echo "Cloning UHD driver repository"
     rm -rf /tmp/uhd
+    git clone https://github.com/EttusResearch/uhd.git
+    cd uhd
     # For our legacy TDD eNB running with a B2xx RF board
     # the following patch has to be applied
     if [[ -v UHD_VERSION ]]; then
-        git clone https://github.com/EttusResearch/uhd.git
-        cd uhd
         git checkout tags/v${UHD_VERSION}
         # We recommend to use not older than 3.15.0.0
         if [[ "$UHD_VERSION" == "3.15.0.0" ]]; then
@@ -291,10 +281,7 @@ install_usrp_uhd_driver_from_source(){
             ret=$?;[[ $ret -ne 0 ]] && echo_fatal "Could not apply the TDD patch"
         fi
     else
-        git clone https://github.com/EttusResearch/uhd.git --depth=1 --branch UHD-4.4
-        cd uhd
-        COMMIT=8e54b58d89c4d5f0f24bf15e8508cb3d97d69d34 # Specific uhd-4.4 commit
-        git fetch --depth=1 origin $COMMIT && git checkout $COMMIT
+        git checkout tags/v4.0.0.0
         git apply $OPENAIR_DIR/cmake_targets/tools/uhd-4.x-tdd-patch.diff
         ret=$?;[[ $ret -ne 0 ]] && echo_fatal "Could not apply the TDD patch"
     fi
@@ -302,18 +289,11 @@ install_usrp_uhd_driver_from_source(){
     git diff
     mkdir -p host/build
     cd host/build || true
-    sed -i 's/HAVE_PYTHON_MODULE_MAKO\" OFF ON)/HAVE_PYTHON_MODULE_MAKO\" ON ON)/g' /tmp/uhd/host/CMakeLists.txt || true
-    #$CMAKE ../ -G Ninja
     $CMAKE ../ -GNinja -DENABLE_TESTS=OFF -DENABLE_EXAMPLES=OFF
     echo "Compiling UHD"
     ninja
     $SUDO ninja install
     $SUDO ldconfig -v
-
-    $SUDO /usr/local/lib/uhd/utils/uhd_images_downloader.py -t b2xx_b200_fpga_default || true
-    $SUDO /usr/local/lib/uhd/utils/uhd_images_downloader.py -t b2xx_b210_fpga_default || true
-    $SUDO /usr/local/lib/uhd/utils/uhd_images_downloader.py -t b2xx_common_fw_default || true
-
     if [ $IS_CONTAINER -eq 0 ]; then
         if [[ "$OS_DISTRO" == "ubuntu" ]]; then
             $SUDO /usr/local/lib/uhd/utils/uhd_images_downloader.py
@@ -324,7 +304,7 @@ install_usrp_uhd_driver_from_source(){
     fi
     popd
     rm -rf /tmp/uhd
-    ) | tee $uhd_install_log
+    ) >& $uhd_install_log
 }
 
 check_install_usrp_uhd_driver(){
@@ -600,16 +580,7 @@ check_install_oai_software() {
 	automake  \
 	build-essential \
 	$CMAKE \
-	cmake-curses-gui  \
-	curl \
-	doxygen \
-	doxygen-gui \
-	ethtool \
-	flex  \
-    g++ \
-    gcc \
-	gdb  \
-    ninja-build \
+        ninja-build \
 	pkg-config \
 	git \
 	libblas-dev \
@@ -647,8 +618,7 @@ check_install_oai_software() {
       lksctp-tools \
       lksctp-tools-devel \
       libtool \
-      libxslt-devel \
- #     ninja-build \
+      ninja-build \
       make \
       openssl-devel \
       patch \
@@ -691,7 +661,7 @@ install_asn1c_from_source(){
     if [[ -v CI_ENV ]]; then
         $SUDO rm -rf /tmp/asn1c
     fi
-    ) | tee $asn1_install_log 2>&1
+    ) > $asn1_install_log 2>&1
 }
 
 install_simde_from_source(){

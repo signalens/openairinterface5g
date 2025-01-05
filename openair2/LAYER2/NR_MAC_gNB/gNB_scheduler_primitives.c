@@ -2034,8 +2034,6 @@ void remove_nr_list(NR_list_t *listP, int id)
 void add_tail_nr_list(NR_list_t *listP, int id)
 {
   int *last = listP->tail < 0 ? &listP->head : &listP->next[listP->tail];
-  if (last == NULL)
-    return;
   *last = id;
   listP->next[id] = -1;
   listP->tail = id;

@@ -169,30 +169,6 @@ void nr_decode_pucch0(PHY_VARS_gNB *gNB,
               pucch_pdu->bit_len_harq,
               pucch_pdu->sr_flag);
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-  NR_gNB_UCI_STATS_t *uci_stats=NULL;
-  NR_gNB_UCI_STATS_t *first_uci_stats = gNB->uci_stats;
-  for (int i=0;i<NUMBER_OF_NR_UCI_STATS_MAX;i++)
-     if (gNB->uci_stats[i].rnti == pucch_pdu->rnti) {
-        uci_stats = &gNB->uci_stats[i];
-        break;
-     } else if (first_uci_stats == NULL && gNB->uci_stats[i].rnti == 0) first_uci_stats = &gNB->uci_stats[i];
-
-  if ((first_uci_stats == NULL) || (pucch_pdu == NULL))
-    return;
-
-  if (uci_stats == NULL) { uci_stats=first_uci_stats; uci_stats->rnti = pucch_pdu->rnti;}
-
-  AssertFatal(uci_stats!=NULL,"No stat index found\n");
-  uci_stats->frame = frame;
-=======
-  NR_gNB_PHY_STATS_t *phy_stats = get_phy_stats(gNB, pucch_pdu->rnti);
-  AssertFatal(phy_stats != NULL, "phy_stats shouldn't be NULL\n");
-  phy_stats->frame = frame;
-  NR_gNB_UCI_STATS_t *uci_stats = &phy_stats->uci_stats;
->>>>>>> a062be47
-=======
   /* it might be that the stats list is full: In this case, we will simply
    * write to some memory on the stack instead of the UE's UCI stats */
   NR_gNB_UCI_STATS_t stack_uci_stats = {0};
@@ -202,7 +178,6 @@ void nr_decode_pucch0(PHY_VARS_gNB *gNB,
     phy_stats->frame = frame;
     uci_stats = &phy_stats->uci_stats;
   }
->>>>>>> 8931e133
 
   int nr_sequences;
   const uint8_t *mcs;

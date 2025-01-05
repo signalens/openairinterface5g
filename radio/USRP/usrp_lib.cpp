@@ -955,9 +955,6 @@ void set_rx_gain_offset(openair0_config_t *openair0_cfg, int chain_index,int bw_
 
   if (bw_gain_adjust==1) {
     switch ((int)openair0_cfg[0].sample_rate) {
-      case 61440000:
-        break;
-
       case 46080000:
         break;
 
@@ -1359,15 +1356,6 @@ extern "C" {
     }
 
     switch ((int)openair0_cfg[0].sample_rate) {
-      case 61440000:
-        s->usrp->set_master_clock_rate(61.44e6);
-        // openair0_cfg[0].samples_per_packet    = 1024;
-        openair0_cfg[0].tx_sample_advance     = 115;
-        openair0_cfg[0].tx_bw                 = 50e6;
-        openair0_cfg[0].rx_bw                 = 50e6;
-        break;
-
-
       case 46080000:
         s->usrp->set_master_clock_rate(46.08e6);
         //openair0_cfg[0].samples_per_packet    = 1024;

@@ -123,8 +123,6 @@ void initNamedTpool(char* params, tpool_t* tpool, bool performanceMeas, char* na
 
     curptr = strtok_r(NULL, ",", &saveptr);
   }
-  
-  printf("Number of Threads=%d\n", pool->nbThreads);
   free(parms_cpy);
 
   if (num_workers) {
