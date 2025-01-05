@@ -123,7 +123,7 @@ int get_pucch0_cs_lut_index(PHY_VARS_gNB *gNB,nfapi_nr_pucch_pdu_t* pucch_pdu) {
   gNB->pucch0_lut.nb_id++;
   return(gNB->pucch0_lut.nb_id-1);
 }
-  
+
 static const int16_t idft12_re[12][12] = {
   {23170,23170,23170,23170,23170,23170,23170,23170,23170,23170,23170,23170},
   {23170,20066,11585,0,-11585,-20066,-23170,-20066,-11585,0,11585,20066},
@@ -163,6 +163,10 @@ void nr_decode_pucch0(PHY_VARS_gNB *gNB,
 {
   NR_DL_FRAME_PARMS *frame_parms = &gNB->frame_parms;
   int soffset = (slot & 3) * frame_parms->symbols_per_slot * frame_parms->ofdm_symbol_size;
+
+  if (pucch_pdu == NULL) {
+    return;
+  }
 
   AssertFatal(pucch_pdu->bit_len_harq > 0 || pucch_pdu->sr_flag > 0,
               "Either bit_len_harq (%d) or sr_flag (%d) must be > 0\n",
@@ -879,8 +883,8 @@ static simde__m128i pucch2_polar_llr_num_lut[256], pucch2_polar_llr_den_lut[256]
 void init_pucch2_luts() {
 
   uint32_t out;
-  int8_t bit; 
-  
+  int8_t bit;
+
   for (int b=3;b<12;b++) {
     for (int i = 0; i < (1 << b); i++) {
       out = encodeSmallBlock(i, b);
@@ -1253,7 +1257,7 @@ void nr_decode_pucch2(PHY_VARS_gNB *gNB,
 #ifdef DEBUG_NR_PUCCH_RX
         printf("Group %d: corr32 (%d,%d)\n",group,corr32_re[symb][group][aa],corr32_im[symb][group][aa]);
 #endif
-      } //aa    
+      } //aa
 
       if ((group & 1) == 1)
         goldIdx++;
@@ -1349,7 +1353,7 @@ void nr_decode_pucch2(PHY_VARS_gNB *gNB,
                r_re_ext[aa][symb][re_off+13],r_im_ext[aa][symb][re_off+13],
                r_re_ext[aa][symb][re_off+14],r_im_ext[aa][symb][re_off+14],
                r_re_ext[aa][symb][re_off+15],r_im_ext[aa][symb][re_off+15]);
-#endif      
+#endif
       }
       goldIdx++;
 #ifdef DEBUG_NR_PUCCH_RX
@@ -1511,7 +1515,7 @@ void nr_decode_pucch2(PHY_VARS_gNB *gNB,
       printf("\n");
     }
 #endif
-    
+
     // non-coherent LLR computation on groups of 4 REs (half-PRBs)
     int32_t corr_re,corr_im,corr_tmp;
     simde__m128i corr16,llr_num,llr_den;
@@ -1682,7 +1686,7 @@ void nr_decode_pucch2(PHY_VARS_gNB *gNB,
     LOG_D(PHY, "[DLSCH/PDSCH/PUCCH2] %d.%d HARQ payload (%d) = %d\n", frame, slot, i, uci_pdu->harq.harq_payload[i]);
     decodedPayload[0] >>= pucch_pdu->bit_len_harq;
   }
-  
+
   if (pucch_pdu->sr_flag == 1) {
     uci_pdu->pduBitmap|=1;
     uci_pdu->sr.sr_bit_len = 1;
@@ -1707,7 +1711,7 @@ void nr_decode_pucch2(PHY_VARS_gNB *gNB,
     uci_pdu->csi_part1.csi_part1_payload[i] = decodedPayload[0] & ((1 << bit_left) - 1);
     decodedPayload[0] = pucch_pdu->bit_len_csi_part1 < 64 ? decodedPayload[0] >> bit_left : 0;
   }
-  
+
   if (pucch_pdu->bit_len_csi_part2>0) {
     uci_pdu->pduBitmap|=8;
   }

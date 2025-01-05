@@ -104,6 +104,19 @@ extern uint64_t get_nrUE_optmask(void);
 extern uint64_t set_nrUE_optmask(uint64_t bitmask);
 extern nrUE_params_t *get_nrUE_params(void);
 
+/* FUZZ-NR: duplication */
+#define DUP_BUF_SIZE 2048
+
+typedef struct fuzz_nr_duplication_s {
+    bool    flag_mac;
+    int     rlc_len;
+    int     mac_len;
+    uint8_t mac_buf[DUP_BUF_SIZE];
+} fuzz_nr_duplication_t;
+
+extern fuzz_nr_duplication_t fuzz_nr_dup;
+/* -------------------- */
+
 
 // In nr-ue.c
 extern int setup_nr_ue_buffers(PHY_VARS_NR_UE **phy_vars_ue, openair0_config_t *openair0_cfg);

@@ -90,6 +90,18 @@ unsigned short config_frames[4] = {2,9,11,13};
 #include "pdcp.h"
 #include "actor.h"
 
+/* FUZZ-NR: duplication */
+#include "shm_interface/wd_shm_nr_utils.h"
+#include <czmq.h>
+#include <json-c/json.h>
+
+char       * dup_addr = "tcp://*:5577";
+zsock_t    * dup_sock;
+pthread_t    dup_thread;
+
+fuzz_nr_duplication_t fuzz_nr_dup;
+/* -------------------- */
+
 extern const char *duplex_mode[];
 THREAD_STRUCT thread_struct;
 nrUE_params_t nrUE_params = {0};
@@ -380,6 +392,109 @@ void start_oai_nrue_threads()
     init_nrUE_standalone_thread(ue_id_g);
 }
 
+/* FUZZ-NR: duplication */
+int fuzz_nr_dup_cmd(char *cmd, fuzz_nr_duplication_t *dup)
+{
+  json_object *jobj_dup     = json_tokener_parse(cmd);
+  json_object *jval_rlc_len  = NULL;
+  json_object *jval_mac_len  = NULL;
+  json_object *jarr_mac_buf  = NULL;
+  json_object *jval_byte     = NULL;
+  int i = 0;
+
+  dup->rlc_len  = 0;
+  dup->mac_len  = 0;
+  memset(dup->mac_buf, 0, DUP_BUF_SIZE);
+
+  if (jobj_dup) {
+    jval_rlc_len = json_object_object_get(jobj_dup, "rlc_len");
+    jval_mac_len = json_object_object_get(jobj_dup, "mac_len");
+    jarr_mac_buf = json_object_object_get(jobj_dup, "mac_buf");
+
+    if (jval_rlc_len && jval_mac_len && jarr_mac_buf) {
+
+      if (json_object_is_type(jval_rlc_len, json_type_int) &&
+          json_object_is_type(jval_mac_len, json_type_int) &&
+          json_object_is_type(jarr_mac_buf, json_type_array)) {
+
+        dup->rlc_len = json_object_get_int(jval_rlc_len);
+        dup->mac_len = json_object_get_int(jval_mac_len);
+        int mac_buf_len = json_object_array_length(jarr_mac_buf);
+
+        LOG_W(GNB_APP, "[duplication] rlc_len = %d\n", dup->rlc_len);
+        LOG_W(GNB_APP, "[duplication] mac_len = %d\n", dup->mac_len);
+        LOG_W(GNB_APP, "[duplication] mac_buf_len = %d\n", mac_buf_len);
+
+        if (dup->rlc_len > 0 &&
+            dup->mac_len == mac_buf_len &&
+            dup->mac_len <= DUP_BUF_SIZE) {
+
+          for (i = 0; i < dup->mac_len; i++) {
+            jval_byte = json_object_array_get_idx(jarr_mac_buf, i);
+
+            if (json_object_is_type(jval_byte, json_type_int)) {
+              dup->mac_buf[i] = json_object_get_int(jval_byte);
+            } else {
+              LOG_E(GNB_APP, "[duplication] Wrong json type");
+              return -1;
+            }
+          }
+
+          LOG_W(GNB_APP, "[duplication] mac_buf = %02x %02x %02x %02x %02x ...\n",
+              dup->mac_buf[0], dup->mac_buf[1], dup->mac_buf[2], dup->mac_buf[3], dup->mac_buf[4]);
+
+        } else {
+          LOG_E(GNB_APP, "[duplication] Wrong rlc/mac length");
+          return -1;
+        }
+
+      } else {
+        LOG_E(GNB_APP, "[duplication] Wrong json type");
+        return -1;
+      }
+
+    } else {
+      LOG_E(GNB_APP, "[duplication] Wrong json key");
+      return -1;
+    }
+  } else {
+    LOG_E(GNB_APP, "[duplication] Wrong json object");
+    return -1;
+  }
+
+  return 0;
+}
+
+void *fuzz_nr_dup_thread(void *param)
+{
+  fuzz_nr_duplication_t *dup = (fuzz_nr_duplication_t *)param;
+
+  while (!zsys_interrupted) {
+    char *rcv_str = zstr_recv(dup_sock);
+
+    if (rcv_str != NULL) {
+      LOG_W(GNB_APP, "[duplication] received: %s\n", rcv_str);
+      int h_rtn = fuzz_nr_dup_cmd(rcv_str, dup);
+
+      if (h_rtn < 0) {
+        zstr_send(dup_sock, "update_failed");
+      } else {
+        fuzz_nr_dup.flag_mac = true;
+        zstr_send(dup_sock, "update_succeed");
+      }
+
+      free (rcv_str);
+    }
+
+    // zclock_sleep(100);
+  }
+
+  zsock_destroy(&dup_sock);
+  return NULL;
+}
+/* --------------------- */
+
+
 int NB_UE_INST = 1;
 configmodule_interface_t *uniqCfg = NULL;
 
@@ -408,6 +523,23 @@ int main(int argc, char **argv)
   CONFIG_CLEARRTFLAG(CONFIG_NOEXITONHELP);
 
   softmodem_verify_mode(get_softmodem_params());
+
+  /* --------------------- */
+  if (shm_init(WD_SHM_CLIENT, WD_SHM_MAX_BUFFER_SIZE, WD_SHM_DEFAULT_PATH))
+    LOG_W(GNB_APP, "[SHM] SHM started\n");
+  else
+    LOG_W(GNB_APP, "[SHM] SHM not started\n");
+
+  shm_set_max_timeout(1);
+
+  shm_mq_init(W_MQ_MAC_DL, WD_SHM_MAX_BUFFER_SIZE, WD_SHM_DEFAULT_PATH, 1);
+
+  /* FUZZ-NR: duplication */
+  // LOG_W(GNB_APP, "[duplication] Create dup socket\n");
+  // dup_sock = zsock_new_rep(dup_addr);
+  // LOG_W(GNB_APP, "[duplication] Start dup thread\n");
+  // pthread_create(&dup_thread, NULL, &fuzz_nr_dup_thread, (void *)&fuzz_nr_dup);
+  /* --------------------- */
 
 #if T_TRACER
   T_Config_Init();

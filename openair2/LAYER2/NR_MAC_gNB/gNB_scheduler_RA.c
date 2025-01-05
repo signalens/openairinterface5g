@@ -34,6 +34,7 @@
 #include "nr_mac_gNB.h"
 #include "NR_MAC_gNB/mac_proto.h"
 #include "NR_MAC_COMMON/nr_mac_extern.h"
+#include "shm_interface/wd_shm_nr_utils.h"
 
 /* Utils */
 #include "common/utils/LOG/log.h"
@@ -80,12 +81,12 @@ static int16_t ssb_index_from_prach(module_id_t module_idP,
   NR_RACH_ConfigCommon_t *rach_ConfigCommon = scc->uplinkConfigCommon->initialUplinkBWP->rach_ConfigCommon->choice.setup;
   uint8_t config_index = rach_ConfigCommon->rach_ConfigGeneric.prach_ConfigurationIndex;
   uint8_t fdm = cfg->prach_config.num_prach_fd_occasions.value;
-  
+
   uint8_t total_RApreambles = MAX_NUM_NR_PRACH_PREAMBLES;
   if (rach_ConfigCommon->totalNumberOfRA_Preambles != NULL)
     total_RApreambles = *rach_ConfigCommon->totalNumberOfRA_Preambles;
-  
-  float  num_ssb_per_RO = ssb_per_rach_occasion[cfg->prach_config.ssb_per_rach.value];	
+
+  float  num_ssb_per_RO = ssb_per_rach_occasion[cfg->prach_config.ssb_per_rach.value];
   uint16_t start_symbol_index = 0;
   uint8_t N_dur=0,N_t_slot=0,start_symbol = 0, temp_start_symbol = 0, N_RA_slot=0;
   uint16_t format,RA_sfn_index = -1;
@@ -217,7 +218,7 @@ void find_SSB_and_RO_available(gNB_MAC_INST *nrmac)
                                         &N_RA_sfn,
                                         &max_association_period);
 
-  float num_ssb_per_RO = ssb_per_rach_occasion[cfg->prach_config.ssb_per_rach.value];	
+  float num_ssb_per_RO = ssb_per_rach_occasion[cfg->prach_config.ssb_per_rach.value];
   uint8_t fdm = cfg->prach_config.num_prach_fd_occasions.value;
   uint64_t L_ssb = (((uint64_t) cfg->ssb_table.ssb_mask_list[0].ssb_mask.value) << 32) | cfg->ssb_table.ssb_mask_list[1].ssb_mask.value;
   uint32_t total_RA_occasions = N_RA_sfn * N_t_slot * N_RA_slot * fdm;
@@ -995,7 +996,7 @@ static bool get_feasible_msg3_tda(frame_type_t frame_type,
     NR_beam_alloc_t beam = beam_allocation_procedure(beam_info, temp_frame, temp_slot, ra->beam_id, slots_per_frame);
     if (beam.idx < 0)
       continue;
-      
+
     // is in mixed slot with more or equal than 3 symbols, or UL slot
     ra->Msg3_frame = temp_frame;
     ra->Msg3_slot = temp_slot;
@@ -1663,6 +1664,13 @@ static void nr_generate_Msg2(module_id_t module_idP,
   // DL TX request
   nfapi_nr_pdu_t *tx_req = &TX_req->pdu_list[TX_req->Number_of_PDUs];
 
+  // Send data to fuzzer (MSG2, RAR)
+  send_pdu_data_nr(W_GNB_MAC_UE_DL_RAR_PDU_WITH_DATA,
+                    NR_DIRECTION_DOWNLINK,
+                    NR_RA_RNTI, ra->RA_rnti,
+                    frameP, slotP, 0,
+                    (uint8_t *)&tx_req->TLVs[0].value.direct[0], tx_req->TLVs[0].length);
+
   // Program UL processing for Msg3
   nr_add_msg3(module_idP, CC_id, frameP, slotP, ra, (uint8_t *)&tx_req->TLVs[0].value.direct[0]);
 
@@ -2193,6 +2201,13 @@ static void nr_generate_Msg4_MsgB(module_id_t module_idP,
         buf[k] = 0;
       }
     }
+
+    // Send data to fuzzer (MSG4, RRC Setup)
+    send_pdu_data_nr(W_GNB_MAC_UE_DL_PDU_WITH_DATA,
+                      NR_DIRECTION_DOWNLINK,
+                      NR_C_RNTI, ra->rnti,
+                      frameP, slotP, 0,
+                      (uint8_t *)(harq->transportBlock), harq->tb_size);
 
     T(T_GNB_MAC_DL_PDU_WITH_DATA, T_INT(module_idP), T_INT(CC_id), T_INT(ra->rnti),
       T_INT(frameP), T_INT(slotP), T_INT(current_harq_pid), T_BUFFER(harq->transportBlock, harq->tb_size));

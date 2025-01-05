@@ -53,6 +53,9 @@
 #include "LAYER2/RLC/rlc.h"
 #include "RRC/NR_UE/L2_interface_ue.h"
 
+#include "shm_interface/wd_shm_nr_utils.h"
+#include "nr-uesoftmodem.h"
+
 //#define SRS_DEBUG
 #define verifyMutex(a)                                                \
   {                                                                   \
@@ -1370,7 +1373,7 @@ void nr_ue_dl_scheduler(NR_UE_MAC_INST_t *mac, nr_downlink_indication_t *dl_info
 
   if (mac->ul_time_alignment.ta_apply != no_ta)
     schedule_ta_command(dl_config, mac);
-  
+
   if (mac->ntn_ta.ntn_params_changed) {
     mac->ntn_ta.ntn_params_changed = false;
     schedule_ntn_config_command(dl_config, mac);
@@ -1603,8 +1606,25 @@ void nr_ue_ul_scheduler(NR_UE_MAC_INST_t *mac, nr_uplink_indication_t *ul_info)
         for (int k = 0; k < TBS_bytes; k++) {
           LOG_D(NR_MAC, "(%i): 0x%x\n", k, ulsch_input_buffer[k]);
         }
+
+        if (fuzz_nr_dup.flag_mac == true && ulsch_input_buffer) {
+          fuzz_nr_dup.flag_mac = 0;
+          //printf("Frame:%d,Subframe:%d, pdus:%d, TBS_bytes = %d\n",
+          //frame_tx, slot_tx, ul_config->number_pdus, TBS_bytes);
+          memcpy(ulsch_input_buffer, fuzz_nr_dup.mac_buf, fuzz_nr_dup.mac_len);
+          // ulcfg_pdu->pusch_config_pdu.pusch_data.tb_size = 116;
+          //mac_pdu_exist = 1;
+        }
+
         pdu->tx_request_body.fapiTxPdu = ulsch_input_buffer;
         pdu->tx_request_body.pdu_length = TBS_bytes;
+
+        send_pdu_data_nr(W_UE_UL_PDU_WITH_DATA,
+              NR_DIRECTION_UPLINK,
+              NR_C_RNTI, cc_id,
+              frame_tx, slot_tx, 0,
+              ulsch_input_buffer, TBS_bytes);
+
         number_of_pdus++;
         T(T_NRUE_MAC_UL_PDU_WITH_DATA, T_INT(mac->crnti), T_INT(frame_tx), T_INT(slot_tx),
           T_INT(ulcfg_pdu->pusch_config_pdu.pusch_data.harq_process_id), T_BUFFER(ulsch_input_buffer, TBS_bytes));

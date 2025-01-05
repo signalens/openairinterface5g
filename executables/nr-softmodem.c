@@ -88,6 +88,18 @@ unsigned short config_frames[4] = {2,9,11,13};
 #include "utils.h"
 #include "x2ap_eNB.h"
 
+/* FUZZ-NR: duplication */
+#include "shm_interface/wd_shm_nr_utils.h"
+#include <czmq.h>
+#include <json-c/json.h>
+
+char       * dup_addr = "tcp://*:5566";
+zsock_t    * dup_sock;
+pthread_t    dup_thread;
+
+fuzz_nr_duplication_t fuzz_nr_dup;
+/* -------------------- */
+
 pthread_cond_t nfapi_sync_cond;
 pthread_mutex_t nfapi_sync_mutex;
 int nfapi_sync_var=-1; //!< protected by mutex \ref nfapi_sync_mutex
@@ -227,7 +239,7 @@ void exit_function(const char *file, const char *function, const int line, const
 
 static int create_gNB_tasks(ngran_node_t node_type, configmodule_interface_t *cfg)
 {
-  uint32_t                        gnb_nb = RC.nb_nr_inst; 
+  uint32_t                        gnb_nb = RC.nb_nr_inst;
   uint32_t                        gnb_id_start = 0;
   uint32_t                        gnb_id_end = gnb_id_start + gnb_nb;
   LOG_D(GNB_APP, "%s(gnb_nb:%d)\n", __FUNCTION__, gnb_nb);
@@ -334,7 +346,7 @@ static int create_gNB_tasks(ngran_node_t node_type, configmodule_interface_t *cf
       itti_free(TASK_UNKNOWN, msg);
     }
 
-    //Use check on x2ap to consider the NSA scenario 
+    //Use check on x2ap to consider the NSA scenario
     if((is_x2ap_enabled() || IS_SA_MODE(get_softmodem_params())) && (node_type != ngran_gNB_CUCP)) {
       if (itti_create_task (TASK_GTPV1_U, &gtpv1uTask, NULL) < 0) {
         LOG_E(GTPU, "Create task for GTPV1U failed\n");
@@ -565,6 +577,109 @@ static void initialize_agent(ngran_node_t node_type, e2_agent_args_t oai_args)
 }
 #endif
 
+/* FUZZ-NR: duplication */
+int fuzz_nr_dup_cmd(char *cmd, fuzz_nr_duplication_t *dup)
+{
+  json_object *jobj_dup     = json_tokener_parse(cmd);
+  json_object *jval_rlc_len  = NULL;
+  json_object *jval_mac_len  = NULL;
+  json_object *jarr_mac_buf  = NULL;
+  json_object *jval_byte     = NULL;
+  int i = 0;
+
+  dup->rlc_len  = 0;
+  dup->mac_len  = 0;
+  memset(dup->mac_buf, 0, DUP_BUF_SIZE);
+
+  if (jobj_dup) {
+    jval_rlc_len = json_object_object_get(jobj_dup, "rlc_len");
+    jval_mac_len = json_object_object_get(jobj_dup, "mac_len");
+    jarr_mac_buf = json_object_object_get(jobj_dup, "mac_buf");
+
+    if (jval_rlc_len && jval_mac_len && jarr_mac_buf) {
+
+      if (json_object_is_type(jval_rlc_len, json_type_int) &&
+          json_object_is_type(jval_mac_len, json_type_int) &&
+          json_object_is_type(jarr_mac_buf, json_type_array)) {
+
+        dup->rlc_len = json_object_get_int(jval_rlc_len);
+        dup->mac_len = json_object_get_int(jval_mac_len);
+        int mac_buf_len = json_object_array_length(jarr_mac_buf);
+
+        LOG_W(GNB_APP, "[duplication] rlc_len = %d\n", dup->rlc_len);
+        LOG_W(GNB_APP, "[duplication] mac_len = %d\n", dup->mac_len);
+        LOG_W(GNB_APP, "[duplication] mac_buf_len = %d\n", mac_buf_len);
+
+        if (dup->rlc_len > 0 &&
+            dup->rlc_len < dup->mac_len &&
+            dup->mac_len == mac_buf_len &&
+            dup->mac_len <= DUP_BUF_SIZE) {
+
+          for (i = 0; i < dup->mac_len; i++) {
+            jval_byte = json_object_array_get_idx(jarr_mac_buf, i);
+
+            if (json_object_is_type(jval_byte, json_type_int)) {
+              dup->mac_buf[i] = json_object_get_int(jval_byte);
+            } else {
+              LOG_E(GNB_APP, "[duplication] Wrong json type");
+              return -1;
+            }
+          }
+
+          LOG_W(GNB_APP, "[duplication] mac_buf = %02x %02x %02x %02x %02x ...\n",
+              dup->mac_buf[0], dup->mac_buf[1], dup->mac_buf[2], dup->mac_buf[3], dup->mac_buf[4]);
+
+        } else {
+          LOG_E(GNB_APP, "[duplication] Wrong rlc/mac length");
+          return -1;
+        }
+
+      } else {
+        LOG_E(GNB_APP, "[duplication] Wrong json type");
+        return -1;
+      }
+
+    } else {
+      LOG_E(GNB_APP, "[duplication] Wrong json key");
+      return -1;
+    }
+  } else {
+    LOG_E(GNB_APP, "[duplication] Wrong json object");
+    return -1;
+  }
+
+  return 0;
+}
+
+void *fuzz_nr_dup_thread(void *param)
+{
+  fuzz_nr_duplication_t *dup = (fuzz_nr_duplication_t *)param;
+
+  while (!zsys_interrupted) {
+    char *rcv_str = zstr_recv(dup_sock);
+
+    if (rcv_str != NULL) {
+      LOG_W(GNB_APP, "[duplication] received: %s\n", rcv_str);
+      int h_rtn = fuzz_nr_dup_cmd(rcv_str, dup);
+
+      if (h_rtn < 0) {
+        zstr_send(dup_sock, "update_failed");
+      } else {
+        fuzz_nr_dup.flag_mac = true;
+        zstr_send(dup_sock, "update_succeed");
+      }
+
+      free (rcv_str);
+    }
+
+    zclock_sleep(100);
+  }
+
+  zsock_destroy(&dup_sock);
+  return NULL;
+}
+/* --------------------- */
+
 void init_eNB_afterRU(void);
 configmodule_interface_t *uniqCfg = NULL;
 int main( int argc, char **argv ) {
@@ -597,6 +712,25 @@ int main( int argc, char **argv ) {
           "no SYS_NICE capability: cannot set thread priority and affinity, consider running with sudo for optimum performance\n");
 
   softmodem_verify_mode(get_softmodem_params());
+
+  /* --------------------- */
+  if (shm_init(WD_SHM_CLIENT, WD_SHM_MAX_BUFFER_SIZE, WD_SHM_DEFAULT_PATH))
+    LOG_W(GNB_APP, "[SHM] SHM started\n");
+  else
+    LOG_W(GNB_APP, "[SHM] SHM not started\n");
+
+  shm_set_max_timeout(1);
+
+  shm_mq_init(W_MQ_MAC_DL, WD_SHM_MAX_BUFFER_SIZE, WD_SHM_DEFAULT_PATH, 1);
+
+
+
+  /* FUZZ-NR: duplication */
+  LOG_W(GNB_APP, "[duplication] Create dup socket\n");
+  // dup_sock = zsock_new_rep(dup_addr);
+  LOG_W(GNB_APP, "[duplication] Start dup thread\n");
+  // pthread_create(&dup_thread, NULL, &fuzz_nr_dup_thread, (void *)&fuzz_nr_dup);
+  /* --------------------- */
 
 #if T_TRACER
   T_Config_Init();
@@ -654,10 +788,10 @@ int main( int argc, char **argv ) {
     for (ru_id=0; ru_id<RC.nb_RU; ru_id++) {
       RC.ru[ru_id]->rf_map.card=0;
       RC.ru[ru_id]->rf_map.chain=CC_id+chain_offset;
-      if (ru_id==0) sl_ahead = RC.ru[ru_id]->sl_ahead;	
+      if (ru_id==0) sl_ahead = RC.ru[ru_id]->sl_ahead;
       else AssertFatal(RC.ru[ru_id]->sl_ahead != RC.ru[0]->sl_ahead,"RU %d has different sl_ahead %d than RU 0 %d\n",ru_id,RC.ru[ru_id]->sl_ahead,RC.ru[0]->sl_ahead);
     }
-    
+
   }
 
   config_sync_var=0;
@@ -669,7 +803,7 @@ int main( int argc, char **argv ) {
 //////////////////////////////////
 //// Init the E2 Agent
 
-  // OAI Wrapper 
+  // OAI Wrapper
   e2_agent_args_t oai_args = RCconfig_NR_E2agent();
 
   if (oai_args.enabled) {

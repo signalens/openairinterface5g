@@ -33,6 +33,8 @@
 
 #include "LOG/log.h"
 
+#include "shm_interface/wd_shm_nr_utils.h"
+
 /**
  * @brief returns the maximum PDCP PDU size
  *        which corresponds to data PDU for DRBs with 18 bits PDCP SN
@@ -155,6 +157,22 @@ static void nr_pdcp_entity_recv_pdu(nr_pdcp_entity_t *entity,
     }
   }
 
+  if (entity->is_gnb)
+  {
+    // RX NR gNB Interception
+    send_pdu_data_pdcp_nr(
+      NR_DIRECTION_UPLINK,
+      (entity->type == NR_PDCP_SRB ? SIGNALING_PLANE_NR : USER_PLANE_NR),
+      entity->rb_id == 0 ? BEARER_CCCH : BEARER_DCCH,
+      entity->pdusession_id,
+      entity->sn_size,
+      false, 0,
+      (uint8_t *)buffer, header_size + size + integrity_size);
+  }
+  else{
+    // TODO: UE interception here
+  }
+
   if (rcvd_count < entity->rx_deliv
       || nr_pdcp_sdu_in_list(entity->rx_list, rcvd_count)) {
     LOG_W(PDCP, "discard NR PDU rcvd_count=%d, entity->rx_deliv %d,sdu_in_list %d\n", rcvd_count,entity->rx_deliv,nr_pdcp_sdu_in_list(entity->rx_list,rcvd_count));
@@ -274,6 +292,22 @@ static int nr_pdcp_entity_process_sdu(nr_pdcp_entity_t *entity,
 
   memcpy(buf + header_size, buffer, size);
 
+  if (entity->is_gnb) {
+    // TX NR gNB Interception
+    memset(buf + header_size + size, 0, integrity_size); // Clear MAC-I
+    send_pdu_data_pdcp_nr(
+      NR_DIRECTION_DOWNLINK,
+      (entity->type == NR_PDCP_SRB ? SIGNALING_PLANE_NR : USER_PLANE_NR),
+      entity->rb_id == 0 ? BEARER_CCCH : BEARER_DCCH,
+      entity->pdusession_id,
+      entity->sn_size,
+      false, 0,
+      (uint8_t *)buf, header_size + size + integrity_size);
+  }
+  else {
+    // TODO: NR UE Interception here
+  }
+
   if (entity->has_integrity) {
     uint8_t integrity[PDCP_INTEGRITY_SIZE] = {0};
     entity->integrity(entity->integrity_context,
@@ -292,6 +326,23 @@ static int nr_pdcp_entity_process_sdu(nr_pdcp_entity_t *entity,
                    (unsigned char *)buf + header_size + sdap_header_size,
                    size + integrity_size - sdap_header_size,
                    entity->rb_id, count, entity->is_gnb ? 1 : 0);
+  }
+
+  if (entity->has_integrity || entity->has_ciphering) {
+    if (entity->is_gnb) {
+        // TX NR gNB Interception
+        send_pdu_data_pdcp_nr(
+          NR_DIRECTION_UPLINK,
+          (entity->type == NR_PDCP_SRB ? SIGNALING_PLANE_NR : USER_PLANE_NR),
+          entity->rb_id == 0 ? BEARER_CCCH : BEARER_DCCH,
+          entity->pdusession_id,
+          entity->sn_size,
+          true, 0,
+          (uint8_t *)buf, header_size + size + integrity_size);
+      }
+      else{
+        // TODO: NR UE Interception here
+      }
   }
 
   entity->tx_next++;
@@ -650,7 +701,7 @@ nr_pdcp_entity_t *new_nr_pdcp_entity(
       ret->reestablish_entity = nr_pdcp_entity_reestablish_srb;
       break;
   }
-  
+
   ret->get_stats = nr_pdcp_entity_get_stats;
   ret->deliver_sdu = deliver_sdu;
   ret->deliver_sdu_data = deliver_sdu_data;

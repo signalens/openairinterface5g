@@ -104,7 +104,7 @@ Options:
    Makes the unitary tests Layer 1 simulators
 -s | --check
    runs a set of auto-tests based on simulators and several compilation tests
---run-group 
+--run-group
    runs only specified test cases specified here. This flag is only valid with -s
 -V | --vcd
    Adds a debgging facility to the binary files: GUI with major internal synchronization events
@@ -339,7 +339,7 @@ function main() {
 	   TARGET_LIST="$TARGET_LIST doc"
            BUILD_DOXYGEN=1
            echo_info "Will build doxygen support"
-           shift;;     
+           shift;;
        --enable-LTTNG)
             CMAKE_CMD="$CMAKE_CMD -DENABLE_LTTNG=ON -DT_TRACER=OFF"
             echo_info "Enable LTTNG tracer"
@@ -373,11 +373,11 @@ function main() {
             CMAKE_CMD="$CMAKE_CMD"' -DCMAKE_ECLIPSE_GENERATE_SOURCE_PROJECT=TRUE -G"Eclipse CDT4 - Unix Makefiles"'
             echo_info "Enabling build eclipse project support"
             shift 1;;
-       --build-lib) 
+       --build-lib)
             if [  "$2" == "all" ] ; then
               TARGET_LIST="$TARGET_LIST $OPTIONAL_LIBRARIES"
               for lib in $OPTIONAL_LIBRARIES; do CMAKE_CMD="$CMAKE_CMD -DENABLE_${lib^^}=ON"; done
-              echo_info "Enabling build of all optional shared libraries ($OPTIONAL_LIBRARIES)" 
+              echo_info "Enabling build of all optional shared libraries ($OPTIONAL_LIBRARIES)"
             else
               for reqlib in $2; do
                 lib=$(echo $OPTIONAL_LIBRARIES | tr ' ' '\n' | grep -w $reqlib) # search given parameter in list
@@ -451,6 +451,8 @@ function main() {
     fi
     if [ "$HW" == "OAI_USRP" ] ; then
       echo_info "installing packages for USRP support"
+      export BUILD_UHD_FROM_SOURCE=True
+      export UHD_VERSION=4.7.0.0
       check_install_usrp_uhd_driver
       if [ ! -v BUILD_UHD_FROM_SOURCE ] && [ ! "$DISABLE_HARDWARE_DEPENDENCY" == "True" ]; then
         install_usrp_uhd_driver $UHD_IMAGES_DIR

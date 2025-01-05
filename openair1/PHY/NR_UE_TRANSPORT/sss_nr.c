@@ -201,7 +201,7 @@ static int pss_ch_est_nr(const NR_DL_FRAME_PARMS *frame_parms,
       // This is H*(PSS) = R* \cdot PSS
       const int tmp_re = pss_ext2[i].r * pss[i];
       const int tmp_im = -pss_ext2[i].i * pss[i];
-      
+
       const int32_t amp = tmp_re * tmp_re + tmp_im * tmp_im;
       const int shift = log2_approx(amp) / 2;
       // This is R(SSS) \cdot H*(PSS)
@@ -489,7 +489,10 @@ bool rx_sss_nr(const NR_DL_FRAME_PARMS *frame_parms,
   }
 
 //#ifdef DEBUG_SSS_NR
-#define SSS_METRIC_FLOOR_NR   (30000)
+#if defined(SSS_METRIC_FLOOR_NR)
+#undef SSS_METRIC_FLOOR_NR
+#endif
+#define SSS_METRIC_FLOOR_NR   (15000)
   if (*tot_metric > SSS_METRIC_FLOOR_NR) {
     Nid2 = GET_NID2(*Nid_cell);
     Nid1 = GET_NID1(*Nid_cell);

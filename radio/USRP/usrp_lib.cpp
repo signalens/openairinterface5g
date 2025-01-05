@@ -90,7 +90,7 @@ typedef struct {
 
   //! gpio bank to use
   char *gpio_bank;
-  
+
   // --------------------------------
   // Debug and output control
   // --------------------------------
@@ -198,7 +198,7 @@ static int sync_to_gps(openair0_device *device) {
       uhd::time_spec_t gps_time = uhd::time_spec_t(time_t(s->usrp->get_mboard_sensor("gps_time", mboard).to_int()));
       s->usrp->set_time_next_pps(gps_time+1.0, mboard);
       //s->usrp->set_time_next_pps(uhd::time_spec_t(0.0));
-      
+
       //Wait for it to apply
       //The wait is 2 seconds because N-Series has a known issue where
       //the time at the last PPS does not properly update at the PPS edge
@@ -497,9 +497,9 @@ static int trx_usrp_write(openair0_device *device,
     s->tx_count++;
 
 VCD_SIGNAL_DUMPER_DUMP_FUNCTION_BY_NAME(VCD_SIGNAL_DUMPER_FUNCTIONS_BEAM_SWITCHING_GPIO,1);
-    // bit 13 enables gpio 
+    // bit 13 enables gpio
     if ((flags_gpio & TX_GPIO_CHANGE) != 0) {
-      // push GPIO bits 
+      // push GPIO bits
       s->usrp->set_command_time(s->tx_md.time_spec);
       s->usrp->set_gpio_attr(s->gpio_bank, "OUT", flags_gpio, MAN_MASK);
       s->usrp->clear_command_time();
@@ -623,12 +623,12 @@ void *trx_usrp_write_thread(void * arg){
     s->tx_md.start_of_burst = (s->tx_count==0) ? true : first_packet;
     s->tx_md.end_of_burst   = last_packet;
     s->tx_md.time_spec      = uhd::time_spec_t::from_ticks(timestamp, s->sample_rate);
-    LOG_D(PHY,"usrp_tx_write: tx_count %llu SoB %d, EoB %d, TS %llu\n",(unsigned long long)s->tx_count,s->tx_md.start_of_burst,s->tx_md.end_of_burst,(unsigned long long)timestamp); 
+    LOG_D(PHY,"usrp_tx_write: tx_count %llu SoB %d, EoB %d, TS %llu\n",(unsigned long long)s->tx_count,s->tx_md.start_of_burst,s->tx_md.end_of_burst,(unsigned long long)timestamp);
     s->tx_count++;
 
     // bit 3 enables gpio (for backward compatibility)
     if (flags_gpio&0x1000) {
-      // push GPIO bits 
+      // push GPIO bits
       s->usrp->set_command_time(s->tx_md.time_spec);
       s->usrp->set_gpio_attr(s->gpio_bank, "OUT", flags_gpio, MAN_MASK);
       s->usrp->clear_command_time();
@@ -800,7 +800,7 @@ static int trx_usrp_read(openair0_device *device, openair0_timestamp *ptimestamp
       exit_function(__FILE__, __FUNCTION__, __LINE__, "Recording reaches max iq limit\n", OAI_EXIT_NORMAL);
   }
   read_count++;
-  LOG_D(HW,"usrp_lib: returning %d samples at ts %lu read_count %d\n", samples_received, *ptimestamp, read_count); 
+  LOG_D(HW,"usrp_lib: returning %d samples at ts %lu read_count %d\n", samples_received, *ptimestamp, read_count);
   return samples_received;
 }
 
@@ -955,6 +955,9 @@ void set_rx_gain_offset(openair0_config_t *openair0_cfg, int chain_index,int bw_
 
   if (bw_gain_adjust==1) {
     switch ((int)openair0_cfg[0].sample_rate) {
+      case 61440000:
+        break;
+
       case 46080000:
         break;
 
@@ -1112,7 +1115,7 @@ extern "C" {
       type_str = "type";
       product_str = "product";
     }
-    
+
     LOG_I(HW,"Found USRP %s\n", device_adds[0].get(type_str).c_str());
     double usrp_master_clock;
 
@@ -1356,6 +1359,14 @@ extern "C" {
     }
 
     switch ((int)openair0_cfg[0].sample_rate) {
+      case 61440000:
+        s->usrp->set_master_clock_rate(61.44e6);
+        // openair0_cfg[0].samples_per_packet    = 1024;
+        openair0_cfg[0].tx_sample_advance     = 115;
+        openair0_cfg[0].tx_bw                 = 50e6;
+        openair0_cfg[0].rx_bw                 = 50e6;
+        break;
+
       case 46080000:
         s->usrp->set_master_clock_rate(46.08e6);
         //openair0_cfg[0].samples_per_packet    = 1024;

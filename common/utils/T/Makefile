@@ -21,7 +21,7 @@ incgen/T_IDs.h: $(GENIDS) T_messages.txt
 	./$(GENIDS) T_messages.txt incgen/T_IDs.h
 
 check_vcd: incgen/T_IDs.h incgen/T_messages.txt.h
-	gcc -Wall -I. -I.. -I../itti -I../../../openair2/COMMON -Itracer -o _check_vcd check_vcd.c tracer/database.c tracer/utils.c -lm -pthread
+	gcc -Wall -I. -I.. -I../../../ -Iincgen -I../itti -I../../../openair2/COMMON -Itracer -o _check_vcd check_vcd.c tracer/database.c tracer/utils.c -lm -pthread
 	./_check_vcd T_messages.txt ../LOG/vcd_signal_dumper.h || (rm -rf ./_check_vcd ./incgen && false)
 	rm -f ./_check_vcd
 

@@ -876,7 +876,7 @@ int nr_get_default_pucch_res(int pucch_ResourceCommon) {
 
 void nr_configure_pdcch(nfapi_nr_dl_tti_pdcch_pdu_rel15_t *pdcch_pdu,
                         NR_ControlResourceSet_t *coreset,
-                        NR_sched_pdcch_t *pdcch, 
+                        NR_sched_pdcch_t *pdcch,
                         bool otherSI) {
 
 
@@ -1904,11 +1904,11 @@ int get_spf(nfapi_nr_config_request_scf_t *cfg) {
   AssertFatal(mu>=0&&mu<4,"Illegal scs %d\n",mu);
 
   return(10 * (1<<mu));
-} 
+}
 
 int to_absslot(nfapi_nr_config_request_scf_t *cfg,int frame,int slot) {
 
-  return(get_spf(cfg)*frame) + slot; 
+  return(get_spf(cfg)*frame) + slot;
 
 }
 
@@ -2034,6 +2034,9 @@ void remove_nr_list(NR_list_t *listP, int id)
 void add_tail_nr_list(NR_list_t *listP, int id)
 {
   int *last = listP->tail < 0 ? &listP->head : &listP->next[listP->tail];
+  if (last == NULL) {
+    return;
+  }
   *last = id;
   listP->next[id] = -1;
   listP->tail = id;
@@ -3062,7 +3065,7 @@ void nr_mac_trigger_release_complete(gNB_MAC_INST *mac, int rnti)
   // table. This can happen, e.g., on Msg.3 with C-RNTI, where we create a UE
   // MAC context, decode the PDU, find the C-RNTI MAC CE, and then throw the
   // newly created context away. See also in _nr_rx_sdu() and commit 93f59a3c6e56f
-  if (!du_exists_f1_ue_data(rnti)) 
+  if (!du_exists_f1_ue_data(rnti))
     return;
 
   // unlock the scheduler temporarily to prevent possible deadlocks with

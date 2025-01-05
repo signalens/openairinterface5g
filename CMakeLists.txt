@@ -79,6 +79,8 @@ check_option(${ASN1C_EXEC} -no-gen-JER ASN1C_EXEC)
 check_option(${ASN1C_EXEC} -no-gen-BER ASN1C_EXEC)
 check_option(${ASN1C_EXEC} -no-gen-OER ASN1C_EXEC)
 
+find_package(json-c CONFIG)
+
 #########################################################
 # Base directories, compatible with legacy OAI building #
 #########################################################
@@ -119,7 +121,7 @@ eval_boolean(AUTODETECT_AVX2 DEFINED CPUFLAGS AND CPUFLAGS MATCHES "avx2")
 add_boolean_option(AVX2 ${AUTODETECT_AVX2} "Whether AVX2 intrinsics is available on the host processor" ON)
 
 message(STATUS "CPU architecture is ${CMAKE_SYSTEM_PROCESSOR}")
-if (CROSS_COMPILE)
+if (CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
   message(STATUS "setting as aarch64")
   set(C_FLAGS_PROCESSOR "${C_FLAGS_PROCESSOR} -gdwarf-2 -lgcc -lrt")
 elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
@@ -153,9 +155,7 @@ else()
   message(FATAL_ERROR "compile for CPU architecture ${CPUARCH}, CMAKE_SYSTEM_PROCESSOR ${CMAKE_SYSTEM_PROCESSOR}")
 endif()
 
-if (NOT CROSS_COMPILE)
-  set(C_FLAGS_PROCESSOR "${C_FLAGS_PROCESSOR} -march=native")
-else ()
+if (CROSS_COMPILE)
   set(C_FLAGS_PROCESSOR "${C_FLAGS_PROCESSOR} -march=armv8-a")
 endif()
 
@@ -166,7 +166,7 @@ add_definitions("-DSTDC_HEADERS=1 -DHAVE_SYS_TYPES_H=1 -DHAVE_SYS_STAT_H=1 -DHAV
 set(commonOpts "-pipe -fPIC -Wall -fno-strict-aliasing -rdynamic")
 # GNU C/C++ Compiler might throw many warnings without packed-bitfield-compat, see man page
 if(CMAKE_C_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-  set(commonOpts "${commonOpts} -Wno-packed-bitfield-compat")
+  set(commonOpts "${commonOpts} -Wno-packed-bitfield-compat -Wno-misleading-indentation")
 endif()
 # clang: suppress complaints about unused command line argument (-rdynamic only
 # used during linking)
@@ -594,7 +594,11 @@ include_directories("${OPENAIR_DIR}")
 # no matter what. Note: sone files are generated, so we have both source and
 # binary directories
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/common/utils/T
-                    ${CMAKE_CURRENT_BINARY_DIR}/common/utils/T)
+                    ${CMAKE_CURRENT_BINARY_DIR}/common/utils/T
+                    ${CMAKE_CURRENT_SOURCE_DIR}/common/utils/LOG
+                    ${CMAKE_CURRENT_SOURCE_DIR}/common/utils/T/incgen
+                    ${CMAKE_CURRENT_BINARY_DIR}/openair2/RRC/NR/MESSAGES
+                    ${CMAKE_CURRENT_BINARY_DIR}/openair2/RRC/LTE/MESSAGES)
 
 # set the T_LIB name to T if the target exists, otherwise leave empty
 set(T_LIB $<TARGET_NAME_IF_EXISTS:T>)
@@ -1807,6 +1811,48 @@ add_library(oai_iqplayer MODULE
 	)
 set(CMAKE_MODULE_PATH "${OPENAIR_DIR}/cmake_targets/tools/MODULES" "${CMAKE_MODULE_PATH}")
 
+#include T directory even if the T is off because T macros are in the code
+#no matter what
+include_directories("${OPENAIR_DIR}/common/utils/T")
+
+if (${T_TRACER})
+  set(T_SOURCE
+      ${OPENAIR_DIR}/common/utils/T/T_IDs.h
+      ${OPENAIR_DIR}/common/utils/T/T.c
+      ${OPENAIR_DIR}/common/utils/T/local_tracer.c
+      ${OPENAIR_DIR}/shm_interface/wd_shm.c)
+  set(T_LIB "rt")
+endif (${T_TRACER})
+
+#Some files in the T directory are generated.
+#This rule and the following deal with it.
+add_custom_command (
+  OUTPUT ${OPENAIR_DIR}/common/utils/T/T_IDs.h
+  COMMAND make check_vcd
+  WORKING_DIRECTORY ${OPENAIR_DIR}/common/utils/T
+  DEPENDS ${OPENAIR_DIR}/common/utils/T/T_messages.txt
+          ${OPENAIR_DIR}/common/utils/LOG/vcd_signal_dumper.c
+          ${OPENAIR_DIR}/common/utils/LOG/vcd_signal_dumper.h
+  )
+
+execute_process (
+  COMMAND make check_vcd
+  WORKING_DIRECTORY ${OPENAIR_DIR}/common/utils/T
+)
+#This rule is specifically needed to generate T files
+#before anything else in a project that uses the T.
+#See below, there are some 'add_dependencies' showing that.
+#Basically we create a custom target and we make other
+#targets depend on it. That forces cmake to generate
+#T files before anything else.
+add_custom_target (
+  generate_T_headers
+  DEPENDS ${OPENAIR_DIR}/common/utils/T/T_IDs.h
+)
+
+# Hack on a test of asn1c version (already dirty)
+add_definitions(-DASN1_MINIMUM_VERSION=924)
+
 #################################
 # add executables for operation
 #################################
@@ -1934,6 +1980,7 @@ add_executable(nr-softmodem
   ${OPENAIR_DIR}/common/utils/lte/prach_utils.c
   ${PHY_INTERFACE_DIR}/queue_t.c
   ${OPENAIR1_DIR}/PHY/TOOLS/phy_scope_interface.c
+  ${OPENAIR_DIR}/shm_interface/wd_shm.c
   )
 
 target_link_libraries(nr-softmodem PRIVATE
@@ -1946,8 +1993,8 @@ target_link_libraries(nr-softmodem PRIVATE
 
 target_link_libraries(nr-softmodem PRIVATE pthread m CONFIG_LIB rt sctp)
 target_link_libraries(nr-softmodem PRIVATE ${T_LIB})
-target_link_libraries(nr-softmodem PRIVATE asn1_nr_rrc_hdrs asn1_lte_rrc_hdrs)
-target_link_libraries(nr-softmodem PRIVATE asn1_nr_rrc_hdrs asn1_lte_rrc_hdrs)
+target_link_libraries(nr-softmodem PRIVATE asn1_nr_rrc asn1_lte_rrc)
+target_link_libraries (nr-softmodem PRIVATE rt czmq json-c)
 add_boolean_option(OAI_AERIAL OFF "Activate OAI's AERIAL driver" OFF)
 if (OAI_AERIAL)
   target_compile_definitions(nr-softmodem PUBLIC ENABLE_AERIAL)
@@ -1969,6 +2016,7 @@ add_executable(nr-cuup
   ${OPENAIR2_DIR}/E1AP/e1ap_setup.c
   ${NR_PDCP_SRC}
   ${NR_SDAP_SRC}
+  ${OPENAIR_DIR}/shm_interface/wd_shm.c
   )
 
 target_link_libraries(nr-cuup PRIVATE
@@ -1996,6 +2044,7 @@ add_executable(nr-uesoftmodem
   ${OPENAIR2_DIR}/LAYER2/NR_MAC_COMMON/nr_mac_common.c
   ${OPENAIR3_DIR}/NAS/UE/nas_ue_task.c
   ${OPENAIR1_DIR}/PHY/TOOLS/phy_scope_interface.c
+  ${OPENAIR_DIR}/shm_interface/wd_shm.c
   )
 
 target_link_libraries(nr-uesoftmodem PRIVATE
@@ -2008,7 +2057,8 @@ target_link_libraries(nr-uesoftmodem PRIVATE
 
 target_link_libraries(nr-uesoftmodem PRIVATE pthread m CONFIG_LIB rt nr_ue_phy_meas)
 target_link_libraries(nr-uesoftmodem PRIVATE ${T_LIB})
-target_link_libraries(nr-uesoftmodem PRIVATE asn1_nr_rrc_hdrs asn1_lte_rrc_hdrs)
+target_link_libraries(nr-uesoftmodem PRIVATE asn1_nr_rrc asn1_lte_rrc)
+target_link_libraries (nr-uesoftmodem PRIVATE czmq json-c)
 
 # force the generation of ASN.1 so that we don't need to wait during the build
 target_link_libraries(nr-uesoftmodem PRIVATE
@@ -2226,7 +2276,7 @@ if (${T_TRACER})
         CN_UTILS GTPV1U SCTP_CLIENT MME_APP LIB_NAS_UE NB_IoT SIMU OPENAIR0_LIB
         dfts config_internals nr_common)
     if (TARGET ${i})
-      add_dependencies(${i} generate_T)
+      add_dependencies(${i} generate_T_headers)
     endif()
   endforeach(i)
 endif (${T_TRACER})

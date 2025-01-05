@@ -43,6 +43,8 @@
 /*Softmodem params*/
 #include "executables/softmodem-common.h"
 #include "../../../nfapi/oai_integration/vendor_ext.h"
+#include "shm_interface/wd_shm_nr_utils.h"
+#include "nr-softmodem.h"
 
 ////////////////////////////////////////////////////////
 /////* DLSCH MAC PDU generation (6.1.2 TS 38.321) */////
@@ -334,6 +336,19 @@ static void nr_store_dlsch_buffer(module_id_t module_id, frame_t frame, sub_fram
       const int lcid = c->lcid;
       const uint16_t rnti = UE->rnti;
       LOG_D(NR_MAC, "In %s: UE %x: LCID %d\n", __FUNCTION__, rnti, lcid);
+
+      /* FUZZ-NR: duplication */
+      int len = shm_mq_available(W_MQ_MAC_DL);
+      if (len >= 8){
+        len = len - 8;
+        LOG_E(MAC, "[DUP] sched_ctrl->num_total_bytes = %d \n", len);
+        sched_ctrl->num_total_bytes = len;
+        sched_ctrl->dl_pdus_total = 1;
+        // Skip the rest of the loop, since we don't need to call mac_rlc_status_ind
+        continue;
+      }
+      /* -------------------- */
+
       if (lcid == DL_SCH_LCID_DTCH && nr_timer_is_active(&sched_ctrl->transm_interrupt))
         continue;
       start_meas(&RC.nrmac[module_id]->rlc_status_ind);
@@ -1279,6 +1294,11 @@ void nr_schedule_ue_spec(module_id_t module_id,
           const nr_lc_config_t *c = seq_arr_at(&sched_ctrl->lc_config, i);
           const int lcid = c->lcid;
 
+          /* FUZZ-NR: duplication */
+          if (shm_mq_available(W_MQ_MAC_DL))
+            continue;
+          /* -------------------- */
+
           if (sched_ctrl->rlc_status[lcid].bytes_in_buffer == 0)
             continue; // no data for this LC        tbs_size_t len = 0;
 
@@ -1391,6 +1411,28 @@ void nr_schedule_ue_spec(module_id_t module_id,
               slot,
               UE->rnti);
       }
+
+      /* FUZZ-NR: Duplication */
+      mq_msg_t *inj_pkt = shm_mq_recv(W_MQ_MAC_DL);
+      uint64_t pkt_id = 0;
+      if (inj_pkt) {
+        int inj_len = inj_pkt->msg_size - 8;
+        memcpy(harq->transportBlock, inj_pkt->msg_buf, (inj_len > TBS ? TBS : inj_len)); // Copy injected packet to transport block
+        pkt_id = *((uint64_t *)(inj_pkt->msg_buf + inj_len));
+        LOG_E(MAC, "[DUP] TBS = %d, len=%d, buf: %02x %02x %02x %02x %02x %02x ...\n", TBS, inj_pkt->msg_size,
+        inj_pkt->msg_buf[0], inj_pkt->msg_buf[1], inj_pkt->msg_buf[2], inj_pkt->msg_buf[3],
+        inj_pkt->msg_buf[4], inj_pkt->msg_buf[5]);
+      }
+      /* -------------------- */
+
+      /* FUZZ-NR: Mutation */
+      // Send data to fuzzer (DLSCH)
+      send_pdu_data_nr(W_GNB_MAC_UE_DL_PDU_WITH_DATA | (inj_pkt ? W_INJECTED : 0),
+                        NR_DIRECTION_DOWNLINK,
+                        NR_C_RNTI, rnti,
+                        frame, slot, pkt_id,
+                        (uint8_t *)harq->transportBlock, TBS);
+      /* -------------------- */
 
       T(T_GNB_MAC_DL_PDU_WITH_DATA, T_INT(module_id), T_INT(CC_id), T_INT(rnti),
         T_INT(frame), T_INT(slot), T_INT(current_harq_pid), T_BUFFER(harq->transportBlock, TBS));
